@@ -557,7 +557,7 @@ export function buildTextures(scene: Phaser.Scene) {
     canvasTex(scene, `ruins_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawRuins(ctx, t.w * TILE, t.h * TILE + 16));
     canvasTex(scene, `foundation_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawFoundation(ctx, t.w * TILE, t.h * TILE + 16));
   }
-  for (const v of [0, 1]) canvasTex(scene, `rubble_${v}`, 16, 12, (ctx) => drawRubble(ctx, v));
+  for (const v of [0, 1]) canvasTex(scene, `rubble_${v}`, 24, 18, (ctx) => drawRubble(ctx, v));
 
   canvasTex(scene, "ship", 28, 57, drawShip);
   for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f));

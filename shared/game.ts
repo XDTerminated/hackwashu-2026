@@ -434,6 +434,7 @@ export type GameEvent =
   | { type: "progress"; progress: Progress; materials: Materials; coins: number; gained?: Partial<Materials>; at?: { x: number; y: number } }
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean; hello?: string; gift?: number; next?: VillagerId | null }
   | { type: "plot_revealed"; building: BuildingId }
+  | { type: "rubble_cleared"; building: BuildingId; index: number }
   | { type: "chore_spawned"; chore: Chore }
   | { type: "chore_cleared"; id: string; kind: "dust" | "meteor"; reward: number; coins: number }
   | { type: "chore_gone"; id: string }

@@ -336,15 +336,15 @@ export class GameScene extends Phaser.Scene {
     return { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
   }
 
-  /** Rubble piles on a neighbor's lot (index, and where each one sits). */
+  /**
+   * Rubble heaps blocking a neighbor's lot: a row along its front edge, where
+   * you walk up to it (and where nothing else ever stands), evenly spaced.
+   */
   private rubbleSpots(def: MoveInDef) {
     const s = SPOTS[def.home];
-    const t = buildingTiles(def.home);
-    const w = t.w * TILE;
-    const fh = t.h * TILE;
-    // (x as a share of the width from the middle, y as a share of the depth from the front)
-    const at = [[-0.3, 0.28], [0.28, 0.55], [-0.14, 0.72], [0.33, 0.16]];
-    return Array.from({ length: def.rubble }, (_, i) => ({ i, x: Math.round(s.x + at[i % 4][0] * w), y: Math.round(s.y - at[i % 4][1] * fh) + 4 }));
+    const w = buildingTiles(def.home).w * TILE;
+    const gap = Math.min(30, Math.max(26, (w + 16) / def.rubble));
+    return Array.from({ length: def.rubble }, (_, i) => ({ i, x: Math.round(s.x + (i - (def.rubble - 1) / 2) * gap), y: s.y + 6 }));
   }
 
   /** Short on a material: the nearest place to get some (for the ★). */
@@ -1555,7 +1555,7 @@ export class GameScene extends Phaser.Scene {
         const lot = store.progress.lots[b] ?? { cleared: [], repaired: false };
         for (const r of this.rubbleSpots(move)) {
           if (lot.cleared.includes(r.i) || this.rubbleSent.has(`${b}:${r.i}`)) continue;
-          add({ verb: "CLEAR", label: "[E] clear rubble", x: r.x, y: r.y - 24, d: dist(r.x, r.y - 4), act: () => this.clearRubble(move, r) }, 22);
+          add({ verb: "CLEAR", label: "[E] clear rubble", x: r.x, y: r.y - 26, d: dist(r.x, r.y - 6) - 4, act: () => this.clearRubble(move, r) }, 24);
         }
         if (lot.cleared.length < move.rubble) {
           add({ verb: "CHECK", label: `[E] ${VILLAGER_SHORT[move.villager]}'s lot`, x: s.x, y: s.y - 36, d: dist(s.x, s.y) + 10, act: () => this.showNeeds(move) }, 46);

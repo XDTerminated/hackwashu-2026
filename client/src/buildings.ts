@@ -206,19 +206,42 @@ export function drawFoundation(ctx: Ctx, w: number, h: number) {
   }
 }
 
-/** A pile of rubble to clear off a lot (16 x 12). */
+/**
+ * A heap of rubble blocking a lot (24 x 18): broken brick, splintered planks
+ * and stone, warm-coloured so it never reads as one of the grey moon rocks.
+ */
 export function drawRubble(ctx: Ctx, v: number) {
-  const stones: [number, number, number, number][] =
-    v === 0
-      ? [[3, 7, 5, 4], [8, 6, 6, 5], [5, 3, 5, 4], [11, 3, 4, 3]]
-      : [[2, 6, 6, 5], [8, 7, 6, 4], [7, 2, 5, 5], [3, 3, 4, 3]];
-  // dust underneath
-  disc(ctx, "#8c8698", 8, 10, 7.5, 2);
-  for (const [x, y, sw, sh] of stones) {
-    rect(ctx, O, x - 1, y - 1, sw + 2, sh + 2);
-    rect(ctx, STONE.base, x, y, sw, sh);
-    rect(ctx, STONE.light, x, y, sw, 1);
-    rect(ctx, STONE.dark, x, y + sh - 1, sw, 1);
+  const BRICK = { base: "#c9744a", light: "#e0935f", dark: "#9a4f2e" };
+  // dust under the heap
+  disc(ctx, "#8c8698", 12, 15, 11.5, 3);
+  disc(ctx, "#a39cb2", 12, 14, 9, 2);
+  const block = (x: number, y: number, w: number, h: number, c: { base: string; light: string; dark: string }) => {
+    rect(ctx, O, x - 1, y - 1, w + 2, h + 2);
+    rect(ctx, c.base, x, y, w, h);
+    rect(ctx, c.light, x, y, w, 1);
+    rect(ctx, c.dark, x, y + h - 1, w, 1);
+  };
+  const plank = { base: "#c98f5a", light: "#e2ad76", dark: "#8a5a3b" };
+  if (v === 0) {
+    block(3, 11, 7, 4, BRICK);
+    block(10, 10, 8, 5, STONE);
+    block(6, 6, 7, 4, BRICK);
+    block(13, 5, 6, 4, BRICK);
+    // a splintered plank across the top
+    rect(ctx, O, 2, 3, 13, 3);
+    rect(ctx, plank.base, 3, 4, 11, 1);
+    rect(ctx, O, 14, 2, 2, 2);
+    block(18, 11, 4, 3, STONE);
+  } else {
+    block(2, 10, 8, 5, STONE);
+    block(10, 11, 7, 4, BRICK);
+    block(7, 5, 7, 5, BRICK);
+    block(15, 7, 6, 4, STONE);
+    rect(ctx, O, 9, 1, 3, 12);
+    rect(ctx, plank.base, 10, 2, 1, 10);
+    rect(ctx, plank.light, 10, 2, 1, 2);
+    block(18, 12, 4, 3, BRICK);
   }
-  rect(ctx, "#c9744a", v ? 12 : 4, v ? 2 : 1, 3, 1); // an old plank end
+  // a few loose chips
+  for (const [x, y] of [[1, 15], [21, 16], [6, 16]]) rect(ctx, BRICK.dark, x, y, 1, 1);
 }

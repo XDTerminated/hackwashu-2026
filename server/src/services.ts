@@ -152,6 +152,7 @@ export function clearRubble(b: BuildingId, index: number): string | null {
   lot.cleared.push(index);
   world.materials.moonstone += 1;
   savePersist();
+  emit({ type: "rubble_cleared", building: b, index });
   announceProgress({ moonstone: 1 });
   return null;
 }
@@ -186,6 +187,13 @@ export function lotBlocker(b: BuildingId): string | null {
   if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
   if (!lot.repaired) return "Repair the old foundation first.";
   return null;
+}
+
+/** Rubble still blocking the lot being worked on (for the daily "clear a rock" request). */
+export function rubbleLeft(): number {
+  const d = currentMoveIn(world.progress);
+  if (!d || !world.progress.revealed.includes(d.home)) return 0;
+  return d.rubble - (world.progress.lots[d.home]?.cleared.length ?? 0);
 }
 
 /** Different things this neighbor loves, in their yard. */
@@ -227,7 +235,9 @@ export function devMoveIn() {
   announceProgress();
 }
 
+/** Dev/demo prep (DEV_TOOLS=1 only): a pile of materials and coins. */
 export function devMaterials() {
+  world.coins += 100;
   gain({ moonstone: 10, stardust: 10, shard: 3 });
 }
 

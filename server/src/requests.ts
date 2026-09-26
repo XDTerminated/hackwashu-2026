@@ -4,10 +4,10 @@
 // nothing else has to know about them.
 
 import { VILLAGER_NAMES, type ColonyRequest, type GameEvent, type RequestKind, type VillagerId } from "../../shared/game.js";
-import { SHARD_COUNT } from "../../shared/layout.js";
+import { SHARD_COUNT, rockSpots } from "../../shared/layout.js";
 import { DECOR, happinessFor } from "../../shared/decor.js";
-import { isResident } from "./services.js";
-import { emit, onEvent, savePersist, world } from "./world.js";
+import { isResident, rubbleLeft } from "./services.js";
+import { decoRects, emit, onEvent, savePersist, world } from "./world.js";
 
 interface Template {
   kind: RequestKind;
@@ -20,7 +20,7 @@ interface Template {
 const POOL: Template[] = [
   { kind: "sweep", villager: "jade_rabbit", text: "Sweep 3 moondust drifts so the lamps shine", goal: 3, reward: 30 },
   { kind: "meteor", villager: "stargazer", text: "Catch a moon-rock that falls from the sky", goal: 1, reward: 40 },
-  { kind: "rock", villager: "timekeeper", text: "Clear a rock out of the wilds", goal: 1, reward: 30 },
+  { kind: "rock", villager: "timekeeper", text: "Clear a rock or a heap of rubble", goal: 1, reward: 30 },
   { kind: "decorate", villager: "scholar", text: "Brighten someone's yard with a decoration", goal: 1, reward: 35 },
   { kind: "shard", villager: "stargazer", text: "Find a Moon Shard hidden on the island", goal: 1, reward: 30 },
   { kind: "text", villager: "postmaster", text: "Text a neighbor on the MoonPad", goal: 1, reward: 15 },
@@ -30,7 +30,7 @@ const POOL: Template[] = [
 ];
 
 /** Bump when the kinds of requests change, so today's list is re-picked. */
-const REQUESTS_VERSION = 2;
+const REQUESTS_VERSION = 3;
 
 /**
  * Today's wish: a neighbor who lives here asks for a decoration they love
@@ -67,7 +67,9 @@ function seeded(n: number) {
 /** Today's three, picked by the date so they're stable all day. */
 function pick(day: string): ColonyRequest[] {
   const seed = [...day].reduce((h, c) => h * 31 + c.charCodeAt(0), 7);
-  const pool = POOL.filter((t) => t.kind !== "shard" || world.shards.length < SHARD_COUNT);
+  // Only ask for what's still out there: shards left to find, rocks or rubble left to clear.
+  const rocksLeft = rockSpots(decoRects(), world.clearedRocks).length + rubbleLeft();
+  const pool = POOL.filter((t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0));
   const order = pool.map((t, i) => ({ t, r: seeded(seed + i * 17) })).sort((a, b) => a.r - b.r);
   const w = wish(seed);
   const picked = order.slice(0, w ? 2 : 3).map(({ t }, i) => {
@@ -131,7 +133,7 @@ function grantWish(v: VillagerId, itemName: string) {
 
 function watch(e: GameEvent) {
   if (e.type === "chore_cleared") progress(e.kind === "dust" ? "sweep" : "meteor");
-  else if (e.type === "rock_cleared") progress("rock");
+  else if (e.type === "rock_cleared" || e.type === "rubble_cleared") progress("rock");
   else if (e.type === "clod_popped") progress("pop");
   else if (e.type === "shard_found") progress("shard");
   else if (e.type === "happiness" && e.gained) {

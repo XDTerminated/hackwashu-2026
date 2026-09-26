@@ -115,6 +115,9 @@ function villagerChores() {
 }
 
 export function startChores() {
+  // A few drifts to sweep from the start (stardust for the first repair).
+  const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
+  for (let i = dust; i < 3; i++) spawnDust();
   setInterval(tick, 5_000);
   setInterval(villagerChores, 30_000);
 }
