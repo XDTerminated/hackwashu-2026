@@ -246,9 +246,9 @@ what they actually fetched for you (no extra API calls).
 
 ## Talking to villagers
 
-Talking happens right where you stand, no chat window. Walk up to a villager and press **E** (or
-**Enter**) and type: your words show in a bubble over your head, **Enter** says it, **ESC** takes it
-back. They stop, turn to you, think ("..."), and answer out loud in bubbles over their own head, a
+Talking happens right where you stand. Walk up to a villager and press **E** (or **Enter**) to
+text-chat: a chat bar opens above the toolbar with the conversation so far, **Enter** sends (the bar
+stays open for your next line), and **ESC** or an empty **Enter** closes it. They stop, turn to you, think ("..."), and answer out loud in bubbles over their own head, a
 sentence or two at a time. They greet you once; come back within five minutes and they skip the
 hello. Walk away and the conversation ends. (Letters to approve and account connections still open
 their own windows.)

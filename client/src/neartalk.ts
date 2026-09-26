@@ -1,6 +1,6 @@
-// Talking to a neighbor where you stand, no chat box. Walk up to someone and
-// press E or Enter to say something (your words appear in a bubble over your
-// head), or tap / hold TAB to speak it, or turn on the OPEN MIC and just talk.
+// Talking to a neighbor where you stand. Walk up to someone and press E or
+// Enter to text-chat (a chat bar opens above the toolbar, with the conversation
+// so far), or tap / hold TAB to speak, or turn on the OPEN MIC and just talk.
 // They stop, turn to you, and answer in bubbles over their own head, out loud.
 // Letters, account connections and the Office still open their windows.
 
@@ -12,7 +12,7 @@ import * as net from "./net";
 import { isSfxMuted, onSfxToggle, sfx } from "./sfx";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import * as voice from "./voice";
-import { Label } from "./widgets";
+import { C, Label, TOOLBAR_H, measure, ptext, woodFrame } from "./widgets";
 
 export interface NearHost {
   scene: Phaser.Scene;
@@ -71,12 +71,13 @@ export function onOpenMic(fn: (on: boolean) => void) {
   return () => openListeners.delete(fn);
 }
 
+/** The pixel font has no emoji. */
+const plainText = (text: string) => text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s+/g, " ").trim();
+
 /** Split a reply into bubble-sized pieces (a sentence or two each). */
 function pieces(text: string): string[] {
   const out: string[] = [];
-  // (the pixel font has no emoji)
-  const plain = text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s+/g, " ").trim();
-  for (const s of plain.split(/(?<=[.!?…])\s+/)) {
+  for (const s of plainText(text).split(/(?<=[.!?…])\s+/)) {
     const last = out[out.length - 1];
     if (last && last.length + s.length < 100) out[out.length - 1] = `${last} ${s}`;
     else out.push(s);
@@ -103,8 +104,20 @@ export class NearTalk {
   /** Bumped to cut off whatever they're still saying (you walked away). */
   private replySeq = 0;
   private speaking: Promise<void> = Promise.resolve();
+  /** What's been said, per neighbor (come back within a few minutes and it's still there). */
+  private history = new Map<VillagerId, { at: number; lines: { you: boolean; text: string }[] }>();
+  private logUntil = 0;
+  private chat: {
+    W: number;
+    H: number;
+    box: Phaser.GameObjects.Graphics;
+    line: Phaser.GameObjects.BitmapText;
+    hint: Phaser.GameObjects.BitmapText;
+    logBg: Phaser.GameObjects.Graphics;
+    log: Phaser.GameObjects.BitmapText[];
+  } | null = null;
   private owner: InputOwner = {
-    render: () => this.showMine(input.value || this.placeholder(), !input.value),
+    render: () => this.renderChat(),
     submit: () => this.submitTyped(),
     active: () => this.typing,
   };
@@ -142,6 +155,7 @@ export class NearTalk {
     this.listening?.cancel();
     this.cancelTyping();
     this.mine?.destroy();
+    this.destroyChat();
   }
 
   /** Who you're talking with right now, if anyone. */
@@ -173,13 +187,15 @@ export class NearTalk {
     const last = this.greeted.get(v) ?? 0;
     if (Date.now() - last > GREET_AGAIN_MS) {
       this.greeted.set(v, Date.now());
-      this.host.actor(v)?.say(this.host.greeting(v), 5000, this.theirSide());
+      const hello = this.host.greeting(v);
+      this.host.actor(v)?.say(hello, 5000, this.theirSide());
+      this.log(v, false, hello);
     }
   }
 
   // ---------------------------------------------------------------- typing
 
-  /** E or Enter next to someone: type to them, in a bubble over your head. */
+  /** E or Enter next to someone: the chat bar opens (and "..." over your head while you type). */
   startTyping(v: VillagerId) {
     if (this.typing) return;
     this.begin(v);
@@ -187,7 +203,8 @@ export class NearTalk {
     this.stopOpenMic();
     claimInput(this.owner);
     input.value = "";
-    this.owner.render();
+    this.showMine(". . .", true);
+    this.renderChat();
     sfx.blip();
   }
 
@@ -196,21 +213,18 @@ export class NearTalk {
     this.typing = false;
     releaseInput(this.owner);
     this.hideMine();
+    this.renderChat();
     this.syncOpenMic();
   }
 
+  /** Enter sends and the bar stays open for the next line; Enter on an empty line (or ESC) closes it. */
   private submitTyped() {
     const text = input.value.trim();
-    this.typing = false;
-    releaseInput(this.owner);
     this.sentAt = performance.now();
-    if (!text || !this.with) {
-      this.hideMine();
-      this.syncOpenMic();
-      return;
-    }
+    if (!text || !this.with) return this.cancelTyping();
+    input.value = "";
     this.say(text);
-    this.syncOpenMic();
+    this.renderChat();
   }
 
   // ---------------------------------------------------------------- speaking (TAB, or the open mic)
@@ -274,6 +288,7 @@ export class NearTalk {
     if (!v) return;
     this.lastAt = Date.now();
     this.flashMine(text, Math.max(2200, text.length * 55));
+    this.log(v, true, text);
     sfx.blip();
     if (net.send({ type: "task", villager: v, text })) this.host.actor(v)?.say(". . .", 30_000, this.theirSide());
     else this.host.actor(v)?.say("(the line to the colony is down)", 3000, this.theirSide());
@@ -286,6 +301,7 @@ export class NearTalk {
     this.lastAt = Date.now();
     const seq = this.replySeq;
     const parts = pieces(text);
+    this.log(v, false, plainText(text));
     // (the mic mustn't hear them talking)
     this.stopOpenMic();
     this.quietUntil = Date.now() + 60_000;
@@ -309,6 +325,99 @@ export class NearTalk {
       this.quietUntil = Date.now() + 700;
       this.host.scene.time.delayedCall(800, () => this.syncOpenMic());
     });
+  }
+
+  // ---------------------------------------------------------------- the chat bar
+
+  private log(v: VillagerId, you: boolean, text: string) {
+    let h = this.history.get(v);
+    if (!h || Date.now() - h.at > GREET_AGAIN_MS) this.history.set(v, (h = { at: 0, lines: [] }));
+    h.at = Date.now();
+    h.lines.push({ you, text });
+    if (h.lines.length > 20) h.lines.shift();
+    this.logUntil = Date.now() + 9000;
+    this.renderChat();
+  }
+
+  private destroyChat() {
+    if (!this.chat) return;
+    for (const o of [this.chat.box, this.chat.line, this.chat.hint, this.chat.logBg, ...this.chat.log]) o.destroy();
+    this.chat = null;
+  }
+
+  /** The bar (while typing) and the conversation so far just above it (while typing, and for a bit after each line). */
+  private renderChat(barOnly = false) {
+    const scene = this.host.scene;
+    const W = scene.scale.width;
+    const H = scene.scale.height;
+    if (this.chat && (this.chat.W !== W || this.chat.H !== H)) this.destroyChat();
+    const pin = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 0) => (o.setScrollFactor(0), o.setDepth(1_000_000 + d), o);
+    if (!this.chat)
+      this.chat = {
+        W,
+        H,
+        box: pin(scene.add.graphics()),
+        line: pin(ptext(scene, 0, 0, "", C.ink), 1),
+        hint: pin(ptext(scene, 0, 0, "ENTER: send    ESC: close    TAB: speak", 0xe8e0f0, "sm"), 1),
+        logBg: pin(scene.add.graphics()),
+        log: [],
+      };
+    const c = this.chat;
+    const barW = Math.min(W - 32, 380);
+    const x0 = Math.round((W - barW) / 2);
+    const barH = 16;
+    const barY = H - TOOLBAR_H - barH - 6;
+    const who = this.with ? VILLAGER_SHORT[this.with] : "";
+
+    // the bar
+    c.box.clear();
+    c.box.setVisible(this.typing);
+    c.line.setVisible(this.typing);
+    c.hint.setVisible(this.typing);
+    if (this.typing) {
+      // (the key hints sit on a dark strip that joins the log above)
+      c.box.fillStyle(0x1b1530, 0.72).fillRect(x0, barY - 11, barW, 11);
+      woodFrame(c.box, x0, barY, barW, barH, C.paperLight);
+      const cursor = Math.floor(performance.now() / 500) % 2 ? "_" : " ";
+      const prefix = `to ${who}: `;
+      const typed = input.value;
+      c.line.setTint(typed ? C.ink : C.inkSoft);
+      // keep the end of a long line in view
+      let shown = typed || this.placeholder();
+      c.line.setText(prefix + shown + (typed ? cursor : ""));
+      while (typed && measure(c.line).w > barW - 12 && shown.length > 1) {
+        shown = shown.slice(1);
+        c.line.setText(`${prefix}...${shown}${cursor}`);
+      }
+      c.line.setPosition(x0 + 6, barY + 5);
+      c.hint.setPosition(x0 + barW - measure(c.hint).w - 2, barY - 8);
+    }
+
+    if (barOnly) return;
+    // the conversation so far
+    for (const t of c.log) t.destroy();
+    c.log = [];
+    c.logBg.clear();
+    const lines = this.with ? (this.history.get(this.with)?.lines ?? []) : [];
+    const showLog = lines.length > 0 && (this.typing || Date.now() < this.logUntil);
+    if (!showLog) return;
+    const top = barY - (this.typing ? 11 : 0);
+    const maxH = Math.min(96, Math.round(H * 0.3));
+    let y = top;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i];
+      const t = pin(ptext(scene, x0 + 5, 0, `${l.you ? "you" : VILLAGER_SHORT[this.with!]}: ${l.text}`, l.you ? 0xffe2a0 : 0xffffff, "sm"), 1);
+      t.setMaxWidth(barW - 10);
+      const h = measure(t).h;
+      if (top - (y - h - 3) > maxH && c.log.length) {
+        t.destroy();
+        break;
+      }
+      y -= h + 3;
+      t.setY(y);
+      c.log.push(t);
+    }
+    c.logBg.fillStyle(0x1b1530, 0.72).fillRect(x0, y - 4, barW, top - y + 4);
   }
 
   // ---------------------------------------------------------------- your bubble
@@ -357,6 +466,8 @@ export class NearTalk {
   /** Every frame: keep your bubble over you, end the conversation when you walk off, run the open mic. */
   update() {
     this.place();
+    if (this.typing) this.renderChat(true); // (the cursor blinks)
+    else if (this.chat?.log.length && Date.now() > this.logUntil) this.renderChat(); // (the log tucks away)
     if (this.with) {
       const a = this.host.actor(this.with);
       const p = this.host.player();
