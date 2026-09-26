@@ -13,7 +13,7 @@ import { closePanel, openConnect, openLinkClaude, setUiOpen } from "./panel";
 import { sfx } from "./sfx";
 import { agents, store } from "./store";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
-import { Button, C, Label, fit, measure, ptext } from "./widgets";
+import { Button, C, Label, TOOLBAR_H, fit, measure, ptext } from "./widgets";
 
 type Msg = { from: "you" | "them" | "sys"; text: string; tag?: string };
 type View = VillagerId | "phones" | "connect" | null;
@@ -211,9 +211,9 @@ class MoonPadView {
     const H = this.scene.scale.height;
     // A phone: portrait, rounded, with a camera notch, a status bar and a home bar.
     const w = Math.min(176, W - 16);
-    const h = Math.min(296, H - 38);
+    const h = Math.min(296, H - TOOLBAR_H - 12);
     const x = Math.round((W - w) / 2);
-    const y = Math.max(4, Math.round((H - 30 - h) / 2));
+    const y = Math.max(4, Math.round((H - TOOLBAR_H - 4 - h) / 2));
     this.box = { x, y, w, h };
     // "screen" is the app area, below the status bar and above the home bar.
     this.screen = { x: x + 6, y: y + 20, w: w - 12, h: h - 31 };

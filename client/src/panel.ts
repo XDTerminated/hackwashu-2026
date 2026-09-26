@@ -19,7 +19,7 @@ import { agents, focusNextSession, focusedSession, store } from "./store";
 import { closeMoonPad, openMoonPad } from "./tablet";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import * as voice from "./voice";
-import { Button, C, IconButton, Label, fit, measure, pixBox, woodFrame, type Font } from "./widgets";
+import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, woodFrame, type Font } from "./widgets";
 
 type Kind = "you" | "them" | "sys" | "title" | "letter";
 interface ButtonSpec {
@@ -54,7 +54,7 @@ const SIDE_GAP = 6;
 const TALK_W = 250;
 const TALK_H = 72;
 /** Room kept free at the bottom of the screen for the toolbar. */
-const TOOLBAR_CLEAR = 31;
+const TOOLBAR_CLEAR = TOOLBAR_H + 5;
 /** Each reply's first couple of sentences are spoken; the rest just types out (free-plan credits). */
 const VOICED_SENTENCES = 2;
 /** Typewriter speed when nobody's speaking. */
@@ -185,7 +185,7 @@ class Dialog {
     this.inputT = scene.make.bitmapText({ font: "px", text: "" }, false);
     this.cursor = new Phaser.GameObjects.Rectangle(scene, 0, 0, 1, 9, C.ink).setOrigin(0);
     this.send = new Button(scene, 0, 0, "SEND", C.woodMid, () => this.submit(), 34);
-    this.micBtn = new IconButton(scene, 0, 0, "icon_mic_0", C.woodMid, micSupported ? "Hold to talk (TAB)" : "Voice input needs Chrome, Edge or Safari", () => this.startMic(), 16, 15);
+    this.micBtn = new IconButton(scene, 0, 0, "icon_mic_0", C.woodMid, micSupported ? "Talk: tap or hold (TAB)" : "Voice input needs Chrome, Edge or Safari", () => this.startMic(), 16, 15);
     this.pg = scene.make.graphics({}, false);
     this.pSky = scene.make.image({ key: "portrait_sky" }, false).setOrigin(0);
     this.pFace = scene.make.image({ key: "portrait_jade_rabbit_0" }, false).setOrigin(0);
@@ -585,8 +585,17 @@ class Dialog {
     return this.visible && this.talkMode && this.micOn;
   }
 
+  /** When the current listen began (a quick tap keeps listening; a hold is push-to-talk). */
+  private micDownAt = 0;
+
+  /** TAB / mic pressed: start listening, or (if already listening from a tap) send. */
   startMic() {
-    if (!this.canListen() || this.listening) return;
+    if (!this.canListen()) return;
+    if (this.listening) {
+      this.listening.stop();
+      return;
+    }
+    this.micDownAt = performance.now();
     if (!micSupported) {
       sfx.deny();
       this.note("sys", "Voice input needs Chrome, Edge or Safari - you can still type.");
@@ -615,8 +624,10 @@ class Dialog {
     });
   }
 
+  /** TAB / mic released: a hold sends; a quick tap keeps listening until the next tap. */
   stopMic() {
-    this.listening?.stop();
+    if (!this.listening || performance.now() - this.micDownAt < 400) return;
+    this.listening.stop();
   }
 
   private endMic(cancel: boolean) {
@@ -739,7 +750,7 @@ class Dialog {
     const maxW = this.inputW - 10;
     const raw = this.secret ? "*".repeat(input.value.length) : input.value;
     if (!raw) {
-      const hint = this.listening ? "Listening... let go to send" : this.placeholder;
+      const hint = this.listening ? "Listening... tap TAB or the mic to send" : this.placeholder;
       this.inputT.setText(fit(this.scene, hint, maxW, this.font)).setTint(this.listening ? C.red : 0xb09a78);
       this.cursor.setPosition(this.inputT.x, this.inputT.y - 1);
       return;

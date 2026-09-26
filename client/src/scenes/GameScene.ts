@@ -57,6 +57,12 @@ const HELLOS: Record<VillagerId, string[]> = {
   scholar: ["Oh! Hello! *adjusts glasses*", "Did you know the Moon has quakes?", "Reading anything good?"],
 };
 
+/**
+ * Somewhere someone can stand: feet on the island, and head over it too, so at
+ * the island's back edge you stop short instead of standing against open space.
+ */
+const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6, y - 26) && inIslandXY(x + 6, y - 26);
+
 /** Every neighbor's home (the lots that go from ruin to house). */
 const MOVE_INS_HOMES = () => MOVE_INS.map((m) => m.home);
 
@@ -1986,7 +1992,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Move to the nearest spot you can actually stand on (straight down, in front, first). */
   private unstick(prefer?: { x: number; y: number }) {
-    const free = (x: number, y: number) => inIslandXY(x, y) && !this.blocked(x, y) && !this.blocked(x, y - 6);
+    const free = (x: number, y: number) => onGround(x, y) && !this.blocked(x, y) && !this.blocked(x, y - 6);
     const go = (x: number, y: number) => {
       for (let i = 0; i < 5; i++) this.time.delayedCall(i * 40, () => puff(this, x + Phaser.Math.Between(-6, 6), y - Phaser.Math.Between(0, 4)));
       this.player.setPosition(Math.round(x), Math.round(y));
@@ -2058,7 +2064,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private strollTo(a: VillagerActor, x: number, y: number): Promise<boolean> {
-    if (!inIslandXY(x, y) || this.blocked(x, y) || this.blocked(x, y - 6)) return Promise.resolve(false);
+    if (!onGround(x, y) || this.blocked(x, y) || this.blocked(x, y - 6)) return Promise.resolve(false);
     return a.stroll(x, y);
   }
 
@@ -2202,8 +2208,8 @@ export class GameScene extends Phaser.Scene {
     }
     const nx = this.player.x + dx * speed * dt;
     const ny = this.player.y + dy * speed * dt;
-    if (inIslandXY(nx, this.player.y) && !this.blocked(nx, this.player.y)) this.player.x = nx;
-    if (inIslandXY(this.player.x, ny) && !this.blocked(this.player.x, ny)) this.player.y = ny;
+    if (onGround(nx, this.player.y) && !this.blocked(nx, this.player.y)) this.player.x = nx;
+    if (onGround(this.player.x, ny) && !this.blocked(this.player.x, ny)) this.player.y = ny;
 
     if (Math.abs(dx) > Math.abs(dy)) {
       this.facing = "side";

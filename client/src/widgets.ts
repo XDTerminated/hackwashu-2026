@@ -237,9 +237,14 @@ export class Button extends Phaser.GameObjects.Container {
 }
 
 /** A square pixel button with an icon; its name shows as a tooltip on hover. */
+/** Height of the toolbar along the bottom (windows and hints keep clear of it). */
+export const TOOLBAR_H = 34;
+
 export class IconButton extends Phaser.GameObjects.Container {
   private g: Phaser.GameObjects.Graphics;
   private icon: Phaser.GameObjects.Image;
+  /** A word under the icon (the toolbar's buttons), so nobody has to guess what it is. */
+  private caption: Phaser.GameObjects.BitmapText | null = null;
   private tip: Label | null = null;
   private hover = false;
   private pressed = false;
@@ -289,6 +294,16 @@ export class IconButton extends Phaser.GameObjects.Container {
     return this;
   }
 
+  setLabel(text: string, color: number = C.cream) {
+    if (!this.caption) {
+      this.caption = this.scene.make.bitmapText({ font: "sm", text: "" }, false);
+      this.add(this.caption);
+    }
+    this.caption.setText(text.toUpperCase()).setTint(color);
+    this.placeIcon();
+    return this;
+  }
+
   setTooltip(text: string) {
     this.tooltip = text;
     if (this.tip) this.tip.setText(text);
@@ -305,6 +320,13 @@ export class IconButton extends Phaser.GameObjects.Container {
 
   private placeIcon() {
     const push = this.pressed ? 1 : 0;
+    if (this.caption) {
+      // icon on top, its word underneath
+      const cw = this.caption.getTextBounds(false).global.width;
+      this.icon.setPosition(Math.floor((this.bw - this.icon.width) / 2), 2 + push);
+      this.caption.setPosition(Math.floor((this.bw - cw) / 2), this.bh - 8 + push);
+      return;
+    }
     this.icon.setPosition(Math.floor((this.bw - this.icon.width) / 2), Math.floor((this.bh - this.icon.height) / 2) + push);
   }
 

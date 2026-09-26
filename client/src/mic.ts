@@ -1,7 +1,8 @@
-// Push-to-talk. Hold TAB (or the mic button) in the talk dialog and speak: the
-// browser's speech recognition types what you say into the box as you talk,
-// and letting go sends it. Works in Chrome, Edge and Safari; it needs internet
-// (the browser sends the audio to its own speech service) and localhost or https.
+// Voice input in the talk dialog: hold TAB (or the mic button) and speak, or
+// tap it once to start and again to send. The browser's speech recognition
+// types what you say into the box as you talk. Works in Chrome, Edge and
+// Safari; it needs internet (the browser sends the audio to its own speech
+// service) and localhost or https.
 
 interface Alternative {
   transcript: string;
@@ -31,8 +32,14 @@ const PROBLEMS: Record<string, string> = {
   "not-allowed": "The mic is blocked. Allow microphone access for this page (it has to be opened on localhost or https).",
   "service-not-allowed": "The mic is blocked. Allow microphone access for this page (it has to be opened on localhost or https).",
   "audio-capture": "No microphone found.",
-  network: "Voice input needs internet - the browser sends your voice to its speech service.",
+  // (browsers like Brave and Arc have the API but not the speech service behind it)
+  network: "Voice input isn't working in this browser (it needs internet, and works in Google Chrome, Edge and Safari). You can still type.",
+  "no-speech": "I didn't hear anything. Tap TAB (or the mic) and try again.",
+  "language-not-supported": "Voice input doesn't support your browser's language. You can still type.",
 };
+
+/** However it goes, a listen never outlasts this. */
+const MAX_LISTEN_MS = 20_000;
 
 export interface Listening {
   /** Let go: finish up and resolve `heard`. */
@@ -68,7 +75,26 @@ export function listen(onPartial: (text: string) => void, onProblem: (message: s
   rec.onerror = (e) => {
     if (PROBLEMS[e.error]) onProblem(PROBLEMS[e.error]);
   };
+  // A stop asked for before the mic actually started (say, while the browser was
+  // still asking for permission) is remembered and done as soon as it starts.
+  let started = false;
+  let stopWanted = false;
+  const doStop = () => {
+    try {
+      rec.stop();
+    } catch {
+      /* already stopped */
+    }
+    // Recognition normally ends right after stop(); don't hang if it doesn't.
+    setTimeout(settle, 2500);
+  };
+  (rec as unknown as { onstart: (() => void) | null }).onstart = () => {
+    started = true;
+    if (stopWanted) doStop();
+  };
   rec.onend = settle;
+  const cap = setTimeout(doStop, MAX_LISTEN_MS);
+  void heard.then(() => clearTimeout(cap));
   try {
     rec.start();
   } catch {
@@ -76,13 +102,10 @@ export function listen(onPartial: (text: string) => void, onProblem: (message: s
   }
   return {
     stop() {
-      try {
-        rec.stop();
-      } catch {
-        /* already stopped */
-      }
-      // Recognition normally ends right after stop(); don't hang if it doesn't.
-      setTimeout(settle, 2500);
+      stopWanted = true;
+      if (started) doStop();
+      // (never started at all, e.g. permission denied: give up shortly)
+      else setTimeout(() => !started && (doStop(), settle()), 4000);
     },
     cancel() {
       cancelled = true;

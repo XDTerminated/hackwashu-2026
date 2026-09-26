@@ -17,8 +17,8 @@ import { waitForApproval } from "./approvals.js";
 import { MOCK, mockVillager } from "./mock.js";
 import { Groq, runVillagerGroq } from "./groq.js";
 import * as services from "./services.js";
-import { befriend, memoryNote, remember } from "./memory.js";
-import { retell, tooLongToSay } from "./chat.js";
+import { addFacts, befriend, memoryNote, remember } from "./memory.js";
+import { retell, splitNotes, tooLongToSay } from "./chat.js";
 import { audienceNote, personaFor, nameOf, type Audience } from "./villagers.js";
 import { addLantern, emit, newId, owns, putApproval, putClod, setVillager, world } from "./world.js";
 
@@ -488,8 +488,10 @@ export function isBusy(v: VillagerId) {
 /** A task from the player (in-game or by text). Resolves with the villager's reply. */
 export async function startTask(v: VillagerId, text: string, from: TaskSource): Promise<string> {
   // Early outs still answer, so a message never just vanishes.
+  // Texts (phone, MoonPad) are answered by text (chat.ts sends the reply); only visits get speech bubbles.
+  const texting = from === "phone" || from === "moonpad";
   const early = (reply: string) => {
-    if (from !== "chore") emit({ type: "say", villager: v, text: reply });
+    if (from === "game") emit({ type: "say", villager: v, text: reply });
     return reply;
   };
   if (!movedIn(v)) {
@@ -508,7 +510,7 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
   emit({ type: "task_start", taskId, villager: v, text, from });
 
   try {
-    const audience: Audience = from === "chore" ? "chore" : "talk";
+    const audience: Audience = from === "chore" ? "chore" : texting ? "text" : "talk";
     const answer = (BRAIN === "mock" ? await mockVillager(v, text, taskId) : await runVillager(v, text, taskId, audience)) || "Done!";
     // Face to face, a long answer becomes a short spoken one; the rest is kept for "tell me more".
     let reply = answer;
@@ -518,7 +520,10 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
       reply = (await retell(v, text, answer).catch((err) => (console.warn(`[agents] ${v} retell failed:`, err), ""))) || answer;
       if (reply !== answer) notes = answer;
     }
-    emit({ type: "say", villager: v, text: reply });
+    // A text can end with a private note to remember; it's not part of the reply.
+    let facts: string[] = [];
+    if (texting) ({ reply, facts } = splitNotes(reply));
+    if (!texting) emit({ type: "say", villager: v, text: reply });
 
     const madeClods = Object.values(world.clods).some((c) => c.taskId === taskId);
     if (madeClods) {
@@ -529,6 +534,10 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     if (from === "game") {
       remember(v, text, reply, "visit", notes);
       befriend(v, "visit");
+    } else if (texting) {
+      remember(v, text, reply, "text");
+      if (facts.length) addFacts(v, facts);
+      befriend(v, "text");
     }
     return reply;
   } catch (error) {
@@ -536,7 +545,7 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     const msg = friendlyError(error);
     setVillager(v, { status: "error", activity: "stuck" });
     emit({ type: "building_error", villager: v, building: VILLAGER_HOME[v], message: msg });
-    emit({ type: "say", villager: v, text: msg });
+    if (!texting) emit({ type: "say", villager: v, text: msg });
     return msg;
   } finally {
     busy.delete(v);

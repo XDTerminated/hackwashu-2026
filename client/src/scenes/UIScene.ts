@@ -10,7 +10,7 @@ import { mountMoonPad, onUnreadChange, openMoonPad, unreadTotal } from "../table
 import { isSfxMuted, onSfxToggle, sfx, toggleSfx } from "../sfx";
 import { agents, focusedSession, onStoreChange, store } from "../store";
 import { MINIMAP_H, MINIMAP_W } from "../terrain";
-import { Button, C, IconButton, Label, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
+import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
 import { VERB_ICON } from "../icons";
 import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 import { CHAPTER_AFTER, FINALE_VILLAGER, pending, setFinalePending, type Chapter } from "../story";
@@ -38,6 +38,15 @@ const STATUS: Record<VillagerStatus, number> = {
 const HUD_W = 176;
 /** At most this many "who's busy" lines in the HUD. */
 const BUSY_LINES = 3;
+
+/** The action button's word for each verb (short enough to fit under its icon). */
+const ACTION_WORD: Record<string, string> = {
+  "READ LETTER": "read",
+  "TURN ON": "light",
+  "TURN OFF": "light",
+  "CHECK IN": "check",
+  POP: "pop",
+};
 
 export class UIScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.BitmapText;
@@ -419,7 +428,7 @@ export class UIScene extends Phaser.Scene {
    */
   private drawMeteorMarkers(game: GameScene, meteors: { x: number; y: number; incoming: boolean }[], time: number) {
     const W = this.scale.width;
-    const H = this.scale.height - 26;
+    const H = this.scale.height - TOOLBAR_H;
     const view = game.cameras.main.worldView;
     const g = this.meteorG;
     const blink = Math.floor(time / 200) % 2 === 0;
@@ -492,7 +501,7 @@ export class UIScene extends Phaser.Scene {
     if (hide || !goal) return;
     const W = this.scale.width;
     // keep the arrow above the toolbar
-    const H = this.scale.height - 44;
+    const H = this.scale.height - TOOLBAR_H - 18;
     const sx = goal.x - view.x;
     const sy = goal.y - view.y;
     const bob = Math.round(Math.sin(time / 180) * 2);
@@ -548,7 +557,7 @@ export class UIScene extends Phaser.Scene {
     // In the Office the top of the screen is the whiteboard: sit above the toolbar instead.
     if (this.scene.isActive("Office")) {
       this.hint.destroy();
-      this.hint = new Label(this, Math.round(this.scale.width / 2), this.scale.height - 32, text, { bg: C.outline, border: null, color: C.cream, font: "pxb", padX: 5, originY: 1, maxWidth: Math.min(360, this.scale.width - 40) }).setDepth(2400);
+      this.hint = new Label(this, Math.round(this.scale.width / 2), this.scale.height - TOOLBAR_H - 6, text, { bg: C.outline, border: null, color: C.cream, font: "pxb", padX: 5, originY: 1, maxWidth: Math.min(360, this.scale.width - 40) }).setDepth(2400);
     }
     const h = this.hint;
     if (ms) this.time.delayedCall(ms, () => h === this.hint && this.clearHint());
@@ -664,7 +673,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------ toolbar
-  // Icon buttons (hover for names); keys (E / SPACE / B / ESC) are optional shortcuts.
+  // Icon buttons, each with its name underneath; keys (E / SPACE / B / ESC) are optional shortcuts.
 
   private action!: IconButton;
   private actionHold = false;
@@ -677,40 +686,41 @@ export class UIScene extends Phaser.Scene {
   private buildToolbar() {
     const W = this.scale.width;
     const H = this.scale.height;
-    const [bw, gap, sep, actionW] = [20, 3, 8, 28];
+    // Each button: its icon with a word underneath.
+    const [bw, bh, gap, sep, actionW] = [30, 26, 2, 8, 38];
     const click = (fn: () => void) => () => {
       sfx.blip();
       fn();
     };
-    const groups: [string, string, () => void][][] = [
+    const groups: [string, string, string, () => void][][] = [
       [
-        ["icon_moonpad_0", "MoonPad - texts and connections", click(() => openMoonPad())],
-        ["icon_shop_0", "Supply Pod - decorations (B)", click(() => this.toggleShop())],
-        ["icon_quests_0", "Quests", click(() => this.showQuests())],
-        ["icon_help_0", "How to play", click(() => this.showHelp())],
+        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", click(() => openMoonPad())],
+        ["icon_shop_0", "shop", "Supply Pod - decorations (B)", click(() => this.toggleShop())],
+        ["icon_quests_0", "quests", "Quests", click(() => this.showQuests())],
+        ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
       [
-        ["icon_edit_0", "Edit layout", () => this.game.events.emit("edit-toggle")],
-        [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", isMusicMuted() ? "Music: off (M)" : "Music: on (M)", () => toggleMusic()],
-        [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", isSfxMuted() ? "Sound effects: off" : "Sound effects: on", () => toggleSfx()],
+        ["icon_edit_0", "edit", "Edit layout", () => this.game.events.emit("edit-toggle")],
+        [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", "music", isMusicMuted() ? "Music: off (M)" : "Music: on (M)", () => toggleMusic()],
+        [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", "sound", isSfxMuted() ? "Sound effects: off" : "Sound effects: on", () => toggleSfx()],
       ],
     ];
     const count = groups.reduce((n, g) => n + g.length, 0);
     const inner = count * bw + (count - groups.length) * gap + groups.length * sep + actionW;
     const frameW = inner + 12;
     const x0 = Math.round((W - frameW) / 2);
-    const y0 = H - 25;
+    const y0 = H - TOOLBAR_H + 1;
     const g = this.add.graphics().setDepth(2000);
-    woodFrame(g, x0, y0, frameW, 24);
+    woodFrame(g, x0, y0, frameW, bh + 6);
     let x = x0 + 6;
     const made: IconButton[] = [];
     for (const group of groups) {
-      for (const [icon, tip, fn] of group) {
-        made.push(new IconButton(this, x, y0 + 3, icon, C.woodMid, tip, fn).setDepth(2001));
+      for (const [icon, word, tip, fn] of group) {
+        made.push(new IconButton(this, x, y0 + 3, icon, C.woodMid, tip, fn, bw, bh).setLabel(word).setDepth(2001));
         x += bw + gap;
       }
       x += sep - gap;
-      g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, 14);
+      g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, bh - 4);
     }
     const [moonpad, , quests, , edit, music, sound] = made;
     this.unsubs.push(onSfxToggle((m) => sound.setIcon(m ? "icon_sfx_off_0" : "icon_sfx_0").setTooltip(m ? "Sound effects: off" : "Sound effects: on")));
@@ -718,7 +728,7 @@ export class UIScene extends Phaser.Scene {
     this.editBtn = edit;
     this.unsubs.push(onMusicToggle((m) => music.setIcon(m ? "icon_music_off_0" : "icon_music_0").setTooltip(m ? "Music: off (M)" : "Music: on (M)")));
 
-    this.action = new IconButton(this, x, y0 + 3, "icon_idle_0", 0x8a8199, "Nothing to do here", () => {}, actionW).setDepth(2001);
+    this.action = new IconButton(this, x, y0 + 3, "icon_idle_0", 0x8a8199, "Nothing to do here", () => {}, actionW, bh).setLabel("-", 0xd8d2e0).setDepth(2001);
     this.action.on("pointerdown", () => {
       if (this.actionHold) this.game.events.emit("action-hold", true);
       else this.game.events.emit("action-press");
@@ -735,8 +745,11 @@ export class UIScene extends Phaser.Scene {
     const onAction = (a: { verb: string; hold: boolean } | null) => {
       this.actionHold = !!a?.hold;
       const name = a ? a.verb.charAt(0) + a.verb.slice(1).toLowerCase() : "";
+      // The big button says what E does right now ("talk", "build", ...).
+      const word = a ? (ACTION_WORD[a.verb] ?? a.verb.split(" ")[0]).toLowerCase() : "-";
       this.action
         .setIcon(a ? (VERB_ICON[a.verb] ?? "icon_idle_0") : "icon_idle_0")
+        .setLabel(`${word}${a ? " E" : ""}`, a ? 0xffffff : 0xd8d2e0)
         .setFill(a ? C.greenBtn : 0x8a8199)
         .setTooltip(a ? (a.hold ? `Hold to ${name.toLowerCase()} (hold E)` : `${name} (E)`) : "Nothing to do here");
     };
@@ -774,7 +787,7 @@ export class UIScene extends Phaser.Scene {
     const w = Math.min(W - 16, measure(t).w + 14 + bw);
     const h = 22;
     const x = Math.round((W - w) / 2);
-    const y = H - 25 - h - 3;
+    const y = H - TOOLBAR_H + 1 - h - 3;
     const g = this.add.graphics();
     pixBox(g, x, y, w, h, C.wood, C.woodDark);
     g.fillStyle(0xffffff, 0.12).fillRect(x + 1, y + 1, w - 2, 1);
@@ -958,7 +971,7 @@ export class UIScene extends Phaser.Scene {
     const ph = top + gridH + 8 + 46 + 8;
     const x0 = Math.round((W - pw) / 2);
     // centred in the space above the toolbar, and never overlapping it
-    const y0 = Math.max(4, Math.min(Math.round((H - 25 - ph) / 2), H - 31 - ph));
+    const y0 = Math.max(4, Math.min(Math.round((H - TOOLBAR_H + 1 - ph) / 2), H - TOOLBAR_H - 5 - ph));
     // Catch clicks on the whole panel so they never fall through to the world behind.
     const blocker = this.add.zone(x0, y0, pw, ph).setOrigin(0).setInteractive();
     this.shop.add(blocker);
