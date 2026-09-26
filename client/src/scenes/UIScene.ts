@@ -13,6 +13,8 @@ import { MINIMAP_H, MINIMAP_W } from "../terrain";
 import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
 import { VERB_ICON } from "../icons";
 import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
+import { isOpenMic, onOpenMic, toggleOpenMic } from "../neartalk";
+import { micSupported } from "../mic";
 import { CHAPTER_AFTER, FINALE_VILLAGER, pending, setFinalePending, type Chapter } from "../story";
 import { checklist, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
@@ -684,6 +686,8 @@ export class UIScene extends Phaser.Scene {
   private banner: Phaser.GameObjects.Container | null = null;
 
   private buildToolbar() {
+    const MIC_TIP = (on: boolean) =>
+      !micSupported ? "Open mic needs Chrome, Edge or Safari" : on ? "Open mic: ON - just talk to whoever you're standing next to" : "Open mic: off - turn on to talk to nearby neighbors hands-free (or hold TAB)";
     const W = this.scale.width;
     const H = this.scale.height;
     // Each button: its icon with a word underneath.
@@ -700,9 +704,10 @@ export class UIScene extends Phaser.Scene {
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
       [
+        [isOpenMic() ? "icon_mic_on_0" : "icon_mic_0", "mic", MIC_TIP(isOpenMic()), click(() => toggleOpenMic())],
         ["icon_edit_0", "edit", "Edit layout", () => this.game.events.emit("edit-toggle")],
         [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", "music", isMusicMuted() ? "Music: off (M)" : "Music: on (M)", () => toggleMusic()],
-        [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", "sound", isSfxMuted() ? "Sound effects: off" : "Sound effects: on", () => toggleSfx()],
+        [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", "sound", isSfxMuted() ? "Sound effects and voices: off" : "Sound effects and voices: on", () => toggleSfx()],
       ],
     ];
     const count = groups.reduce((n, g) => n + g.length, 0);
@@ -722,8 +727,11 @@ export class UIScene extends Phaser.Scene {
       x += sep - gap;
       g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, bh - 4);
     }
-    const [moonpad, , quests, , edit, music, sound] = made;
-    this.unsubs.push(onSfxToggle((m) => sound.setIcon(m ? "icon_sfx_off_0" : "icon_sfx_0").setTooltip(m ? "Sound effects: off" : "Sound effects: on")));
+    const [moonpad, , quests, , mic, edit, music, sound] = made;
+    const showMic = (on: boolean) => mic.setIcon(on ? "icon_mic_on_0" : "icon_mic_0").setTooltip(MIC_TIP(on)).setLabel("mic", on ? 0x9dff8a : undefined);
+    showMic(isOpenMic());
+    this.unsubs.push(onOpenMic(showMic));
+    this.unsubs.push(onSfxToggle((m) => sound.setIcon(m ? "icon_sfx_off_0" : "icon_sfx_0").setTooltip(m ? "Sound effects and voices: off" : "Sound effects and voices: on")));
     this.reqBadge = this.add.container(quests.x + bw - 5, quests.y - 4).setDepth(2002);
     this.editBtn = edit;
     this.unsubs.push(onMusicToggle((m) => music.setIcon(m ? "icon_music_off_0" : "icon_music_0").setTooltip(m ? "Music: off (M)" : "Music: on (M)")));
@@ -862,7 +870,7 @@ export class UIScene extends Phaser.Scene {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot here. Clear its rubble, repair the foundation with materials, build the house with coins, and put something they love in the yard: then they move in. Materials: moonstone (clear boulders, rubble and fallen meteor rocks), stardust (sweep moondust), moon shards (glinting in the wilds). Once they're home, connect your account so they can help with your real stuff, or try them on sample data.",
-      "The toolbar icons (hover for names): MoonPad, Supply Pod (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a clod, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
+      "The toolbar icons (hover for names): MoonPad, Supply Pod (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E or Enter, type, and press Enter (or tap/hold TAB and speak); turn on the mic button to just talk hands-free. Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a clod, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Supply Pod): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Supply Pod says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",

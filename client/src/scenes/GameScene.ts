@@ -30,7 +30,8 @@ import { Button, C, Label } from "../widgets";
 import { LANDING, SPOTS, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
-import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter, openTalk } from "../panel";
+import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter } from "../panel";
+import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { sfx } from "../sfx";
 import { PLAZA, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
@@ -329,7 +330,7 @@ export class GameScene extends Phaser.Scene {
       if (a !== want) s.label.setAlpha(Phaser.Math.Clamp(a + (want > a ? 0.1 : -0.1), 0, 1));
     }
     // (the "[E] talk to ..." prompt already names whoever you're facing)
-    for (const [v, a] of this.villagers) a.showName(!this.windowOpen() && this.target?.villager !== v && this.distTo(a.x, a.y - 10) < 56);
+    for (const [v, a] of this.villagers) a.showName(!this.windowOpen() && this.target?.villager !== v && !this.near?.isWith(v) && this.distTo(a.x, a.y - 10) < 56);
   }
 
   /** In edit mode or holding something to place. */
@@ -1069,6 +1070,11 @@ export class GameScene extends Phaser.Scene {
 
       case "say": {
         const a = actor(e.villager);
+        if (a && this.near.isWith(e.villager)) {
+          a.hideThought();
+          this.near.reply(e.villager, e.text);
+          break;
+        }
         a?.enqueue(async () => {
           a.hideThought();
           a.say(e.text, 4000);
@@ -1406,7 +1412,26 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen) this.game.events.emit("toggle-shop");
+      if (!this.panelOpen && !this.near.typing) this.game.events.emit("toggle-shop");
+    });
+
+    // Talking happens right where you stand: E or Enter next to a neighbor to type,
+    // TAB to speak, or the OPEN MIC to just talk. Their answers are bubbles overhead.
+    this.near = new NearTalk({
+      scene: this,
+      player: () => this.player,
+      actor: (v) => this.villagers.get(v),
+      nearest: () => this.talkable(),
+      hold: (v) => this.holdForTalk(v),
+      release: () => this.releaseTalk(),
+      blocked: () => this.windowOpen() || this.arranging || isMoonPadOpen(),
+      greeting: (v) => this.greeting(v),
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.near.destroy());
+    kb.on("keydown-ENTER", () => {
+      if (this.near.typing || this.near.justSent || this.windowOpen() || this.arranging || isMoonPadOpen()) return;
+      const v = this.talkable();
+      if (v) this.near.startTyping(v);
     });
     kb.on("keydown-ESC", () => {
       if (this.held) this.cancelHeld();
@@ -1535,7 +1560,7 @@ export class GameScene extends Phaser.Scene {
       if (letter) add({ verb: "READ LETTER", label: "[E] read letter", x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openLetter(letter)) }, 36);
       // Just moved in and their account isn't connected yet: that comes first.
       else if (this.needsConnect(v)) add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => openConnect(v) }, 34);
-      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openTalk(v, this.greeting(v))) }, 34);
+      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => this.near.startTyping(v) }, 34);
     }
     for (const v of VILLAGERS) {
       const home = VILLAGER_HOME[v];
@@ -1633,6 +1658,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   private talkingWith: VillagerId | null = null;
+  private near!: NearTalk;
+  private typingCapture = false;
+
+  /** The neighbor close enough to just talk to (moved in, connected, no letter waiting). */
+  private talkable(): VillagerId | null {
+    let best: VillagerId | null = null;
+    let bestD = 34;
+    // (someone wandering past doesn't steal the conversation)
+    const partner = this.near?.partner;
+    const pa = partner ? this.villagers.get(partner) : undefined;
+    if (partner && pa && this.distTo(pa.x, pa.y - 8) < 60) return partner;
+    for (const [v, a] of this.villagers) {
+      const d = this.distTo(a.x, a.y - 8);
+      if (d < bestD && !pendingApprovalFor(v) && !this.needsConnect(v)) {
+        best = v;
+        bestD = d;
+      }
+    }
+    return best;
+  }
 
   /** The villager you're talking to stands still, faces you, and holds any work until you're done. */
   private holdForTalk(v: VillagerId) {
@@ -2119,7 +2164,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setDepth(this.player.y);
     this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
 
-    this.target = this.panelOpen || this.arranging ? null : this.findTarget();
+    this.target = this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();
     if (this.panelOpen || this.arranging) this.doorCall = null;
     this.callBtn.setVisible(!!this.doorCall);
     if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
@@ -2137,6 +2182,13 @@ export class GameScene extends Phaser.Scene {
       this.prompt.place(e.x, e.atDoor ? e.y - 1 : e.y);
     }
 
+    this.near.update();
+    // While you type, keys go to your words (not to walking or the toolbar).
+    if (this.near.typing !== this.typingCapture) {
+      this.typingCapture = this.near.typing;
+      if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
+      else if (!this.panelOpen) this.input.keyboard!.enableGlobalCapture();
+    }
     this.updateArrange();
     this.updateFlourishes(dt);
     this.updateLabels();
@@ -2154,7 +2206,7 @@ export class GameScene extends Phaser.Scene {
   private greetings() {
     const now = this.time.now;
     for (const [v, a] of this.villagers) {
-      if (!a.isFree || this.chatting.has(v) || now - (this.greeted.get(v) ?? -1e9) < 45_000) continue;
+      if (!a.isFree || this.chatting.has(v) || this.near.isWith(v) || now - (this.greeted.get(v) ?? -1e9) < 45_000) continue;
       if (Math.hypot(this.player.x - a.x, this.player.y - a.y) > 40) continue;
       this.greeted.set(v, now);
       a.face(this.player.x);
@@ -2165,7 +2217,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A dialog, the MoonPad or the shop is up: keys belong to it. */
   private windowOpen() {
-    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen");
+    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.typing;
   }
 
   private updatePlayer(dt: number) {

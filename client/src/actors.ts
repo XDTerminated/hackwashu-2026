@@ -236,11 +236,12 @@ export class VillagerActor {
     });
   }
 
-  say(text: string, ms = 3200) {
+  /** A speech bubble; `originX` shifts it to one side (so it doesn't cover whoever they're talking to). */
+  say(text: string, ms = 3200, originX = 0.5) {
     this.bubble?.destroy();
     this.bubbleTimer?.remove();
     const clipped = text.length > 120 ? text.slice(0, 117) + "..." : text;
-    this.bubble = new Label(this.scene, this.sprite.x, this.sprite.y - 30, clipped, { maxWidth: 130, tail: true }).setDepth(99990);
+    this.bubble = new Label(this.scene, this.sprite.x, this.sprite.y - 30, clipped, { maxWidth: 130, tail: true, originX }).setDepth(99990);
     this.bubbleTimer = this.scene.time.delayedCall(Math.max(ms, clipped.length * 45), () => {
       this.bubble?.destroy();
       this.bubble = null;

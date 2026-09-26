@@ -18,7 +18,7 @@ interface Recognition {
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: ((e: { results: ArrayLike<Result> }) => void) | null;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<Result> }) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
 }
@@ -117,5 +117,60 @@ export function listen(onPartial: (text: string) => void, onProblem: (message: s
       settle();
     },
     heard,
+  };
+}
+
+/**
+ * The open mic: keep listening, and hand over each finished phrase as it's
+ * said (recognition restarts itself whenever the browser stops it). Returns
+ * null if this browser can't do voice.
+ */
+export function listenOpen(onPhrase: (text: string) => void, onPartial: (text: string) => void, onProblem: (message: string) => void): { stop(): void } | null {
+  if (!Recognizer) return null;
+  let stopped = false;
+  let rec: Recognition | null = null;
+  const start = () => {
+    if (stopped) return;
+    const r = new Recognizer();
+    rec = r;
+    r.lang = navigator.language || "en-US";
+    r.continuous = true;
+    r.interimResults = true;
+    r.onresult = (e) => {
+      let partial = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const said = e.results[i][0]?.transcript ?? "";
+        if (e.results[i].isFinal) {
+          if (said.trim()) onPhrase(said.trim());
+        } else partial += said;
+      }
+      onPartial(partial.trim());
+    };
+    r.onerror = (e) => {
+      // blocked or unsupported: stop for good (and say why); anything else just restarts
+      if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture" || e.error === "network") {
+        stopped = true;
+        if (PROBLEMS[e.error]) onProblem(PROBLEMS[e.error]);
+      }
+    };
+    r.onend = () => {
+      if (!stopped) setTimeout(start, 250);
+    };
+    try {
+      r.start();
+    } catch {
+      setTimeout(start, 1000);
+    }
+  };
+  start();
+  return {
+    stop() {
+      stopped = true;
+      try {
+        rec?.abort();
+      } catch {
+        /* already stopped */
+      }
+    },
   };
 }

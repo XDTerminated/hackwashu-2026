@@ -136,7 +136,8 @@ export class Label extends Phaser.GameObjects.Container {
       if (o.border !== null) pixBox(this.g, ox, oy, W, H, o.bg, o.border);
       else this.g.fillStyle(o.bg, 1).fillRect(ox, oy, W, H);
       if (o.tail) {
-        const cx = ox + Math.round(W / 2);
+        // (off-center bubbles keep the tail over whoever's talking)
+        const cx = o.originX === 0.5 ? ox + Math.round(W / 2) : Math.min(ox + W - 5, Math.max(ox + 5, 0));
         const border = o.border ?? o.bg;
         this.g.fillStyle(border, 1).fillRect(cx - 3, oy + H - 1, 6, 1).fillRect(cx - 2, oy + H, 4, 1).fillRect(cx - 1, oy + H + 1, 2, 1);
         this.g.fillStyle(o.bg, 1).fillRect(cx - 2, oy + H - 1, 4, 1).fillRect(cx - 1, oy + H, 2, 1);
