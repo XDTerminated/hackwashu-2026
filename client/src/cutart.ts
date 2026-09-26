@@ -144,6 +144,8 @@ function drawBust(ctx: Ctx, id: FamilyId, pose: Pose, eyes: Eyes, mouth: Mouth) 
     if (eyes !== "closed") {
       set(2 * (10 + dx), 2 * ey, "#ffffff");
       set(2 * (15 + dx), 2 * ey, "#ffffff");
+      // (with glasses, the frames' top rim is the brow: brows drawn over it just tangle)
+      if (L.glasses) return;
       const brow = L.style === "bun" ? "#a09ab0" : L.hairShade;
       const by = 2 * ey - 3 - (mouth === "open" ? 1 : 0);
       for (const bx of [2 * (10 + dx) - 1, 2 * (15 + dx) - 1]) for (let k = 0; k < 4; k++) set(bx + k, by + (mouth === "frown" && (bx < 26 ? k > 2 : k < 1) ? 1 : 0), brow);
@@ -272,22 +274,24 @@ function drawBust(ctx: Ctx, id: FamilyId, pose: Pose, eyes: Eyes, mouth: Mouth) 
     set(13, 13, L.skinShade);
     if (L.mustache) fill("#3a2a24", 11, 14, 4, 1);
     const M = "#7a3a3a";
+    // Under a mustache the mouth sits a row lower, so talking and smiling never cut into it.
+    const my = L.mustache ? 1 : 0;
     if (mouth === "closed") fill(M, 12, 15, 2, 1);
     else if (mouth === "open") {
-      fill("#5a2030", 12, 14, 2, 2);
-      set(11, 15, "#5a2030");
-      set(14, 15, "#5a2030");
-      set(12, 15, "#e07080");
+      fill("#5a2030", 12, 14 + my, 2, 2);
+      set(11, 15 + my, "#5a2030");
+      set(14, 15 + my, "#5a2030");
+      set(12, 15 + my, "#e07080");
     } else if (mouth === "smile") {
-      set(11, 14, M);
-      set(12, 15, M);
-      set(13, 15, M);
-      set(14, 14, M);
+      set(11, 14 + my, M);
+      set(12, 15 + my, M);
+      set(13, 15 + my, M);
+      set(14, 14 + my, M);
     } else {
-      set(11, 15, M);
-      set(12, 14, M);
-      set(13, 14, M);
-      set(14, 15, M);
+      set(11, 15 + my, M);
+      set(12, 14 + my, M);
+      set(13, 14 + my, M);
+      set(14, 15 + my, M);
     }
 
     // arms and hands
@@ -332,13 +336,18 @@ function drawBust(ctx: Ctx, id: FamilyId, pose: Pose, eyes: Eyes, mouth: Mouth) 
         hand(4, 3, 2, 4);
         set(3, 5, L.skin);
         break;
-      case "facepalm":
+      case "facepalm": {
+        // A hand over the eyes: a touch lighter than the face, edged and fingered in skin
+        // shadow (an ink outline here read as a black band across the face).
         sleeve(17, 13, 2, 7);
-        inked(L.skin, 9, 10, 8, 3);
-        set(11, 10, L.skinShade);
-        set(13, 10, L.skinShade);
-        set(15, 10, L.skinShade);
+        const palm = light(L.skin, 0.12);
+        fill(L.skinShade, 9, 9, 8, 5);
+        fill(palm, 9, 10, 8, 3);
+        fill(palm, 10, 9, 6, 1);
+        for (const x of [11, 13, 15]) fill(L.skinShade, x, 9, 1, 3);
+        fill(palm, 16, 13, 2, 1); // the wrist, into the sleeve
         break;
+      }
       case "sip":
         // holding a cup of tea at her chest
         sleeve(16, 20, 2, 4);

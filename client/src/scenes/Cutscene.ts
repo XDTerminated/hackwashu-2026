@@ -208,7 +208,7 @@ export abstract class Cutscene extends Phaser.Scene {
       this.advanceFns.push(skip);
       let flap = 0;
       const ev = this.time.addEvent({
-        delay: 20,
+        delay: 16,
         loop: true,
         callback: () => {
           k = rush ? n : k + 1;
@@ -233,7 +233,8 @@ export abstract class Cutscene extends Phaser.Scene {
     const w = measure(t).w;
     t.setX(Math.round((this.W - w) / 2));
     await this.type(text.length, (k) => t.setText(text.slice(0, k)), VOICE.narrator);
-    if (hold > 0) await this.waitOrNext(Math.max(hold, text.length * 38));
+    // You read while it types (16ms a character), so the hold after is only the rest of the read.
+    if (hold > 0) await this.waitOrNext(Math.max(hold, text.length * 26));
   }
 
   protected clearCaption() {
@@ -247,7 +248,7 @@ export abstract class Cutscene extends Phaser.Scene {
     b.setX(Phaser.Math.Clamp(Math.round(x), half + 4, this.W - half - 4));
     b.reveal(0);
     await this.type(b.textLength, (k) => b.reveal(k), voice, talk);
-    await this.waitOrNext(hold ?? Math.max(1300, text.length * 42));
+    await this.waitOrNext(hold ?? Math.max(900, text.length * 27));
     b.destroy();
   }
 
@@ -276,7 +277,7 @@ export abstract class Cutscene extends Phaser.Scene {
     const more = ptext(this, x + W - 12, y + h - 12, "→", C.coral, "pxb");
     box.add(more);
     const bob = this.time.addEvent({ delay: 400, loop: true, callback: () => more.setVisible(!more.visible) });
-    await this.waitOrNext(Math.max(1700, text.length * 45));
+    await this.waitOrNext(Math.max(1100, text.length * 27));
     blink.remove();
     bob.remove();
     box.destroy();

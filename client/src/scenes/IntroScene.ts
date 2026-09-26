@@ -40,7 +40,7 @@ export function introSeen() {
 /**
  * How you got here: a family dinner on Earth, one AI rant too many, a
  * family vote, a launch, three days of no signal, and a rabbit waiting on the
- * Moon. About a minute and a half; SPACE hurries it along, ESC skips.
+ * Moon. About a minute; SPACE hurries it along, ESC skips.
  */
 export class IntroScene extends Cutscene {
   /** Where to go afterwards: into the game, or back to wherever it was replayed from. */
@@ -92,15 +92,14 @@ export class IntroScene extends Cutscene {
     const city = drawCity(this, W, CH, H);
     this.keep(this.add.image(0, 0, city.key).setOrigin(0));
     const earth = this.keep(this.add.image(Math.round(W / 2), this.BAR + 34, this.bigText("EARTH")).setScrollFactor(0).setAlpha(0).setDepth(50));
-    await this.wait(400);
-    await this.tween({ targets: earth, alpha: 1, duration: 700 });
-    await this.caption("A perfectly normal night.", 1600);
-    await this.caption("The moon is full. The city hums. Dinner is on the table.", 1800);
-    this.tweens.add({ targets: earth, alpha: 0, duration: 600 });
-    const pan = this.tween({ targets: this.cameras.main, scrollY: CH - H, duration: 5200, ease: "sine.inout" });
+    await this.wait(200);
+    await this.tween({ targets: earth, alpha: 1, duration: 500 });
+    await this.caption("A perfectly normal night on Earth.", 1100);
+    this.tweens.add({ targets: earth, alpha: 0, duration: 500 });
+    const pan = this.tween({ targets: this.cameras.main, scrollY: CH - H, duration: 2800, ease: "sine.inout" });
     await this.caption("And at one dinner table, somebody will not stop talking...", 0);
     await pan;
-    await this.wait(700);
+    await this.wait(300);
   }
 
   // ------------------------------------------------------------ 2. Dinner (and a vote)
@@ -147,64 +146,54 @@ export class IntroScene extends Cutscene {
     you.set({ pose: "gesture", mouth: "smile" });
     mom.set({ mouth: "smile" });
     grandma.set({ pose: "sip" });
-    await this.wait(300);
-    await this.famSay(you, "...so the agent reads my inbox, checks my calendar...");
+    await this.wait(200);
     you.set({ pose: "cheer" });
-    await this.famSay(you, "...and texts me back! It's basically a NEIGHBOR!");
+    await this.famSay(you, "...and it texts me back! It's basically a NEIGHBOR!");
     dad.set({ pose: "facepalm", mouth: "frown" });
     await this.famSay(dad, "Every. Single. Dinner.");
-    sibling.set({ mouth: "frown", eyes: "up" });
-    await this.famSay(sibling, "Can we talk about literally anything else?");
     you.set({ pose: "point", eyes: "up", mouth: "smile" });
     await this.famSay(you, "Okay but imagine a whole VILLAGE of them. On the MOON!");
-    mom.set({ eyes: "left" });
-    await this.famSay(mom, "Sweetie. Your dinner is getting cold.");
-    you.set({ pose: "gesture", eyes: "right" });
-    await this.famSay(you, "An agent would never let dinner get cold. It would-", 700);
 
     // Grandma, looking out at the moon
     grandma.set({ pose: "rest", eyes: "up", mouth: "closed" });
     you.set({ mouth: "closed" });
-    await this.wait(500);
-    await this.famSay(grandma, "...You know, there's plenty of room on the Moon.", 1400);
+    await this.wait(300);
+    await this.famSay(grandma, "...You know, there's plenty of room on the Moon.", 1100);
     this.clearCaption();
     // everyone turns to Grandma... then, slowly, to you
     for (const f of [dad, you, mom, sibling]) {
       f.set({ eyes: "left", mouth: "closed", pose: f === dad ? "rest" : f.pose });
-      await this.wait(120);
+      await this.wait(90);
     }
     you.set({ pose: "rest" });
-    await this.wait(1100);
+    await this.wait(450);
     grandma.set({ eyes: "right", mouth: "smile" });
-    await this.wait(250);
     dad.set({ eyes: "right" });
-    await this.wait(250);
     mom.set({ eyes: "left" });
     sibling.set({ eyes: "left", mouth: "smile" });
-    await this.wait(500);
+    await this.wait(400);
     you.set({ eyes: "left" });
-    await this.wait(350);
+    await this.wait(250);
     you.set({ eyes: "right" });
-    await this.wait(350);
+    await this.wait(250);
     you.set({ eyes: "open", mouth: "open" });
-    await this.famSay(you, "...What?", 900);
+    await this.famSay(you, "...What?", 500);
 
     // The vote.
     mom.set({ eyes: "open", mouth: "smile" });
-    await this.famSay(mom, "All in favor of sending them to the Moon?", 900);
+    await this.famSay(mom, "All in favor of sending them to the Moon?", 700);
     for (const [f, pose] of [[dad, "raise"], [sibling, "cheer"], [grandma, "raise"], [mom, "raise"]] as const) {
       f.set({ pose, mouth: "smile", eyes: "open" });
       sfx.blip();
-      await this.wait(300);
+      await this.wait(200);
     }
     you.set({ pose: "shrug", mouth: "open" });
-    await this.famSay(you, "WAIT-", 500);
+    await this.famSay(you, "WAIT-", 400);
     const vote = this.keep(this.add.image(cx, BAR + 26, this.bigText("4 TO 1", "#e08a6b")).setDepth(60));
     sfx.stamp();
     this.cameras.main.shake(160, 0.006);
-    await this.wait(900);
+    await this.wait(600);
     vote.destroy();
-    await this.famSay(mom, "Motion carried! I'll pack you some snacks.");
     for (const f of all) if (f !== you) f.set({ pose: "rest" });
 
     // The ticket.
@@ -222,8 +211,8 @@ export class IntroScene extends Cutscene {
     t(52, 73, "RETURN:  ???");
     t(8, 56, "SEAT 1", C.inkSoft);
     sfx.whoosh();
-    await this.tween({ targets: ticket, x: Math.round(W / 2 - 118), duration: 550, ease: "back.out" });
-    await this.wait(900);
+    await this.tween({ targets: ticket, x: Math.round(W / 2 - 118), duration: 450, ease: "back.out" });
+    await this.wait(500);
     const stamp = this.add.container(0, 0);
     stamp.add(this.add.image(0, 0, drawStamp(this)).setOrigin(0));
     const ok = ptext(this, 0, 8, "APPROVED", 0xc8403a, "pxb");
@@ -236,7 +225,7 @@ export class IntroScene extends Cutscene {
     await this.tween({ targets: stamp, y: 70, duration: 90, ease: "quad.in" });
     sfx.stamp();
     this.cameras.main.shake(200, 0.01);
-    await this.caption("Some families argue at dinner. Yours held a vote.", 2200);
+    await this.caption("Some families argue at dinner. Yours held a vote.", 1200);
   }
 
   // ------------------------------------------------------------ 3. Launch
@@ -278,18 +267,17 @@ export class IntroScene extends Cutscene {
       });
     });
 
-    await this.caption("That same night.", 1300);
+    await this.caption("That same night.", 900);
     const who = (id: FamilyId) => folks.find((p) => p.id === id)!.f;
-    await this.say(who("sibling").x, who("sibling").y - 22, "Bring me a moon rock!!", VOICE.sibling, undefined, 1300);
-    await this.say(who("grandma").x, who("grandma").y - 22, "Call us when you land!", VOICE.grandma, undefined, 1300);
-    await this.say(who("dad").x, who("dad").y - 22, "And be nice to the aliens!", VOICE.dad, undefined, 1300);
+    await this.say(who("sibling").x, who("sibling").y - 22, "Bring me a moon rock!!", VOICE.sibling, undefined, 1000);
+    await this.say(who("dad").x, who("dad").y - 22, "And be nice to the aliens!", VOICE.dad, undefined, 1000);
     this.clearCaption();
 
     for (const n of ["3", "2", "1"]) {
       const img = this.keep(this.add.image(Math.round(W / 2), BAR + 30, this.bigText(n)).setDepth(60));
       sfx.tick();
       if (n === "1") flame.setVisible(true).play("intro-flame");
-      await this.wait(800);
+      await this.wait(550);
       img.destroy();
     }
     const lift = this.keep(this.add.image(Math.round(W / 2), BAR + 30, this.bigText("LIFTOFF!", "#e08a6b")).setDepth(60));
@@ -300,21 +288,21 @@ export class IntroScene extends Cutscene {
       for (let i = 0; i < 2; i++) puff(this, padX + Phaser.Math.Between(-40, 40), groundY - Phaser.Math.Between(0, 6));
     });
     const jiggle = this.every(50, () => (rocket.x = padX + (rocket.x === padX ? 1 : 0)));
-    await this.wait(900);
+    await this.wait(600);
     jiggle.remove();
     rocket.x = padX;
     const up = this.tween({
       targets: rocket,
       y: -40,
-      duration: 2600,
+      duration: 2000,
       ease: "quad.in",
       onUpdate: () => flame.setPosition(rocket.x, rocket.y - 5),
     });
-    await this.wait(1200);
+    await this.wait(1000);
     lift.destroy();
     smoke.remove();
     await up;
-    await this.wait(500);
+    await this.wait(200);
   }
 
   // ------------------------------------------------------------ 4. Three days of nothing
@@ -355,9 +343,9 @@ export class IntroScene extends Cutscene {
       this.tweens.add({ targets: earth, y: H + 60, duration: 9000 });
     });
 
-    await this.caption("Day 1.", 1200);
-    await this.caption("Day 2. The snacks ran out.", 1500);
-    await this.caption("Day 3. The Wi-Fi ran out.", 900);
+    await this.caption("Day 1.", 700);
+    await this.caption("Day 2. The snacks ran out.", 1100);
+    await this.caption("Day 3. The Wi-Fi ran out.", 700);
 
     // the phone
     const px = Math.min(W - 50, Math.round(W / 2 + 110));
@@ -371,7 +359,7 @@ export class IntroScene extends Cutscene {
     };
     setBars(2);
     phone.add([name, bars]);
-    await this.tween({ targets: phone, y: Math.round(H / 2), duration: 500, ease: "back.out" });
+    await this.tween({ targets: phone, y: Math.round(H / 2), duration: 400, ease: "back.out" });
     const bubble = (y: number, s: string) => {
       const l = new Label(this, 34, y, s, { bg: 0xd97757, border: C.outline, color: C.cream, maxWidth: 52, originX: 1, originY: 0, align: "left" });
       phone.add(l);
@@ -379,27 +367,26 @@ export class IntroScene extends Cutscene {
       return l;
     };
     const b1 = bubble(-36, "you guys were joking right??");
-    await this.wait(700);
+    await this.wait(500);
     for (const n of [1, 0]) {
       setBars(n);
       sfx.tick();
-      await this.wait(450);
+      await this.wait(300);
     }
     bars.clear();
-    await this.wait(300);
     phone.add(ptext(this, -34, b1.y + b1.boxH + 2, "! Not Delivered", 0xc8403a));
     sfx.deny();
-    await this.wait(900);
-    const b2 = bubble(b1.y + b1.boxH + 13, "...guys?");
     await this.wait(600);
+    const b2 = bubble(b1.y + b1.boxH + 13, "...guys?");
+    await this.wait(400);
     phone.add(ptext(this, -34, b2.y + b2.boxH + 2, "! Not Delivered", 0xc8403a));
     sfx.deny();
-    await this.waitOrNext(1800);
-    await this.tween({ targets: phone, y: H + 90, duration: 400, ease: "quad.in" });
+    await this.waitOrNext(1100);
+    await this.tween({ targets: phone, y: H + 90, duration: 350, ease: "quad.in" });
 
     await this.caption("Day 4.", 0);
-    await this.tween({ targets: moon, y: Math.round(H * 0.28), duration: 2600, ease: "sine.out" });
-    await this.wait(600);
+    await this.tween({ targets: moon, y: Math.round(H * 0.28), duration: 1800, ease: "sine.out" });
+    await this.wait(300);
   }
 
   // ------------------------------------------------------------ 5. The Moon, and a rabbit
@@ -436,22 +423,22 @@ export class IntroScene extends Cutscene {
     });
 
     sfx.rumble(3);
-    const down = this.tween({ targets: rocket, y: ground, duration: 3000, ease: "cubic.out", onUpdate: () => flame.setPosition(rocket.x, rocket.y - 5) });
-    await this.wait(2300);
+    const down = this.tween({ targets: rocket, y: ground, duration: 2200, ease: "cubic.out", onUpdate: () => flame.setPosition(rocket.x, rocket.y - 5) });
+    await this.wait(1600);
     for (let i = 0; i < 18; i++) this.time.delayedCall(i * 30, () => puff(this, lx + Phaser.Math.Between(-34, 34), ground - Phaser.Math.Between(0, 4)));
     await down;
     flame.setVisible(false);
     sfx.land();
     this.cameras.main.shake(260, 0.006);
-    await this.caption("The Moon. Population: one rabbit, one stargazer.", 1400);
+    await this.caption("The Moon. Population: one rabbit, one stargazer.", 1100);
     this.clearCaption();
 
     // Someone's home.
     const rabbit = this.keep(this.add.sprite(burrowX, ground - 2, "rabbit_0").setOrigin(0.5, 1).setAlpha(0).setDepth(ground + 5).play("jade_rabbit-idle"));
-    await this.tween({ targets: rabbit, alpha: 1, duration: 400 });
+    await this.tween({ targets: rabbit, alpha: 1, duration: 300 });
     const bang = this.keep(this.add.image(burrowX, ground - 28, "bang").setDepth(ground + 6));
     sfx.catch();
-    await this.wait(700);
+    await this.wait(450);
     bang.destroy();
     const astro = this.keep(this.add.sprite(lx + 4, ground, "astro_6").setOrigin(0.5, 1).setAlpha(0).setDepth(ground + 4));
     await this.tween({ targets: astro, alpha: 1, duration: 300 });
@@ -473,18 +460,13 @@ export class IntroScene extends Cutscene {
     const YOU: [string, string, string] = [drawYouPortrait(this, 0), drawYouPortrait(this, 0), drawYouPortrait(this, 1)];
     const yutu = (s: string) => this.dialog(YUTU, "Yutu the Jade Rabbit", s, VOICE.yutu);
     const you = (s: string) => this.dialog(YOU, "You", s, VOICE.you);
-    await yutu("A visitor! A real one! Oh, it's been AGES since anybody landed here.");
-    await you("Hi! Um. Quick question... is there Wi-Fi?");
-    await yutu("Hee! Not since the old colony packed up and left. Every line home went quiet.");
-    await yutu("It's just me, and Nova up at the Observatory. Her telescope can read Earth's web, but nobody up here can talk to home.");
-    await yutu("Your neighbors-to-be are down on Earth, waiting for a signal. Build each one a home, call them up, and every one of them brings a line back.");
-    await yutu("Fair warning, though: they're... different. They think very, very fast.");
-    await you("Wait. Are they... AI agents?");
-    await yutu("Is that a problem?");
+    await yutu("A visitor! It's been AGES since anybody landed here.");
+    await you("Hi! Um... is there Wi-Fi?");
+    await yutu("Hee! Not since the old colony left. Fix up the old homes and new neighbors will move in. Fair warning: they're AI agents.");
     this.tweens.add({ targets: astro, y: ground - 8, duration: 160, yoyo: true, repeat: 2, ease: "quad.out" });
     sfx.buy();
     await you("This is the BEST DAY OF MY LIFE.");
-    await yutu("Hee! Then welcome to Moon Village. I fixed up the old colony house for you. Let's get you a line home!");
+    await yutu("Hee! Then welcome to Moon Village. Let's get you a line home!");
   }
 
   // ------------------------------------------------------------ 6. Title
@@ -492,14 +474,14 @@ export class IntroScene extends Cutscene {
   private async shotTitle() {
     const { W, H } = this;
     const dim = this.keep(this.add.rectangle(0, 0, W, H, 0x07060f, 0).setOrigin(0).setDepth(800));
-    await this.tween({ targets: dim, fillAlpha: 0.7, duration: 700 });
+    await this.tween({ targets: dim, fillAlpha: 0.7, duration: 500 });
     const logo = this.keep(this.add.image(Math.round(W / 2) + 8, Math.round(H / 2 - 16), "logo").setAlpha(0).setDepth(801));
     const spark = this.keep(this.add.image(Math.round(logo.x - logo.width / 2 - 20), logo.y + 1, "spark_logo").setAlpha(0).setDepth(801));
     this.every(400, () => spark.setFlipX(!spark.flipX));
     sfx.bell();
-    await this.tween({ targets: [logo, spark], alpha: 1, duration: 900 });
+    await this.tween({ targets: [logo, spark], alpha: 1, duration: 600 });
     const ch = this.keep(ptext(this, 0, logo.y + 26, "CHAPTER 1:  A LINE HOME", 0xf5c542, "pxb").setDepth(801));
     ch.setX(Math.round(W / 2 - measure(ch).w / 2));
-    await this.waitOrNext(2600);
+    await this.waitOrNext(1500);
   }
 }
