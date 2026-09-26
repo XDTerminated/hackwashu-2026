@@ -76,11 +76,14 @@ what they actually fetched for you (no extra API calls).
 Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at the bottom (hover an icon for its name):
 
 - **MoonPad** (tablet): text any villager who's moved in to get to know them. Texts are just conversation: villagers remember what you tell them (saved on the server with the colony) and friendship grows, shown as hearts. Ask for real work over text and they'll invite you to their house; tasks only run when you ask in person, and those visits count double toward friendship. A red badge means new replies.
-- **Supply Pod** (crate): 12 decorations from a 25¢ flag to a 120¢ habitat dome (prices are checked on the server).
+- **Supply Pod** (crate): 24 decorations in four tabs (Garden, Cozy, Sci-Fi, Festival), from a 20¢ shrub to a 150¢ Moon Gate (prices are checked on the server). Each tile shows who loves it.
 - **Quests** (scroll) · **Help** (?)
-- **Call** (phone): lights up at a villager's door when they're out; they walk home. There's also a CALL button at the door itself, and E works too.
-- **Edit layout** (pencil): pick up any building, plot or decoration and set it down anywhere on the island. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
-- **Action button** (right end): its icon shows whatever you're standing next to: talk, read a letter, build, pop a clod, grab a moon-rock, hold to sweep, or arrange a decoration.
+- **Edit layout** (pencil): drag any building, plot, decoration or task lantern (the stone lanterns planted when villagers finish real work) anywhere on the island, or click a decoration to sell it. Task lanterns can be moved but not sold. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
+- **Action button** (right end): does exactly what E would, and its icon shows what that is: calling a villager home from their door (also a CALL button at the door itself), talk, read a letter, build, pop a clod, grab a moon-rock, hold to sweep, or switch a light on or off. Lights (the Moon Lantern and the Habitat Dome) are the only decorations you interact with outside edit mode; moving and selling happen in edit mode.
+
+**Decorations make villagers happy.** Each villager has favorite items (the Supply Pod lists who loves what). A decoration in a villager's yard (3 tiles around their house) adds happiness: +3 for a favorite, +1 for anything else, each kind counted once, up to 12. Happiness adds to friendship hearts, the villager reacts when you place something, and they mention their decorated home in conversation. While carrying a decoration, yards are outlined and a label previews whose happiness it would change.
+
+**Meteors** show on the minimap (red and blinking while falling, orange once landed), and when one is off-screen a marker on the screen edge points to it. Villagers show on the minimap as little head icons, the same ones as in the top-left list.
 
 Keys are optional shortcuts: E (action/call), SPACE (pop/grab, hold to sweep), B (Supply Pod), ESC (put down / leave edit mode).
 
@@ -93,7 +96,9 @@ the friendship and real work waits for a visit; `help` lists who's
 around. Approval letters also arrive as texts: reply YES or NO. No credentials yet? `PHOTON_TERMINAL=1`
 runs the same flow in Photon's terminal chat.
 
-The buildings sit evenly on one circle around the central plaza, each with a single path.
+The buildings sit evenly on one circle around the central plaza, each with a single path. They're full estates (all hand-built pixel art at native size): a turreted manor with a smoking chimney, the Jade Rabbit's hollow under a giant osmanthus, a colonnaded post office with a bell cupola and a mail rocket, a 180px clock tower whose clock shows the real time, an observatory with a giant brass telescope, a domed library with twin towers, and a launch complex with a gantry and a full-size rocket. Before a building is built, its plot is staked out at its real footprint. Each estate sits on formal grounds (a marble forecourt with clipped hedges and topiaries) and its windows glow. The grand plaza is marble laid in rings with gold and coral inlays, around the three-tier Earthrise Fountain (the coral spark turns on top), kept wide open to walk around: lampposts stand on the rim and gold-tipped obelisks just outside it, both in the gaps between the paths. Moon rocks (boulders, spires, arches and glowing crystal outcrops) are scattered over the island; they sit on the tile grid and take up their tiles like everything else.
+
+**Dev mode** (Help → DEV MODE): switches to a separate showcase save (`server/data/world-dev.json`, made from a copy of your colony the first time) with every estate built, every villager moved in, every quest done and 5000¢. Your real save is written out first and never touched; EXIT (top of the screen) brings it back exactly as it was.
 
 ## Pixel-perfect rendering
 

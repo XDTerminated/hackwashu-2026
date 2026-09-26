@@ -5,6 +5,7 @@
 import Phaser from "phaser";
 import QRCode from "qrcode";
 import { BUILDINGS, MAX_HEARTS, VILLAGER_HOME, VILLAGER_NAMES, heartsFor, type TaskSource, type VillagerId } from "../../shared/game";
+import { happinessFor } from "../../shared/decor";
 import { sanitize } from "./font";
 import * as net from "./net";
 import type { PhoneLinkMsg } from "./net";
@@ -236,7 +237,7 @@ class MoonPadView {
 
   /** Friendship, Stardew-style: a row of hearts, filled as you get closer. */
   private hearts(v: VillagerId, x: number, y: number, full: number, empty: number) {
-    const n = heartsFor(store.friendship[v] ?? 0);
+    const n = heartsFor((store.friendship[v] ?? 0) + happinessFor(v, store.decos).score);
     return Array.from({ length: MAX_HEARTS }, (_, i) => ptext(this.scene, x + i * 6, y, "♥", i < n ? full : empty));
   }
 

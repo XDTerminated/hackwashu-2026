@@ -183,7 +183,11 @@ export class Button extends Phaser.GameObjects.Container {
     this.setSize(this.bw, this.bh);
     // Phaser measures a Container's hit area from its center (displayOrigin = half its
     // size), so shift the rectangle by half to line it up with what's drawn.
-    this.setInteractive(new Phaser.Geom.Rectangle(this.bw / 2, this.bh / 2, this.bw, this.bh), Phaser.Geom.Rectangle.Contains);
+    this.setInteractive({
+      hitArea: new Phaser.Geom.Rectangle(this.bw / 2, this.bh / 2, this.bw, this.bh),
+      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+      useHandCursor: true,
+    });
     this.on("pointerover", () => ((this.hover = true), this.draw()));
     this.on("pointerout", () => ((this.hover = false), this.draw()));
     this.on("pointerdown", onClick);
@@ -237,7 +241,7 @@ export class IconButton extends Phaser.GameObjects.Container {
     this.add([this.g, this.icon]);
     this.placeIcon();
     this.setSize(bw, bh);
-    this.setInteractive(new Phaser.Geom.Rectangle(bw / 2, bh / 2, bw, bh), Phaser.Geom.Rectangle.Contains);
+    this.setInteractive({ hitArea: new Phaser.Geom.Rectangle(bw / 2, bh / 2, bw, bh), hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     this.on("pointerover", () => {
       this.hover = true;
       this.draw();

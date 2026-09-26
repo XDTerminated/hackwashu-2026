@@ -2,6 +2,7 @@
 // (recent texts and visits, plus facts worth keeping) and a friendship score,
 // saved with the colony so it survives restarts and new browsers.
 
+import { happinessFor } from "../../shared/decor.js";
 import { heartsFor, type VillagerId } from "../../shared/game.js";
 import { emit, savePersist, world, type VillagerMemory } from "./world.js";
 
@@ -9,6 +10,41 @@ const LOG_MAX = 60;
 const FACTS_MAX = 24;
 /** Friendship earned per day per villager is capped so spamming texts doesn't max it out. */
 const POINTS_PER_DAY = 8;
+
+/** Happiness from decorations around a villager's home (adds to friendship). */
+export function happiness(v: VillagerId) {
+  return happinessFor(v, world.decos);
+}
+
+/** Hearts count both getting to know each other and a well-decorated home. */
+export function heartsOf(v: VillagerId): number {
+  return heartsFor(memoryOf(v).points + happiness(v).score);
+}
+
+const ALL: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+
+export function happinessAll(): Record<VillagerId, number> {
+  return Object.fromEntries(ALL.map((v) => [v, happiness(v).score])) as Record<VillagerId, number>;
+}
+
+/** After decorations change, tell the island whose happiness moved (and who gained a heart). */
+export function announceHappiness(before: Record<VillagerId, number>, placed?: string) {
+  for (const v of ALL) {
+    const h = happiness(v);
+    if (h.score === before[v]) continue;
+    const points = memoryOf(v).points;
+    const hearts = heartsFor(points + h.score);
+    const gainedItem = placed && h.score > before[v] ? h.items.find((i) => i.name === placed) : undefined;
+    emit({
+      type: "happiness",
+      villager: v,
+      score: h.score,
+      hearts,
+      ...(hearts > heartsFor(points + before[v]) ? { levelUp: true } : {}),
+      ...(gainedItem ? { gained: { item: gainedItem.name, loved: gainedItem.loved } } : {}),
+    });
+  }
+}
 
 export function memoryOf(v: VillagerId): VillagerMemory {
   return (world.memory[v] ??= { log: [], facts: [], points: 0 });
@@ -43,11 +79,12 @@ export function befriend(v: VillagerId, via: "text" | "visit") {
   }
   const gain = Math.min(via === "visit" ? 2 : 1, POINTS_PER_DAY - (m.dayPoints ?? 0));
   if (gain <= 0) return;
-  const before = heartsFor(m.points);
+  const bonus = happiness(v).score;
+  const before = heartsFor(m.points + bonus);
   m.points += gain;
   m.dayPoints = (m.dayPoints ?? 0) + gain;
   savePersist();
-  const hearts = heartsFor(m.points);
+  const hearts = heartsFor(m.points + bonus);
   emit({ type: "friendship", villager: v, points: m.points, hearts, ...(hearts > before ? { levelUp: true } : {}) });
 }
 
@@ -77,7 +114,13 @@ function ago(ms: number): string {
  */
 export function memoryNote(v: VillagerId, transcript: boolean): string {
   const m = memoryOf(v);
-  const parts = [`\n\nYOUR FRIENDSHIP WITH THE PLAYER: ${heartsFor(m.points)}/5 hearts - ${BONDS[heartsFor(m.points)]}.`];
+  const hearts = heartsOf(v);
+  const parts = [`\n\nYOUR FRIENDSHIP WITH THE PLAYER: ${hearts}/5 hearts - ${BONDS[hearts]}.`];
+  const home = happiness(v).items;
+  if (home.length) {
+    const list = home.map((i) => (i.loved ? `${i.name} (you love it)` : i.name)).join(", ");
+    parts.push(`The player decorated around your home: ${list}. It makes you happy; mention it now and then.`);
+  }
   if (m.facts.length) {
     parts.push(`Things you remember about them:\n${m.facts.map((f) => `- ${f}`).join("\n")}`);
     parts.push("Bring these up when they fit naturally, the way a friend would - never recite the list.");

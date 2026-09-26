@@ -5,6 +5,7 @@ import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../sh
 import { BUILDINGS } from "../../shared/game.js";
 import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
+import { announceHappiness, happinessAll } from "./memory.js";
 import { resolveApproval } from "./approvals.js";
 import { connectCanvas, disconnectCanvas, initCanvas } from "./connectors/canvas.js";
 import { disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle } from "./connectors/google.js";
@@ -13,7 +14,7 @@ import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
 import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
-import { build, emit, moveBuilding, moveDeco, newId, occupied, onEvent, placeDeco, popClod, removeDeco, snapshot, world } from "./world.js";
+import { build, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
@@ -129,6 +130,7 @@ wss.on("connection", (ws) => {
       }
 
       case "place_deco": {
+        const before = happinessAll();
         const def = decorById(String(msg.item));
         if (!def || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), def.tiles[0]);
@@ -138,17 +140,31 @@ wss.on("connection", (ws) => {
         }
         const deco = { id: newId("deco"), item: def.id, x, y };
         const r = placeDeco(deco, def.price);
-        if (r.ok) emit({ type: "deco_placed", deco, coins: world.coins });
+        if (r.ok) {
+          emit({ type: "deco_placed", deco, coins: world.coins });
+          announceHappiness(before, def.name);
+        }
         else send(ws, { type: "notice", text: r.reason });
         break;
       }
 
       case "move_deco": {
+        const before = happinessAll();
         const placed = world.decos.find((d) => d.id === msg.id);
         const def = placed && decorById(placed.item);
         if (!placed || !def || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), def.tiles[0]);
-        if (canOccupy(decorFootprint(def, x, y), occupied({ deco: placed.id })) && moveDeco(placed.id, x, y)) emit({ type: "deco_moved", id: placed.id, x, y });
+        if (canOccupy(decorFootprint(def, x, y), occupied({ deco: placed.id })) && moveDeco(placed.id, x, y)) {
+          emit({ type: "deco_moved", id: placed.id, x, y });
+          announceHappiness(before, def.name);
+        } else send(ws, { type: "notice", text: "That spot's taken." });
+        break;
+      }
+
+      case "move_lantern": {
+        if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
+        const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), 1);
+        if (moveLantern(String(msg.id), x, y)) emit({ type: "lantern_moved", id: msg.id, x, y });
         else send(ws, { type: "notice", text: "That spot's taken." });
         break;
       }
@@ -157,16 +173,40 @@ wss.on("connection", (ws) => {
         const b = msg.building;
         if (!BUILDINGS[b] || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), buildingTiles(b).w);
-        if (moveBuilding(b, x, y)) emit({ type: "building_moved", building: b, x, y });
+        const before = happinessAll();
+        if (moveBuilding(b, x, y)) {
+          emit({ type: "building_moved", building: b, x, y });
+          announceHappiness(before);
+        }
         else send(ws, { type: "notice", text: "The building doesn't fit there." });
         break;
       }
 
+      case "dev_mode": {
+        if (!switchWorld(!!msg.on)) break;
+        services.initResidents();
+        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        break;
+      }
+
+      case "toggle_deco": {
+        const placed = world.decos.find((d) => d.id === msg.id);
+        if (!placed || !decorById(placed.item)?.light) break;
+        placed.off = !placed.off;
+        savePersist();
+        emit({ type: "deco_toggled", id: placed.id, off: placed.off });
+        break;
+      }
+
       case "sell_deco": {
+        const before = happinessAll();
         const placed = world.decos.find((d) => d.id === msg.id);
         const def = placed && decorById(placed.item);
         const refund = def ? sellPrice(def) : 0;
-        if (placed && removeDeco(placed.id, refund)) emit({ type: "deco_sold", id: placed.id, refund, coins: world.coins });
+        if (placed && removeDeco(placed.id, refund)) {
+          emit({ type: "deco_sold", id: placed.id, refund, coins: world.coins });
+          announceHappiness(before);
+        }
         break;
       }
 

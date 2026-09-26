@@ -22,7 +22,7 @@ import {
 } from "../../shared/game.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
-import { SPOTS, applyLayout, buildingFootprint, canOccupy, type Rect } from "../../shared/layout.js";
+import { SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockRect, rockSpots, type Rect } from "../../shared/layout.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = join(here, "..", "data", "world.json");
@@ -92,10 +92,10 @@ function freshWorld(): World {
   };
 }
 
-function load(): World {
+function load(file = DATA_FILE): World {
   try {
-    if (!existsSync(DATA_FILE)) return freshWorld();
-    const w = JSON.parse(readFileSync(DATA_FILE, "utf8")) as World;
+    if (!existsSync(file)) return freshWorld();
+    const w = JSON.parse(readFileSync(file, "utf8")) as World;
     if (w.version !== SAVE_VERSION) {
       console.log("[world] save is from before the unlock chain — starting a fresh colony");
       return freshWorld();
@@ -130,14 +130,59 @@ function load(): World {
 export const world = load();
 applyLayout(world.layout);
 
+// ---------------------------------------------------------------- dev mode
+// A separate showcase save with everything unlocked. Switching never touches
+// the real save: it's written out first, and switching back reloads it as-is.
+
+const DEV_FILE = join(here, "..", "data", "world-dev.json");
+let saveFile = DATA_FILE;
+
+export function isDevWorld() {
+  return saveFile === DEV_FILE;
+}
+
+/** Everything built and revealed, every quest done, sample data so every villager moves in, coins to spend. */
+function showcase(w: World): World {
+  for (const b of Object.keys(BUILDINGS) as BuildingId[]) w.buildings[b] = true;
+  w.progress.revealed = Object.keys(BUILDINGS) as BuildingId[];
+  w.progress.quest = QUESTS.length;
+  w.progress.count = 0;
+  w.progress.sandbox = { ...w.progress.sandbox, google: true, canvas: true };
+  w.coins = Math.max(w.coins, 5000);
+  for (const a of Object.values(w.approvals)) if (a.status === "pending") a.status = "denied";
+  return w;
+}
+
+/** Swap between the real save and the dev showcase save. Returns false if already there. */
+export function switchWorld(dev: boolean): boolean {
+  if (dev === isDevWorld()) return false;
+  flushSave();
+  const next = dev ? DEV_FILE : DATA_FILE;
+  const w = dev && !existsSync(DEV_FILE) ? showcase(JSON.parse(JSON.stringify(world)) as World) : load(next);
+  saveFile = next;
+  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
+  Object.assign(world, w);
+  applyLayout(world.layout);
+  flushSave();
+  console.log(`[world] now on the ${dev ? "dev showcase" : "real"} save`);
+  return true;
+}
+
+function flushSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+  mkdirSync(dirname(saveFile), { recursive: true });
+  writeFileSync(saveFile, JSON.stringify(world));
+}
+
 let saveTimer: NodeJS.Timeout | null = null;
 function persist() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
     try {
-      mkdirSync(dirname(DATA_FILE), { recursive: true });
-      writeFileSync(DATA_FILE, JSON.stringify(world));
+      mkdirSync(dirname(saveFile), { recursive: true });
+      writeFileSync(saveFile, JSON.stringify(world));
     } catch (err) {
       console.error("[world] save failed:", err);
     }
@@ -180,6 +225,7 @@ export function snapshot(): Snapshot {
     choreOptIn: world.choreOptIn,
     friendship: Object.fromEntries(Object.entries(world.memory).map(([v, m]) => [v, m!.points])),
     layout: world.layout,
+    devMode: isDevWorld(),
   };
 }
 
@@ -239,25 +285,55 @@ export function placeDeco(d: Deco, price: number): { ok: true } | { ok: false; r
   return { ok: true };
 }
 
+/** Where decorations and task lanterns stand (rocks keep clear of them). */
+export function decoRects(): Rect[] {
+  const out: Rect[] = [];
+  for (const d of world.decos) {
+    const def = decorById(d.item);
+    if (def) out.push(decorFootprint(def, d.x, d.y));
+  }
+  world.lanterns.forEach((l, i) => {
+    const p = lanternAt(l, i);
+    out.push(footprint(p.x, p.y, 1, 1));
+  });
+  return out;
+}
+
 /** Footprints of everything placed, except the one thing being moved. */
-export function occupied(except?: { building?: BuildingId; deco?: string }): Rect[] {
+export function occupied(except?: { building?: BuildingId; deco?: string; lantern?: string }): Rect[] {
   const out: Rect[] = [];
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     if (b === except?.building) continue;
     const shown = owns(b) || (world.progress.revealed.includes(b) && b !== "mailbox");
-    if (shown) out.push(buildingFootprint(b));
+    if (shown) out.push(...buildingRects(b));
   }
   for (const d of world.decos) {
     const def = decorById(d.item);
     if (def && d.id !== except?.deco) out.push(decorFootprint(def, d.x, d.y));
   }
+  world.lanterns.forEach((l, i) => {
+    if (l.id === except?.lantern) return;
+    const p = lanternAt(l, i);
+    out.push(footprint(p.x, p.y, 1, 1));
+  });
+  for (const r of rockSpots(decoRects())) out.push(rockRect(r));
   return out;
+}
+
+/** Task lanterns can be moved (but not sold: they're earned). */
+export function moveLantern(id: string, x: number, y: number): boolean {
+  const l = world.lanterns.find((l) => l.id === id);
+  if (!l || !canOccupy(footprint(x, y, 1, 1), occupied({ lantern: id }))) return false;
+  l.x = x;
+  l.y = y;
+  persist();
+  return true;
 }
 
 /** Buildings (and revealed plots) can be moved anywhere their tiles fit. */
 export function moveBuilding(b: BuildingId, x: number, y: number): boolean {
   if (!SPOTS[b] || (!owns(b) && !world.progress.revealed.includes(b))) return false;
-  if (!canOccupy(buildingFootprint(b, { x, y }), occupied({ building: b }))) return false;
+  if (!canOccupy(buildingRects(b, { x, y }), occupied({ building: b }))) return false;
   world.layout[b] = { x, y };
   applyLayout(world.layout);
   persist();

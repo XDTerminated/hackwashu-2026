@@ -49,6 +49,11 @@ export class ChoreView {
     return this.chore.y;
   }
 
+  /** A meteor still on its way down (its shadow is growing). */
+  get falling() {
+    return this.chore.kind === "meteor" && !this.landed && !this.gone;
+  }
+
   /** A meteor you can grab: landed and not yet crumbled. */
   get grabbable() {
     return this.chore.kind === "meteor" && this.landed && !this.gone;

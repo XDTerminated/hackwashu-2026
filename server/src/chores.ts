@@ -39,7 +39,7 @@ function spawnMeteor(delay = 0) {
   for (let tries = 0; tries < 40; tries++) {
     const x = Math.round(rand(80, WORLD_W - 80));
     const y = Math.round(rand(80, WORLD_H - 80));
-    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 50) continue;
+    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 170) continue;
     const landsAt = Date.now() + delay + WARNING_MS;
     return add({ id: newId("meteor"), kind: "meteor", x, y, reward: METEOR_REWARD, landsAt, expires: landsAt + COOL_MS });
   }

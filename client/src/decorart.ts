@@ -13,7 +13,8 @@ export interface DecorArt {
   w: number;
   h: number;
   frames: number;
-  draw: (ctx: Ctx, frame: number) => void;
+  /** `lit` is false for a light that's been switched off. */
+  draw: (ctx: Ctx, frame: number, lit: boolean) => void;
 }
 
 function line(ctx: Ctx, color: string, x0: number, y0: number, x1: number, y1: number) {
@@ -69,7 +70,7 @@ const art: Record<string, DecorArt> = {
     w: 18,
     h: 30,
     frames: 2,
-    draw(ctx, f) {
+    draw(ctx, f, lit) {
       rect(ctx, O, 1, 27, 9, 3);
       rect(ctx, WOOD.dark, 2, 28, 7, 1);
       rect(ctx, O, 3, 3, 4, 25);
@@ -80,11 +81,11 @@ const art: Record<string, DecorArt> = {
       rect(ctx, O, 12, 6, 1, 3);
       // The lantern: red paper over a warm candle.
       disc(ctx, O, 12.5, 15, 5, 6);
-      disc(ctx, "#d9503f", 12.5, 15, 4, 5);
-      disc(ctx, f ? "#ffd98a" : "#f7b267", 12.5, 15.5, 2, 3);
+      disc(ctx, lit ? "#d9503f" : "#a33a2e", 12.5, 15, 4, 5);
+      disc(ctx, !lit ? "#7a2e28" : f ? "#ffd98a" : "#f7b267", 12.5, 15.5, 2, 3);
       rect(ctx, "#b23a2e", 12, 10, 1, 3);
       rect(ctx, "#b23a2e", 12, 18, 1, 3);
-      rect(ctx, "#ef7a5e", 10, 12, 1, 5);
+      rect(ctx, lit ? "#ef7a5e" : "#c24a3a", 10, 12, 1, 5);
       rect(ctx, O, 10, 8, 6, 2);
       rect(ctx, "#f5c542", 11, 8, 4, 1);
       rect(ctx, O, 10, 21, 6, 2);
@@ -175,7 +176,7 @@ const art: Record<string, DecorArt> = {
     w: 46,
     h: 34,
     frames: 1,
-    draw(ctx) {
+    draw(ctx, _f, lit) {
       // Glass shell with struts, sitting in a metal ring.
       disc(ctx, O, 23, 28, 21, 26, 28);
       disc(ctx, "#8fcde3", 23, 28, 20, 25, 28);
@@ -195,8 +196,8 @@ const art: Record<string, DecorArt> = {
       // Inside: a little garden and a warm lamp.
       disc(ctx, "#4f8a3c", 12, 26, 4, 3);
       disc(ctx, "#7cbf55", 11, 25, 2, 1.5);
-      rect(ctx, "#ffd98a", 33, 23, 3, 3);
-      rect(ctx, "#fff1b0", 34, 24, 1, 1);
+      rect(ctx, lit ? "#ffd98a" : "#6f6a80", 33, 23, 3, 3);
+      rect(ctx, lit ? "#fff1b0" : "#8a8298", 34, 24, 1, 1);
       rect(ctx, "#ffffff", 14, 9, 3, 1);
       rect(ctx, "#ffffff", 12, 11, 1, 2);
       // Airlock.
@@ -375,8 +376,411 @@ const art: Record<string, DecorArt> = {
   },
 };
 
+// ---------------------------------------------------------------- more decorations
+
+const RED = { base: "#d9503f", dark: "#a33a2e", light: "#ef7a5e" };
+const GOLD = { base: "#f5c542", dark: "#c99a3e", light: "#fff1b0" };
+const WATER = { base: "#7fc6e6", dark: "#5aa7cf", light: "#dff4fb" };
+
+/** A crescent: the outer disc minus an offset inner disc, outlined on both edges. */
+function crescent(ctx: Ctx, cx: number, cy: number, r: number, ox: number, oy: number, ir: number, c: { base: string; light: string }) {
+  for (let y = Math.floor(cy - r - 1); y <= Math.ceil(cy + r + 1); y++) {
+    for (let x = Math.floor(cx - r - 1); x <= Math.ceil(cx + r + 1); x++) {
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      const di = Math.hypot(x + 0.5 - cx - ox, y + 0.5 - cy - oy);
+      if (d > r || di <= ir) continue;
+      const edge = d > r - 1 || di < ir + 1;
+      rect(ctx, edge ? O : x < cx - r * 0.3 ? c.light : c.base, x, y, 1, 1);
+    }
+  }
+}
+
+/** Upturned East Asian roof eave, `w` wide with its top at `y`. */
+function eave(ctx: Ctx, x: number, y: number, w: number, tile: { base: string; dark: string; light: string }) {
+  rect(ctx, O, x + 2, y, w - 4, 1);
+  rect(ctx, O, x, y + 1, w, 3);
+  rect(ctx, tile.base, x + 1, y + 1, w - 2, 2);
+  for (let tx = x + 2; tx < x + w - 2; tx += 3) rect(ctx, tile.dark, tx, y + 1, 1, 2);
+  rect(ctx, tile.light, x + 2, y + 1, w - 4, 1);
+  // tips curl up
+  rect(ctx, O, x - 1, y - 1, 2, 2);
+  rect(ctx, O, x + w - 1, y - 1, 2, 2);
+  rect(ctx, GOLD.base, x - 1, y - 1, 1, 1);
+  rect(ctx, GOLD.base, x + w, y - 1, 1, 1);
+}
+
+const TILE_GREEN = { base: "#3f8a66", dark: "#2c6a4c", light: "#5fb58a" };
+
+Object.assign(art, {
+  shrub: {
+    w: 18,
+    h: 16,
+    frames: 1,
+    draw(ctx) {
+      const lobes: [number, number, number, number][] = [[9, 10, 8, 6], [6, 7, 5, 5], [12, 6, 5, 5]];
+      for (const [x, y, rx, ry] of lobes) disc(ctx, O, x, y, rx, ry);
+      for (const [x, y, rx, ry] of lobes) disc(ctx, "#5f8f7a", x, y, rx - 1, ry - 1);
+      disc(ctx, "#8fbfa8", 5, 6, 2.5, 2.5);
+      disc(ctx, "#8fbfa8", 11, 5, 2.5, 2);
+      rect(ctx, "#c8ecd8", 4, 5, 1, 1);
+      for (const [x, y] of [[8, 9], [13, 10], [5, 11], [11, 12], [15, 7]]) {
+        rect(ctx, "#cfe7ff", x, y, 1, 1);
+        rect(ctx, "#6f9fe8", x, y + 1, 1, 1);
+      }
+    },
+  },
+
+  rockgarden: {
+    w: 42,
+    h: 18,
+    frames: 1,
+    draw(ctx) {
+      rect(ctx, O, 1, 2, 40, 15);
+      rect(ctx, O, 0, 3, 42, 13);
+      rect(ctx, WOOD.dark, 1, 3, 40, 13);
+      rect(ctx, "#e8dcc0", 2, 4, 38, 11);
+      const rocks: [number, number, number, number][] = [[11, 9, 4, 3], [29, 10, 5, 3.5], [21, 6, 2.5, 2]];
+      for (let y = 5; y < 15; y += 2) {
+        for (let x = 3; x < 39; x++) {
+          if (rocks.some(([cx, cy, rx, ry]) => ((x - cx) / (rx + 2)) ** 2 + ((y - cy) / (ry + 1.5)) ** 2 < 1)) continue;
+          rect(ctx, "#cfc0a0", x, y, 1, 1);
+        }
+      }
+      for (const [x, y, rx, ry] of rocks) {
+        disc(ctx, "#cfc0a0", x, y, rx + 2, ry + 1.5);
+        disc(ctx, "#e8dcc0", x, y, rx + 1, ry + 0.8);
+        disc(ctx, O, x, y, rx, ry);
+        disc(ctx, ROCK.base, x, y, rx - 1, ry - 1);
+        rect(ctx, ROCK.light, x - rx + 2, y - ry + 1, 2, 1);
+      }
+      rect(ctx, "#4f9e54", 30, 6, 2, 1);
+    },
+  },
+
+  fountain: {
+    w: 42,
+    h: 34,
+    frames: 2,
+    draw(ctx, f) {
+      // lower basin
+      disc(ctx, O, 21, 27, 20, 6.5);
+      disc(ctx, ROCK.light, 21, 27, 19, 5.5);
+      disc(ctx, ROCK.base, 21, 28.5, 19, 4, undefined);
+      disc(ctx, O, 21, 25.5, 16, 3.8);
+      disc(ctx, WATER.base, 21, 25.5, 15, 3);
+      disc(ctx, WATER.dark, 22, 26.5, 9, 1.5);
+      // pillar + upper bowl
+      rect(ctx, O, 18, 13, 6, 13);
+      rect(ctx, ROCK.base, 19, 13, 4, 13);
+      rect(ctx, ROCK.light, 19, 13, 1, 13);
+      disc(ctx, O, 21, 13, 10, 3.8);
+      disc(ctx, ROCK.light, 21, 13, 9, 2.8);
+      disc(ctx, WATER.base, 21, 12.5, 7, 1.6);
+      // spout + falling water
+      rect(ctx, O, 19, 4, 4, 9);
+      rect(ctx, WATER.light, 20, 4, 2, 8);
+      disc(ctx, WATER.light, 21, 4, 3, 1.8);
+      const drops = f ? [[10, 16], [9, 19], [8, 22]] : [[11, 15], [9, 18], [8, 21]];
+      for (const [x, y] of drops) {
+        rect(ctx, WATER.light, x, y, 1, 2);
+        rect(ctx, WATER.light, 42 - x, y, 1, 2);
+      }
+      for (const [x, y] of f ? [[13, 25], [29, 26]] : [[17, 26], [26, 25]]) rect(ctx, "#ffffff", x, y, 2, 1);
+    },
+  },
+
+  picnic: {
+    w: 32,
+    h: 22,
+    frames: 1,
+    draw(ctx) {
+      for (const x of [5, 25]) {
+        rect(ctx, O, x, 13, 3, 9);
+        rect(ctx, WOOD.dark, x + 1, 14, 1, 8);
+      }
+      rect(ctx, O, 1, 9, 30, 6);
+      for (let y = 10; y < 14; y++) for (let x = 2; x < 30; x++) rect(ctx, ((x >> 1) + (y >> 1)) % 2 ? "#fff6e6" : RED.base, x, y, 1, 1);
+      for (let x = 2; x < 30; x += 2) rect(ctx, O, x, 14, 1, 1);
+      // mooncakes, cups, teapot
+      for (const cx of [6, 11]) {
+        disc(ctx, O, cx, 8, 2.5, 1.8);
+        disc(ctx, GOLD.dark, cx, 8, 1.6, 1);
+        rect(ctx, GOLD.light, cx - 1, 7, 1, 1);
+      }
+      rect(ctx, O, 15, 6, 3, 3);
+      rect(ctx, "#fff6e6", 16, 7, 1, 1);
+      disc(ctx, O, 23, 6, 4, 3.2);
+      disc(ctx, JADE.base, 23, 6, 3, 2.2);
+      rect(ctx, JADE.light, 21, 5, 2, 1);
+      rect(ctx, O, 26, 4, 3, 1);
+      rect(ctx, O, 22, 1, 3, 2);
+    },
+  },
+
+  swing: {
+    w: 34,
+    h: 38,
+    frames: 1,
+    draw(ctx) {
+      rect(ctx, O, 5, 34, 24, 4);
+      rect(ctx, ROCK.base, 6, 35, 22, 2);
+      rect(ctx, ROCK.light, 6, 35, 22, 1);
+      rect(ctx, O, 15, 29, 4, 6);
+      rect(ctx, ROCK.base, 16, 29, 2, 6);
+      crescent(ctx, 17, 17, 15.5, 5, -3, 12.5, GOLD);
+      // the swing hangs from the crescent's top horn
+      rect(ctx, O, 11, 5, 1, 19);
+      rect(ctx, O, 18, 5, 1, 19);
+      rect(ctx, O, 9, 23, 12, 4);
+      rect(ctx, WOOD.base, 10, 24, 10, 2);
+      rect(ctx, WOOD.light, 10, 24, 10, 1);
+      for (const [x, y] of [[4, 13], [7, 26], [26, 30], [3, 21]]) rect(ctx, "#ffffff", x, y, 1, 1);
+    },
+  },
+
+  arch: {
+    w: 36,
+    h: 42,
+    frames: 1,
+    draw(ctx) {
+      for (const x of [3, 29]) {
+        rect(ctx, O, x, 15, 5, 27);
+        rect(ctx, WOOD.base, x + 1, 16, 3, 26);
+        rect(ctx, WOOD.light, x + 1, 16, 1, 26);
+      }
+      for (let y = 0; y <= 17; y++) {
+        for (let x = 1; x < 35; x++) {
+          const d = Math.hypot(x + 0.5 - 18, y + 0.5 - 17);
+          if (d > 17 || d < 12) continue;
+          rect(ctx, d > 16 || d < 13 ? O : d > 14.5 ? WOOD.base : WOOD.light, x, y, 1, 1);
+        }
+      }
+      // vines and blossoms
+      for (let i = 0; i < 70; i++) {
+        const t = hash(i, 4, 11);
+        let x: number;
+        let y: number;
+        if (t < 0.55) {
+          const a = Math.PI + (t / 0.55) * Math.PI;
+          x = Math.round(18 + Math.cos(a) * 14.5 + (hash(i, 5, 11) - 0.5) * 3);
+          y = Math.round(17 + Math.sin(a) * 14.5 + (hash(i, 6, 11) - 0.5) * 3);
+        } else {
+          x = hash(i, 7, 11) < 0.5 ? 2 + Math.floor(hash(i, 8, 11) * 7) : 28 + Math.floor(hash(i, 8, 11) * 7);
+          y = 16 + Math.floor(hash(i, 9, 11) * 24);
+        }
+        const c = hash(i, 10, 11);
+        rect(ctx, c < 0.55 ? "#4f9e54" : c < 0.7 ? "#6fae4a" : c < 0.82 ? "#f07a9a" : c < 0.92 ? "#cfe7ff" : GOLD.base, x, y, 1, 1);
+      }
+    },
+  },
+
+  telescope: {
+    w: 24,
+    h: 34,
+    frames: 1,
+    draw(ctx) {
+      for (const [x1, y1] of [[4, 33], [20, 33], [12, 33]]) {
+        line(ctx, O, 12, 19, x1, y1);
+        line(ctx, O, 12, 19, x1 + (x1 < 12 ? 1 : x1 > 12 ? -1 : 1), y1);
+      }
+      line(ctx, WOOD.base, 12, 21, 5, 32);
+      line(ctx, WOOD.base, 12, 21, 19, 32);
+      disc(ctx, O, 12, 19, 3);
+      disc(ctx, GOLD.dark, 12, 19, 2);
+      // brass tube, eyepiece low, lens high
+      for (let i = 0; i <= 16; i++) rect(ctx, O, 3 + i - 1, Math.round(17 - i * 0.75) - 1, 3, 4);
+      for (let i = 0; i <= 16; i++) {
+        const x = 3 + i;
+        const y = Math.round(17 - i * 0.75);
+        rect(ctx, i % 6 === 3 ? GOLD.dark : "#d9a441", x, y, 1, 2);
+        rect(ctx, GOLD.light, x, y, 1, 1);
+      }
+      disc(ctx, O, 20.5, 4.5, 2.5);
+      rect(ctx, "#6fe3e1", 20, 4, 2, 1);
+      rect(ctx, O, 0, 16, 3, 3);
+    },
+  },
+
+  mooncake: {
+    w: 38,
+    h: 38,
+    frames: 1,
+    draw(ctx) {
+      for (const x of [3, 32]) {
+        rect(ctx, O, x, 10, 3, 28);
+        rect(ctx, WOOD.dark, x + 1, 11, 1, 27);
+      }
+      // striped awning with a scalloped edge
+      rect(ctx, O, 0, 6, 38, 9);
+      for (let x = 1; x < 37; x++) rect(ctx, Math.floor((x - 1) / 4) % 2 ? "#fff6e6" : RED.base, x, 7, 1, 7);
+      rect(ctx, "#ffffff", 1, 7, 36, 1);
+      for (let x = 1; x < 37; x += 4) {
+        rect(ctx, O, x, 14, 4, 1);
+        rect(ctx, Math.floor((x - 1) / 4) % 2 ? "#fff6e6" : RED.base, x + 1, 14, 2, 1);
+        rect(ctx, O, x + 1, 15, 2, 1);
+      }
+      rect(ctx, O, 12, 0, 14, 7);
+      rect(ctx, GOLD.base, 13, 1, 12, 5);
+      rect(ctx, RED.dark, 15, 3, 2, 1);
+      rect(ctx, RED.dark, 19, 2, 1, 3);
+      rect(ctx, RED.dark, 22, 3, 2, 1);
+      // little lanterns under the awning
+      for (const x of [8, 29]) {
+        rect(ctx, O, x, 16, 1, 2);
+        rect(ctx, O, x - 1, 18, 3, 4);
+        rect(ctx, RED.base, x, 19, 1, 2);
+      }
+      // counter with mooncakes
+      rect(ctx, O, 2, 25, 34, 13);
+      rect(ctx, WOOD.base, 3, 27, 32, 10);
+      for (let y = 29; y < 37; y += 3) rect(ctx, WOOD.dark, 3, y, 32, 1);
+      rect(ctx, WOOD.light, 3, 26, 32, 1);
+      for (const cx of [9, 15, 21, 27]) {
+        disc(ctx, O, cx, 24, 2.6, 2);
+        disc(ctx, GOLD.dark, cx, 24, 1.7, 1.2);
+        rect(ctx, GOLD.light, cx - 1, 23, 1, 1);
+      }
+    },
+  },
+
+  garland: {
+    w: 50,
+    h: 32,
+    frames: 2,
+    draw(ctx, f, lit) {
+      for (const x of [2, 45]) {
+        rect(ctx, O, x, 4, 3, 28);
+        rect(ctx, WOOD.base, x + 1, 5, 1, 27);
+        rect(ctx, O, x - 1, 2, 5, 3);
+        rect(ctx, GOLD.base, x, 3, 3, 1);
+      }
+      const sag = (x: number) => Math.round(6 + 8 * (1 - ((x - 25) / 21) ** 2));
+      for (let x = 5; x < 45; x++) rect(ctx, O, x, sag(x), 1, 1);
+      [11, 18, 25, 32, 39].forEach((x, i) => {
+        const y = sag(x) + 1;
+        const c = i % 2 ? GOLD : RED;
+        rect(ctx, O, x - 2, y, 5, 7);
+        rect(ctx, lit ? c.base : c.dark, x - 1, y + 1, 3, 5);
+        const bright = lit && (i + f) % 2 === 0;
+        rect(ctx, !lit ? "#5b4a4a" : bright ? "#fff1b0" : "#ffd98a", x, y + 2, 1, 3);
+        rect(ctx, GOLD.base, x, y + 7, 1, 2);
+      });
+    },
+  },
+
+  drum: {
+    w: 24,
+    h: 28,
+    frames: 1,
+    draw(ctx) {
+      line(ctx, O, 3, 27, 18, 14);
+      line(ctx, O, 20, 27, 5, 14);
+      line(ctx, WOOD.base, 4, 27, 18, 15);
+      line(ctx, WOOD.base, 19, 27, 5, 15);
+      disc(ctx, O, 12, 12, 10, 10);
+      disc(ctx, RED.base, 12, 12, 9, 9);
+      disc(ctx, "#f2e6cc", 12, 12, 7, 7);
+      disc(ctx, "#e2d4b4", 13, 13, 5, 5);
+      disc(ctx, GOLD.base, 12, 12, 2.5, 2.5);
+      rect(ctx, GOLD.light, 11, 11, 1, 1);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        rect(ctx, GOLD.base, Math.round(12 + Math.cos(a) * 8 - 0.5), Math.round(12 + Math.sin(a) * 8 - 0.5), 1, 1);
+      }
+      line(ctx, O, 19, 1, 22, 9);
+      rect(ctx, RED.base, 18, 0, 2, 2);
+    },
+  },
+
+  gate: {
+    w: 52,
+    h: 48,
+    frames: 1,
+    draw(ctx) {
+      const cx = 26;
+      const cy = 29;
+      for (let y = 9; y < 48; y++) {
+        for (let x = 1; x < 51; x++) {
+          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+          if (d < 14) continue;
+          const wallEdge = x === 1 || x === 50 || y === 47;
+          const c = wallEdge || d < 15 ? O : d < 17 ? (y < cy ? ROCK.light : ROCK.base) : y > 41 ? ROCK.base : x < 6 ? "#e6ddcc" : "#f2ece0";
+          rect(ctx, c, x, y, 1, 1);
+        }
+      }
+      for (let x = 2; x < 50; x += 6) rect(ctx, ROCK.dark, x, 42, 1, 5);
+      rect(ctx, ROCK.dark, 2, 41, 48, 1);
+      // green tiled roof with curled eaves
+      rect(ctx, O, 4, 2, 44, 2);
+      rect(ctx, GOLD.base, 5, 2, 42, 1);
+      eave(ctx, 0, 4, 52, TILE_GREEN);
+      rect(ctx, O, 1, 8, 50, 2);
+      for (const x of [6, 45]) {
+        rect(ctx, O, x, 0, 2, 3);
+        rect(ctx, GOLD.base, x, 0, 1, 2);
+      }
+    },
+  },
+
+  pagoda: {
+    w: 36,
+    h: 58,
+    frames: 1,
+    draw(ctx, _f, lit) {
+      const glow = lit ? "#ffd98a" : "#6f6a80";
+      const WALL = "#b23a2e";
+      rect(ctx, O, 2, 52, 32, 6);
+      rect(ctx, ROCK.base, 3, 53, 30, 4);
+      rect(ctx, ROCK.light, 3, 53, 30, 1);
+      const tier = (x: number, y: number, w: number, h: number, eaveY: number) => {
+        rect(ctx, O, x, y, w, h);
+        rect(ctx, WALL, x + 1, y + 1, w - 2, h - 1);
+        rect(ctx, RED.light, x + 1, y + 1, 1, h - 1);
+        eave(ctx, x - 5, eaveY, w + 10, TILE_GREEN);
+      };
+      tier(12, 16, 12, 8, 12);
+      tier(9, 28, 18, 10, 24);
+      tier(6, 42, 24, 11, 38);
+      // lit doorway and windows
+      rect(ctx, O, 15, 45, 6, 8);
+      rect(ctx, glow, 16, 46, 4, 7);
+      rect(ctx, GOLD.base, 17, 44, 2, 1);
+      for (const [x, y] of [[9, 45], [25, 45], [16, 31], [16, 19]]) {
+        rect(ctx, O, x, y, x === 16 ? 4 : 3, 4);
+        rect(ctx, glow, x + 1, y + 1, x === 16 ? 2 : 1, 2);
+      }
+      // spire
+      rect(ctx, O, 16, 0, 4, 13);
+      rect(ctx, GOLD.base, 17, 1, 2, 11);
+      for (const y of [3, 6, 9]) rect(ctx, GOLD.dark, 16, y, 4, 1);
+      rect(ctx, GOLD.light, 17, 1, 1, 1);
+    },
+  },
+} satisfies Record<string, DecorArt>);
+
 export function decorArt(id: string): DecorArt | undefined {
   return art[id];
 }
 
 export const DECOR_ART_IDS = Object.keys(art);
+
+/** A task lantern: the little stone lantern planted when a villager finishes real work (16 x 26). */
+export function drawStoneLantern(ctx: Ctx) {
+  rect(ctx, O, 3, 23, 10, 3);
+  rect(ctx, ROCK.dark, 4, 24, 8, 1);
+  rect(ctx, O, 6, 15, 4, 9);
+  rect(ctx, ROCK.base, 7, 16, 2, 7);
+  rect(ctx, ROCK.light, 7, 16, 1, 7);
+  rect(ctx, O, 3, 8, 10, 8);
+  rect(ctx, ROCK.base, 4, 9, 8, 6);
+  rect(ctx, ROCK.dark, 4, 14, 8, 1);
+  rect(ctx, "#f7b267", 6, 10, 4, 4);
+  rect(ctx, "#fff1b0", 7, 11, 2, 2);
+  rect(ctx, O, 1, 5, 14, 4);
+  rect(ctx, ROCK.base, 2, 6, 12, 2);
+  rect(ctx, ROCK.light, 2, 6, 12, 1);
+  rect(ctx, O, 5, 2, 6, 4);
+  rect(ctx, ROCK.base, 6, 3, 4, 2);
+  rect(ctx, ROCK.light, 6, 3, 2, 1);
+  rect(ctx, O, 7, 0, 2, 3);
+}

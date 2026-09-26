@@ -3,7 +3,7 @@
 // flagstone paths so you can follow an agent's route across the map.
 
 import Phaser from "phaser";
-import { LANDING, MAP_H, MAP_W, PLAZA, SPOTS, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
+import { LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
 export { PLAZA, lampSpots } from "./layout";
 import type { BuildingId } from "../../shared/game";
 import { type Ctx, hash, rect } from "./pix";
@@ -166,12 +166,38 @@ function stone(ctx: Ctx, x: number, y: number, w: number, h: number, seed: numbe
 }
 
 function plaza(ctx: Ctx) {
-  const R = 40;
-  for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) if (x * x + y * y <= R * R) rect(ctx, "#a4999f", PLAZA.x + x, PLAZA.y + y, 1, 1);
-  for (let y = -R + 2, row = 0; y <= R - 4; y += 5, row++) {
-    for (let x = -R + (row % 2 ? 3 : 0); x <= R - 4; x += 6) {
-      if ((x + 2) ** 2 + (y + 2) ** 2 > (R - 3) ** 2) continue;
-      stone(ctx, PLAZA.x + x, PLAZA.y + y, 6, 5, x * 31 + y);
+  const R = PLAZA_R;
+  // Marble laid in concentric courses, each course split into slabs.
+  for (let y = -R; y <= R; y++) {
+    for (let x = -R; x <= R; x++) {
+      const d = Math.hypot(x, y);
+      if (d > R) continue;
+      const a = Math.atan2(y, x);
+      const course = Math.floor(d / 9);
+      const slabs = Math.max(6, Math.round((course + 1) * 5.5));
+      const slab = Math.floor(((a + Math.PI) / (Math.PI * 2)) * slabs + (course % 2) * 0.5);
+      const seamR = d % 9 < 1;
+      const seamA = Math.abs((((a + Math.PI) / (Math.PI * 2)) * slabs + (course % 2) * 0.5) % 1) < 0.06 * (9 / Math.max(9, d)) * 3;
+      let c = hash(course, slab, 5) > 0.5 ? "#d8d2e0" : "#cfc8d9";
+      if (hash(course, slab, 6) > 0.85) c = "#e2dce8";
+      if (seamR || seamA) c = "#a49cb3";
+      else if (d % 9 < 2) c = "#e8e3ee";
+      // inlays
+      const ray = Math.abs(Math.cos((8 * a) / 2));
+      const ray2 = Math.abs(Math.cos((8 * (a + Math.PI / 8)) / 2));
+      if (d > R - 3) c = "#6f6880";
+      else if (d > R - 8 && d <= R - 6.5) c = "#c99a3e";
+      else if (d > R - 6.5 && d <= R - 3) c = "#8a8298";
+      else if (d > 66 && d < R - 12 && ray > 0.992) c = "#d97757";
+      else if (d > 74 && d < R - 14 && ray2 > 0.996) c = "#c99a3e";
+      else if (d > 62 && d <= 64) c = "#c99a3e";
+      else if (d <= 62 && d > 60) c = "#8a8298";
+      if (d <= 60) {
+        // the fountain court: a star of coral and cream
+        const star = Math.abs(Math.cos((16 * a) / 2));
+        c = d > 58 ? "#c99a3e" : star > 0.9 && d > 30 ? (Math.floor(d / 6) % 2 ? "#eb9a7c" : "#f2e6cc") : hash(Math.floor(x / 5), Math.floor(y / 5), 7) > 0.5 ? "#b8b0c4" : "#c4bdd0";
+      }
+      rect(ctx, c, PLAZA.x + x, PLAZA.y + y, 1, 1);
     }
   }
 }

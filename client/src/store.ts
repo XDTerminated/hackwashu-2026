@@ -22,6 +22,7 @@ export const store: Snapshot & { connected: boolean } = {
   choreOptIn: {},
   friendship: {},
   layout: {},
+  devMode: false,
   connected: false,
 };
 
@@ -127,6 +128,16 @@ export function applyEvent(e: SeqEvent) {
       store.decos.push(e.deco);
       store.coins = e.coins;
       break;
+    case "lantern_moved": {
+      const l = store.lanterns.find((l) => l.id === e.id);
+      if (l) Object.assign(l, { x: e.x, y: e.y });
+      break;
+    }
+    case "deco_toggled": {
+      const d = store.decos.find((d) => d.id === e.id);
+      if (d) d.off = e.off;
+      break;
+    }
     case "deco_moved": {
       const d = store.decos.find((d) => d.id === e.id);
       if (d) Object.assign(d, { x: e.x, y: e.y });

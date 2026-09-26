@@ -182,11 +182,16 @@ export interface Lantern {
   villager: VillagerId;
   summary: string;
   at: number;
+  /** Where the player moved it; otherwise it stands on the ring around the plaza. */
+  x?: number;
+  y?: number;
 }
 
 export interface Deco {
   id: string;
   item: string;
+  /** Lights only: switched off by the player (on by default). */
+  off?: boolean;
   x: number;
   y: number;
 }
@@ -235,6 +240,8 @@ export interface Snapshot {
   friendship: Partial<Record<VillagerId, number>>;
   /** Buildings the player has moved off their starting spot. */
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
+  /** Playing on the dev showcase save (everything unlocked) instead of the real one. */
+  devMode: boolean;
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -263,12 +270,16 @@ export type GameEvent =
   | { type: "building_built"; building: BuildingId; coins: number }
   | { type: "deco_placed"; deco: Deco; coins: number }
   | { type: "deco_moved"; id: string; x: number; y: number }
+  | { type: "deco_toggled"; id: string; off: boolean }
+  | { type: "lantern_moved"; id: string; x: number; y: number }
   | { type: "building_moved"; building: BuildingId; x: number; y: number }
   | { type: "deco_sold"; id: string; refund: number; coins: number }
   | { type: "phone"; direction: "in" | "out"; text: string }
   /** A text-message chat with a villager (MoonPad or real phone). Chats never do real work. */
   | { type: "text"; villager: VillagerId; direction: "in" | "out"; text: string; via: "moonpad" | "phone" }
   | { type: "friendship"; villager: VillagerId; points: number; hearts: number; levelUp?: boolean }
+  /** A villager's happiness changed because of decorations around their home. */
+  | { type: "happiness"; villager: VillagerId; score: number; hearts: number; levelUp?: boolean; gained?: { item: string; loved: boolean } }
   | { type: "connections"; connections: Connections }
   | { type: "quest"; progress: Progress; completed?: string; story?: string; bonus?: number; coins: number }
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean }
@@ -291,6 +302,10 @@ export type ClientMessage =
   | { type: "move_deco"; id: string; x: number; y: number }
   | { type: "move_building"; building: BuildingId; x: number; y: number }
   | { type: "sell_deco"; id: string }
+  | { type: "toggle_deco"; id: string }
+  /** Switch to (or back from) the dev showcase save. */
+  | { type: "dev_mode"; on: boolean }
+  | { type: "move_lantern"; id: string; x: number; y: number }
   | { type: "connect_canvas"; token: string; baseUrl?: string }
   | { type: "use_sandbox"; service: Service }
   | { type: "clear_chore"; id: string }

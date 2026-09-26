@@ -33,136 +33,24 @@ export interface BuildingSpot {
   fh: number;
   /** Where villagers stand to use it, relative to (x, y). */
   door: { dx: number; dy: number };
+  /** How tall the building's sprite stands (for keeping things from spawning behind it). */
+  tall: number;
 }
 
 const CX = WORLD_W / 2;
 const CY = WORLD_H / 2;
 
-/** Where every path starts — the central plaza. */
-export const PLAZA = { x: CX, y: CY + 70 };
-
-/** Every building sits on one circle around the plaza, evenly spaced, clockwise from north. */
-export const RING_RADIUS = 300;
-const RING: BuildingId[] = ["player_house", "library", "rocket_pad", "clock_tower", "observatory", "post_office", "rabbit_burrow"];
-
-function onRing(b: BuildingId) {
-  const a = -Math.PI / 2 + (RING.indexOf(b) / RING.length) * Math.PI * 2;
-  return { x: Math.round(PLAZA.x + Math.cos(a) * RING_RADIUS), y: Math.round(PLAZA.y + Math.sin(a) * RING_RADIUS) };
-}
-
-const spot = (b: BuildingId, texture: string, fw: number, fh: number, door: { dx: number; dy: number }): BuildingSpot => ({ ...onRing(b), texture, fw, fh, door });
-const PO = onRing("post_office");
-
-export const SPOTS: Record<BuildingId, BuildingSpot> = {
-  player_house: spot("player_house", "b_player_house", 22, 18, { dx: 0, dy: 14 }),
-  library: spot("library", "b_library", 28, 20, { dx: 0, dy: 14 }),
-  rocket_pad: spot("rocket_pad", "b_rocket_pad", 26, 10, { dx: -40, dy: 6 }),
-  clock_tower: spot("clock_tower", "b_clock_tower", 16, 14, { dx: 0, dy: 14 }),
-  observatory: spot("observatory", "b_observatory", 24, 18, { dx: 0, dy: 14 }),
-  post_office: spot("post_office", "b_post_office", 28, 20, { dx: 0, dy: 14 }),
-  rabbit_burrow: spot("rabbit_burrow", "b_rabbit_burrow", 24, 16, { dx: 0, dy: 12 }),
-  // A prop beside the Post Office (on the outer side, clear of its path), not its own ring slot.
-  mailbox: { x: PO.x - 50, y: PO.y + 6, texture: "b_mailbox", fw: 5, fh: 4, door: { dx: 12, dy: 10 } },
-};
-
-/** The ship you arrived in: parked just outside the ring, between your house and the Rabbit's. */
-export const LANDING = (() => {
-  const a = -Math.PI / 2 - Math.PI / RING.length;
-  return { x: Math.round(PLAZA.x + Math.cos(a) * (RING_RADIUS + 130)), y: Math.round(PLAZA.y + Math.sin(a) * (RING_RADIUS + 130)) };
-})();
-
-/** Lanterns from finished tasks are planted in a ring around the plaza. */
-export function lanternSpot(i: number): { x: number; y: number } {
-  const ring = Math.floor(i / 16);
-  const k = i % 16;
-  const a = (k / 16) * Math.PI * 2 + ring * 0.2;
-  const rx = 150 + ring * 34;
-  const ry = 92 + ring * 22;
-  return { x: CX + Math.cos(a) * rx, y: CY + 70 + Math.sin(a) * ry };
-}
-
-
-/** Solar lamps ringing the plaza and standing by each doorway. */
-export function lampSpots(built: (b: BuildingId) => boolean = () => true): { x: number; y: number; building?: BuildingId }[] {
-  const out: { x: number; y: number; building?: BuildingId }[] = [];
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-    out.push({ x: PLAZA.x + Math.cos(a) * 52, y: PLAZA.y + Math.sin(a) * 46 });
-  }
-  for (const [b, s] of Object.entries(SPOTS) as [BuildingId, BuildingSpot][]) {
-    if (b === "mailbox" || !built(b)) continue;
-    out.push({ ...besideDoor(b, -1), building: b });
-  }
-  return out;
-}
-
-/** True if (x, y) is inside any building's solid footprint (with a margin). */
-export function nearBuilding(x: number, y: number, margin = 0): boolean {
-  return Object.values(SPOTS).some((s) => x > s.x - s.fw - margin && x < s.x + s.fw + margin && y > s.y - s.fh - margin - 40 && y < s.y + margin + 16);
-}
-
-type Pt = { x: number; y: number };
-
-/**
- * A building's path, from the plaza's rim to its door. Doors face south, so
- * for buildings below the plaza it doglegs around the side instead of running
- * under the house.
- */
-export function pathPoints(b: BuildingId): Pt[] {
-  const s = SPOTS[b];
-  const door = { x: s.x + s.door.dx, y: s.y + s.door.dy };
-  const behind = s.y - s.fh > PLAZA.y;
-  const via = behind ? { x: s.x + (PLAZA.x < s.x ? -1 : 1) * (s.fw + 14), y: door.y } : null;
-  const first = via ?? door;
-  const len = Math.hypot(first.x - PLAZA.x, first.y - PLAZA.y) || 1;
-  const start = { x: PLAZA.x + ((first.x - PLAZA.x) / len) * 38, y: PLAZA.y + ((first.y - PLAZA.y) / len) * 38 };
-  return via ? [start, via, door] : [start, door];
-}
-
-function distToPath(b: BuildingId, x: number, y: number): number {
-  const pts = pathPoints(b);
-  let best = Infinity;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i];
-    const c = pts[i + 1];
-    const l2 = (c.x - a.x) ** 2 + (c.y - a.y) ** 2 || 1;
-    const t = Math.max(0, Math.min(1, ((x - a.x) * (c.x - a.x) + (y - a.y) * (c.y - a.y)) / l2));
-    best = Math.min(best, Math.hypot(x - (a.x + t * (c.x - a.x)), y - (a.y + t * (c.y - a.y))));
-  }
-  return best;
-}
-
-/**
- * A spot in front of a building's door, to its left (-1) or right (+1) —
- * where lamps and doorbells go. Steps forward if it would sit on the path.
- */
-export function besideDoor(b: BuildingId, side: -1 | 1): Pt {
-  const s = SPOTS[b];
-  const p = { x: s.x + s.door.dx + side * 24, y: s.y + s.door.dy + 4 };
-  for (let i = 0; i < 4 && distToPath(b, p.x, p.y) < 10; i++) p.y += 10;
-  return p;
-}
-
 // ---------------------------------------------------------------- tiles
-// Anything you can move (buildings, plots, decorations) snaps to the 16px tile
-// grid and takes up a footprint of whole tiles. Nothing may share a tile.
-// Buildings also keep the row in front of their door clear.
+// Everything on the map sits on the 16px tile grid and takes up a footprint of
+// whole tiles; nothing may share a tile. Positions are bottom-center points: a
+// thing an even number of tiles wide is centered on a tile line, an odd one on
+// a tile's middle, and its base always sits on a tile line.
 
 export interface Rect {
   x: number;
   y: number;
   w: number;
   h: number;
-}
-
-/** Where the player has moved buildings to (unlisted ones stay on the ring). */
-export type Layout = Partial<Record<BuildingId, { x: number; y: number }>>;
-
-const DEFAULT_POS = Object.fromEntries(Object.entries(SPOTS).map(([b, s]) => [b, { x: s.x, y: s.y }])) as Record<BuildingId, { x: number; y: number }>;
-
-/** Move buildings to where the save says they are. SPOTS is read live everywhere. */
-export function applyLayout(layout: Layout) {
-  for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], layout[b] ?? DEFAULT_POS[b]);
 }
 
 /** Snap a bottom-center point so something `wTiles` wide lines up with the grid. */
@@ -178,28 +66,277 @@ export function footprint(x: number, y: number, w: number, h: number, apron = 0)
   return { x: x - (w * TILE) / 2, y: y - h * TILE, w: w * TILE, h: (h + apron) * TILE };
 }
 
+/** The single tile something small (a lamp, a doorbell, a lantern) stands on. */
+export function tileAt(p: { x: number; y: number }): Rect {
+  return footprint(p.x, p.y, 1, 1);
+}
+
+export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Where every path starts: the central plaza (its center sits on a tile corner). */
+export const PLAZA = { x: Math.round(CX / TILE) * TILE, y: Math.round((CY + 70) / TILE) * TILE };
+
+/** The plaza's radius (its paving; the grand fountain stands in the middle). */
+export const PLAZA_R = 120;
+
+/** Every building starts on one circle around the plaza, evenly spaced, clockwise from north. */
+export const RING_RADIUS = 300;
+const RING: BuildingId[] = ["player_house", "library", "rocket_pad", "clock_tower", "observatory", "post_office", "rabbit_burrow"];
+
+function onRing(b: BuildingId) {
+  const a = -Math.PI / 2 + (RING.indexOf(b) / RING.length) * Math.PI * 2;
+  return { x: Math.round(PLAZA.x + Math.cos(a) * RING_RADIUS), y: Math.round(PLAZA.y + Math.sin(a) * RING_RADIUS) };
+}
+
+const spot = (b: BuildingId, texture: string, fw: number, fh: number, tall: number, door: { dx: number; dy: number }): BuildingSpot => ({ ...onRing(b), texture, fw, fh, tall, door });
+
+export const SPOTS: Record<BuildingId, BuildingSpot> = {
+  player_house: spot("player_house", "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
+  library: spot("library", "b_library", 60, 40, 120, { dx: 0, dy: 14 }),
+  rocket_pad: spot("rocket_pad", "b_rocket_pad", 52, 24, 132, { dx: 0, dy: 14 }),
+  clock_tower: spot("clock_tower", "b_clock_tower", 28, 28, 180, { dx: 0, dy: 14 }),
+  observatory: spot("observatory", "b_observatory", 52, 40, 124, { dx: 0, dy: 14 }),
+  post_office: spot("post_office", "b_post_office", 52, 40, 116, { dx: 0, dy: 14 }),
+  rabbit_burrow: spot("rabbit_burrow", "b_rabbit_burrow", 48, 28, 96, { dx: 0, dy: 12 }),
+  mailbox: { x: 0, y: 0, texture: "b_mailbox", fw: 5, fh: 4, tall: 24, door: { dx: 12, dy: 10 } },
+};
+
 export function buildingTiles(b: BuildingId): { w: number; h: number } {
   const s = SPOTS[b];
   return { w: Math.max(1, Math.ceil((s.fw * 2) / TILE)), h: Math.max(1, Math.ceil(s.fh / TILE)) };
 }
 
-export function buildingFootprint(b: BuildingId, at: { x: number; y: number } = SPOTS[b]): Rect {
+// Snap the starting spots to the grid. The mailbox stands just outside the Post
+// Office's doorway lamp, on the same base line.
+for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snapToTiles(SPOTS[b].x, SPOTS[b].y, buildingTiles(b).w));
+Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
+
+/** The ship you arrived in: parked just outside the ring, between your house and the Rabbit's. */
+export const LANDING = (() => {
+  const a = -Math.PI / 2 - Math.PI / RING.length;
+  return snapToTiles(PLAZA.x + Math.cos(a) * (RING_RADIUS + 130), PLAZA.y + Math.sin(a) * (RING_RADIUS + 130), 2);
+})();
+
+/** Lanterns from finished tasks are planted on a ring of tiles around the plaza. */
+export function lanternSpot(i: number): { x: number; y: number } {
+  const ring = Math.floor(i / 16);
+  const k = i % 16;
+  const a = (k / 16) * Math.PI * 2 + ring * 0.2;
+  const rx = 205 + ring * 26;
+  const ry = 184 + ring * 20;
+  return snapToTiles(PLAZA.x + Math.cos(a) * rx, PLAZA.y + Math.sin(a) * ry, 1);
+}
+
+/** Where a task lantern stands: where the player put it, or its slot on the ring. */
+export function lanternAt(l: { x?: number; y?: number }, i: number): { x: number; y: number } {
+  return l.x !== undefined && l.y !== undefined ? { x: l.x, y: l.y } : lanternSpot(i);
+}
+
+/** Solar lamps: around the plaza, and beside each built doorway. */
+export function lampSpots(built: (b: BuildingId) => boolean = () => true): { x: number; y: number; building?: BuildingId }[] {
+  const out: { x: number; y: number; building?: BuildingId }[] = plazaRing().lamps.map((p) => ({ ...p }));
+  for (const b of Object.keys(SPOTS) as BuildingId[]) {
+    if (b === "mailbox" || !built(b)) continue;
+    out.push({ ...besideDoor(b, -1), building: b });
+  }
+  return out;
+}
+
+/** True if (x, y) is inside any building's solid footprint (with a margin). */
+export function nearBuilding(x: number, y: number, margin = 0): boolean {
+  return Object.values(SPOTS).some((s) => x > s.x - s.fw - margin && x < s.x + s.fw + margin && y > s.y - s.tall - margin && y < s.y + margin + 16);
+}
+
+type Pt = { x: number; y: number };
+
+/**
+ * A building's path, from the plaza's rim to its door. Doors face south, so
+ * for buildings below the plaza it doglegs around the side instead of running
+ * under the house.
+ */
+export function pathPoints(b: BuildingId, at: Pt = SPOTS[b]): Pt[] {
+  const s = { ...SPOTS[b], ...at };
+  const door = { x: s.x + s.door.dx, y: s.y + s.door.dy };
+  const behind = s.y - s.fh > PLAZA.y;
+  const via = behind ? { x: s.x + (PLAZA.x < s.x ? -1 : 1) * (s.fw + 14), y: door.y } : null;
+  const first = via ?? door;
+  const len = Math.hypot(first.x - PLAZA.x, first.y - PLAZA.y) || 1;
+  const start = { x: PLAZA.x + ((first.x - PLAZA.x) / len) * (PLAZA_R + 2), y: PLAZA.y + ((first.y - PLAZA.y) / len) * (PLAZA_R + 2) };
+  return via ? [start, via, door] : [start, door];
+}
+
+function distToPath(b: BuildingId, x: number, y: number, at: Pt): number {
+  const pts = pathPoints(b, at);
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const c = pts[i + 1];
+    const l2 = (c.x - a.x) ** 2 + (c.y - a.y) ** 2 || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * (c.x - a.x) + (y - a.y) * (c.y - a.y)) / l2));
+    best = Math.min(best, Math.hypot(x - (a.x + t * (c.x - a.x)), y - (a.y + t * (c.y - a.y))));
+  }
+  return best;
+}
+
+/**
+ * The tile just outside a building's footprint, left (-1) or right (+1), in
+ * the row in front of its door: its doorway lamp and doorbell go here. Steps a
+ * row forward if its path runs through that tile.
+ */
+export function besideDoor(b: BuildingId, side: -1 | 1, at: Pt = SPOTS[b]): Pt {
+  const s = { ...SPOTS[b], ...at };
+  const p = { x: s.x + side * ((buildingTiles(b).w * TILE) / 2 + TILE / 2), y: s.y + TILE };
+  for (let i = 0; i < 3 && distToPath(b, p.x, p.y - TILE / 2, at) < 12; i++) p.y += TILE;
+  return p;
+}
+
+/**
+ * The plaza's rim furniture, placed in the gaps between the paths that leave
+ * the plaza (so nothing ever blocks a path): a grand lamppost on the rim, and
+ * a marble obelisk standing just outside it. The paving itself stays open.
+ * Recomputed as buildings move.
+ */
+export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
+  const angles = (Object.keys(SPOTS) as BuildingId[])
+    .filter((b) => b !== "mailbox")
+    .map((b) => {
+      const p = pathPoints(b)[0];
+      return Math.atan2(p.y - PLAZA.y, p.x - PLAZA.x);
+    });
+  angles.push(Math.atan2(LANDING.y - PLAZA.y, LANDING.x - PLAZA.x));
+  angles.sort((a, b) => a - b);
+  const lamps: Pt[] = [];
+  const obelisks: Pt[] = [];
+  const at = (a: number, r: number) => snapToTiles(PLAZA.x + Math.cos(a) * r, PLAZA.y + Math.sin(a) * r + 8, 1);
+  angles.forEach((a, i) => {
+    const next = i + 1 < angles.length ? angles[i + 1] : angles[0] + Math.PI * 2;
+    const gap = next - a;
+    const mid = a + gap / 2;
+    lamps.push(at(mid, PLAZA_R - 6));
+    if (gap > 0.5) obelisks.push(at(mid, PLAZA_R + 18));
+  });
+  return { lamps, obelisks };
+}
+
+/** Where the player has moved buildings to (unlisted ones stay on the ring). */
+export type Layout = Partial<Record<BuildingId, { x: number; y: number }>>;
+
+const DEFAULT_POS = Object.fromEntries(Object.entries(SPOTS).map(([b, s]) => [b, { x: s.x, y: s.y }])) as Record<BuildingId, { x: number; y: number }>;
+
+/** Move buildings to where the save says they are. SPOTS is read live everywhere. */
+export function applyLayout(layout: Layout) {
+  for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], layout[b] ?? DEFAULT_POS[b]);
+}
+
+/** The building's own tiles plus the row in front of its door (kept clear for the door). */
+export function buildingFootprint(b: BuildingId, at: Pt = SPOTS[b]): Rect {
   const t = buildingTiles(b);
   return footprint(at.x, at.y, t.w, t.h, b === "mailbox" ? 0 : 1);
 }
 
-export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+/** Every tile a building claims: its footprint, and the tiles of its doorway lamp and doorbell. */
+export function buildingRects(b: BuildingId, at: Pt = SPOTS[b]): Rect[] {
+  const rects = [buildingFootprint(b, at)];
+  if (b !== "mailbox") rects.push(tileAt(besideDoor(b, -1, at)), tileAt(besideDoor(b, 1, at)));
+  return rects;
+}
 
-/** Ground nothing can go on: the plaza and the ship you landed in. */
+/** Ground nothing can go on: the plaza (with its lamps) and the ship you landed in. */
 export const RESERVED: Rect[] = [
-  { x: PLAZA.x - 56, y: PLAZA.y - 48, w: 112, h: 96 },
-  { x: LANDING.x - 24, y: LANDING.y - 24, w: 48, h: 40 },
+  // the round plaza (with its rim lamps and the obelisks just outside), as an octagon
+  { x: PLAZA.x - 152, y: PLAZA.y - 80, w: 304, h: 160 },
+  { x: PLAZA.x - 120, y: PLAZA.y - 120, w: 240, h: 240 },
+  { x: PLAZA.x - 80, y: PLAZA.y - 152, w: 160, h: 304 },
+  footprint(LANDING.x, LANDING.y, 2, 2),
 ];
 
-/** Every tile of `r` is on the island and clear of `others` and reserved ground. */
-export function canOccupy(r: Rect, others: Rect[]): boolean {
-  for (let y = r.y + TILE / 2; y < r.y + r.h; y += TILE) {
-    for (let x = r.x + TILE / 2; x < r.x + r.w; x += TILE) if (!inIslandXY(x, y)) return false;
+/** Every tile of every rect is on the island and clear of `others` and reserved ground. */
+export function canOccupy(rects: Rect | Rect[], others: Rect[]): boolean {
+  for (const r of Array.isArray(rects) ? rects : [rects]) {
+    for (let y = r.y + TILE / 2; y < r.y + r.h; y += TILE) {
+      for (let x = r.x + TILE / 2; x < r.x + r.w; x += TILE) if (!inIslandXY(x, y)) return false;
+    }
+    if ([...RESERVED, ...others].some((o) => overlaps(r, o))) return false;
   }
-  return ![...RESERVED, ...others].some((o) => overlaps(r, o));
+  return true;
+}
+
+// ---------------------------------------------------------------- moon rocks
+// Boulders, crystal outcrops, spires and arches scattered over the island, plus
+// little rock gardens framing the plaza. Deterministic (same island every
+// load, on client and server alike), on the grid, and kept clear of the plaza,
+// buildings, paths and task lanterns. They take up their tiles like anything else.
+
+export type RockKind = "small" | "big" | "crystal" | "spire" | "arch";
+export const ROCK_TILES: Record<RockKind, number> = { small: 1, big: 2, crystal: 1, spire: 1, arch: 3 };
+export interface Rock {
+  kind: RockKind;
+  x: number;
+  y: number;
+}
+
+const noise = (x: number, y: number, seed: number) => {
+  const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+  return s - Math.floor(s);
+};
+
+function segDist(px: number, py: number, a: Pt, c: Pt) {
+  const l2 = (c.x - a.x) ** 2 + (c.y - a.y) ** 2 || 1;
+  const t = Math.max(0, Math.min(1, ((px - a.x) * (c.x - a.x) + (py - a.y) * (c.y - a.y)) / l2));
+  return Math.hypot(px - (a.x + t * (c.x - a.x)), py - (a.y + t * (c.y - a.y)));
+}
+
+const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 });
+
+let rockCache: { key: string; rocks: Rock[] } | null = null;
+
+/** Every rock on the island. `avoid`: things already placed (decorations, lanterns) that rocks must not sit on. */
+export function rockSpots(avoid: Rect[] = []): Rock[] {
+  const key = JSON.stringify([Object.values(SPOTS).map((s) => [s.x, s.y]), avoid.map((r) => [r.x, r.y, r.w, r.h])]);
+  if (rockCache?.key === key) return rockCache.rocks;
+
+  const keepOut: Rect[] = [...RESERVED.map((r) => grow(r, TILE)), ...avoid.map((r) => grow(r, TILE))];
+  const paths: Pt[][] = [[PLAZA, { x: LANDING.x, y: LANDING.y + 12 }]];
+  for (const b of Object.keys(SPOTS) as BuildingId[]) {
+    for (const at of [SPOTS[b], DEFAULT_POS[b]]) {
+      const s = { ...SPOTS[b], ...at };
+      for (const r of buildingRects(b, at)) keepOut.push(grow(r, TILE));
+      keepOut.push({ x: s.x - s.fw - 16, y: s.y - s.tall - 8, w: s.fw * 2 + 32, h: s.tall + 8 });
+      if (b !== "mailbox") paths.push(pathPoints(b, at));
+    }
+  }
+  for (let i = 0; i < 32; i++) keepOut.push(grow(tileAt(lanternSpot(i)), TILE));
+
+  const rocks: Rock[] = [];
+  const taken: Rect[] = [];
+  const tryPlace = (kind: RockKind, x: number, y: number) => {
+    const w = ROCK_TILES[kind];
+    const p = snapToTiles(x, y, w);
+    const r = footprint(p.x, p.y, w, 1);
+    for (let ty = r.y - TILE; ty < r.y + r.h + TILE; ty += TILE) {
+      for (let tx = r.x - TILE; tx < r.x + r.w + TILE; tx += TILE) if (!inIslandXY(tx + TILE / 2, ty + TILE / 2)) return;
+    }
+    if (keepOut.some((k) => overlaps(k, r)) || taken.some((t) => overlaps(grow(t, TILE), r))) return;
+    const cx = p.x;
+    const cy = p.y - TILE / 2;
+    if (paths.some((pts) => pts.some((a, i) => i < pts.length - 1 && segDist(cx, cy, a, pts[i + 1]) < 20 + (w * TILE) / 2))) return;
+    rocks.push({ kind, x: p.x, y: p.y });
+    taken.push(r);
+  };
+
+  // The wilds.
+  for (let ty = 2; ty < MAP_H - 2; ty++) {
+    for (let tx = 2; tx < MAP_W - 2; tx++) {
+      if (noise(tx, ty, 41) > 0.04) continue;
+      const k = noise(tx, ty, 42);
+      const kind: RockKind = k < 0.34 ? "small" : k < 0.6 ? "big" : k < 0.78 ? "crystal" : k < 0.93 ? "spire" : "arch";
+      tryPlace(kind, tx * TILE + TILE / 2, (ty + 1) * TILE);
+    }
+  }
+  rockCache = { key, rocks };
+  return rocks;
+}
+
+export function rockRect(r: Rock): Rect {
+  return footprint(r.x, r.y, ROCK_TILES[r.kind], 1);
 }

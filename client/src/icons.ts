@@ -184,21 +184,19 @@ const ICONS: Record<string, string[]> = {
     "KYyYyYK.......",
     ".KKKKK........",
   ],
-  arrange: [
-    "......KK......",
-    ".....KWWK.....",
-    "....KWWWWK....",
-    "...KKKWWKKK...",
-    "..KK..WW..KK..",
-    ".KWK..WW..KWK.",
-    "KWWWWWWWWWWWWK",
-    "KWWWWWWWWWWWWK",
-    ".KWK..WW..KWK.",
-    "..KK..WW..KK..",
-    "...KKKWWKKK...",
-    "....KWWWWK....",
-    ".....KWWK.....",
-    "......KK......",
+  light: [
+    ".....KKKK.....",
+    "....KYYYYK....",
+    "...KYWWYYyK...",
+    "...KYWYYYyK...",
+    "...KYYYYYyK...",
+    "...KYYYYYyK...",
+    "....KYYYyK....",
+    ".....KYyK.....",
+    ".....KGGK.....",
+    ".....KssK.....",
+    ".....KGGK.....",
+    ".....KKKK.....",
   ],
   idle: [
     "..............",
@@ -227,5 +225,31 @@ export const VERB_ICON: Record<string, string> = {
   POP: "clod_icon",
   GRAB: "icon_grab_0",
   SWEEP: "icon_sweep_0",
-  ARRANGE: "icon_arrange_0",
+  CALL: "icon_call_0",
+  "TURN ON": "icon_light_0",
+  "TURN OFF": "icon_light_0",
+};
+
+/** Tiny 7x7 villager heads, for the minimap and the roster (texture `vicon_<id>_0`). */
+export const VILLAGER_ICONS: Record<string, PixelSprite> = {
+  jade_rabbit: {
+    palette: { K: "#3b2a3a", W: "#fff6e6", P: "#e89aa8", G: "#7fd0ad" },
+    frames: [[".K...K.", "KWK.KWK", "KWKKKWK", "KWWWWWK", "KWKWKWK", "KGWPWGK", ".KKKKK."]],
+  },
+  postmaster: {
+    palette: { K: "#3b2a3a", B: "#5b78c4", W: "#fff6e6", Y: "#f5c542" },
+    frames: [["K.....K", "KBKKKBK", "KBBBBBK", "KWKBKWK", "KBBYBBK", "KBBBBBK", ".KKKKK."]],
+  },
+  timekeeper: {
+    palette: { K: "#3b2a3a", Y: "#d9a441", W: "#fff6e6" },
+    frames: [[".KKKKK.", "KYWWWYK", "KWWKWWK", "KWWKKWK", "KWWWWWK", "KYWWWYK", ".KKKKK."]],
+  },
+  scholar: {
+    palette: { K: "#3b2a3a", N: "#9a6a55", P: "#e89aa8", R: "#c8323a" },
+    frames: [["KKKKKKK", ".KKKKKR", ".KNNNKR", "KNKNKNK", "KNNPNNK", "KNNNNNK", ".KKKKK."]],
+  },
+  stargazer: {
+    palette: { K: "#3b2a3a", V: "#9a7ff0", W: "#fff6e6", Y: "#f5c542" },
+    frames: [["Y.....Y", ".K...K.", ".KKKKK.", "KVVVVVK", "KVWVWVK", "KVVVVVK", ".KKKKK."]],
+  },
 };

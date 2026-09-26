@@ -9,20 +9,14 @@ import {
   scholar,
   rocket,
 } from "./art";
-import { DECOR_ART_IDS, decorArt } from "./decorart";
-import { ICON_SPRITES } from "./icons";
-import {
-  drawClockTower,
-  drawLibrary,
-  drawMailbox,
-  drawObservatory,
-  drawPlayerHouse,
-  drawPlot,
-  drawPostOffice,
-  drawRabbitBurrow,
-  drawRocketPad,
-} from "./buildings";
-import { type Ctx, INK, box, disc, rect } from "./pix";
+import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
+import { ICON_SPRITES, VILLAGER_ICONS } from "./icons";
+import { decorById } from "../../shared/decor";
+import { drawMailbox, drawPlot } from "./buildings";
+import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawLaunchComplex, drawManor } from "./estate";
+import { SPOTS, TILE, buildingTiles } from "./layout";
+import type { BuildingId } from "../../shared/game";
+import { type Ctx, INK, box, disc, hash, rect } from "./pix";
 
 const CORAL = "#d97757";
 const CORAL_DARK = "#b85c3e";
@@ -88,6 +82,305 @@ function drawSpark(ctx: Ctx, size: number, rot: number, eyes: boolean) {
     rect(ctx, "#2a1712", ex, ey, 1, 2);
     rect(ctx, "#2a1712", ex2, ey, 1, 2);
   }
+}
+
+// ---------------------------------------------------------------- the plaza
+
+const P_STONE = { base: "#b8b0c4", dark: "#8a8298", light: "#dcd6e4" };
+const P_WATER = { base: "#7fc6e6", dark: "#5aa7cf", light: "#dff4fb" };
+
+const MARBLE = { base: "#e2dce8", dark: "#b8b0c4", light: "#f6f2fa" };
+const GOLDC = { base: "#f5c542", dark: "#c99a3e", light: "#fff1b0" };
+
+/** A marble bowl: front wall, gold-lipped rim, water. */
+function bowl(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, wall: number) {
+  disc(ctx, INK, cx, cy + wall + 0.5, rx + 1, ry + 1.5);
+  disc(ctx, MARBLE.dark, cx, cy + wall, rx, ry);
+  disc(ctx, MARBLE.base, cx, cy + wall - 1, rx, ry - 1, cy + wall);
+  disc(ctx, INK, cx, cy, rx + 1, ry + 1);
+  disc(ctx, GOLDC.base, cx, cy, rx, ry);
+  disc(ctx, MARBLE.light, cx, cy, rx - 1, ry - 1);
+  disc(ctx, INK, cx, cy + 0.5, rx - 3.5, ry - 2.6);
+  disc(ctx, P_WATER.base, cx, cy + 0.5, rx - 4.5, ry - 3.4);
+  disc(ctx, P_WATER.dark, cx + 2, cy + 1.5, (rx - 4.5) * 0.55, (ry - 3.4) * 0.45);
+}
+
+/** The Earthrise Fountain: three tiers of marble and gold under a turning spark (120 x 100). */
+function drawPlazaFountain(ctx: Ctx, f: number) {
+  bowl(ctx, 60, 82, 57, 13, 5);
+  // lily pads in the great basin
+  for (const [x, y] of [[20, 84], [98, 80], [34, 90], [84, 90]] as const) {
+    disc(ctx, "#3f8a4a", x, y, 3.5, 2);
+    disc(ctx, "#5fb86a", x - 0.5, y - 0.5, 2.5, 1.2);
+    rect(ctx, "#f07a9a", x + 1, y - 1, 1, 1);
+  }
+  // gold spouts on the rim, arcing water toward the middle
+  for (const [x, dir] of [[8, 1], [112, -1]] as const) {
+    rect(ctx, INK, x - 3, 72, 7, 8);
+    rect(ctx, GOLDC.base, x - 2, 73, 5, 6);
+    rect(ctx, GOLDC.light, x - 2, 73, 2, 1);
+    for (let i = 0; i < 9; i++) {
+      if ((i + f) % 3 === 0) continue;
+      const t = i / 8;
+      rect(ctx, P_WATER.light, Math.round(x + dir * (4 + t * 22)), Math.round(72 - Math.sin(t * Math.PI) * 10 + t * 6), 2, 1);
+    }
+  }
+  // middle tier
+  rect(ctx, INK, 51, 52, 18, 30);
+  rect(ctx, MARBLE.base, 52, 52, 16, 30);
+  rect(ctx, MARBLE.light, 52, 52, 3, 30);
+  rect(ctx, MARBLE.dark, 65, 52, 3, 30);
+  for (const y of [58, 70]) rect(ctx, GOLDC.base, 52, y, 16, 2);
+  bowl(ctx, 60, 50, 30, 7, 3);
+  // upper tier
+  rect(ctx, INK, 55, 28, 10, 22);
+  rect(ctx, MARBLE.base, 56, 28, 8, 22);
+  rect(ctx, MARBLE.light, 56, 28, 2, 22);
+  rect(ctx, GOLDC.base, 56, 38, 8, 1);
+  bowl(ctx, 60, 28, 16, 4.5, 2);
+  // water falling from the tiers
+  for (let y = 0; y < 30; y++) {
+    if ((y + f * 2) % 5 === 4) continue;
+    const yy = 54 + y;
+    rect(ctx, P_WATER.light, 31, yy, 1, 1);
+    rect(ctx, P_WATER.base, 32, yy, 1, 1);
+    rect(ctx, P_WATER.light, 88, yy, 1, 1);
+    rect(ctx, P_WATER.base, 87, yy, 1, 1);
+  }
+  for (let y = 0; y < 18; y++) {
+    if ((y + f) % 4 === 3) continue;
+    rect(ctx, P_WATER.light, 45, 31 + y, 1, 1);
+    rect(ctx, P_WATER.light, 75, 31 + y, 1, 1);
+  }
+  // gold orb pedestal and the turning spark
+  disc(ctx, INK, 60, 25, 4.5, 3);
+  disc(ctx, GOLDC.base, 60, 25, 3.5, 2);
+  ctx.save();
+  ctx.translate(48, 0);
+  drawSpark(ctx, 25, (f * Math.PI) / 16, false);
+  ctx.restore();
+  // sparkles on the water
+  const glints = [[[22, 80], [70, 86], [96, 84], [50, 49]], [[40, 84], [88, 80], [26, 88], [68, 50]], [[58, 88], [30, 82], [104, 86], [56, 27]]][f];
+  for (const [x, y] of glints) rect(ctx, "#ffffff", x, y, 2, 1);
+}
+
+/** A marble obelisk with a gold tip and a glowing coral gem (18 x 58). */
+function drawObelisk(ctx: Ctx) {
+  rect(ctx, INK, 0, 48, 18, 10);
+  rect(ctx, MARBLE.base, 1, 49, 16, 8);
+  rect(ctx, MARBLE.light, 1, 49, 16, 1);
+  rect(ctx, GOLDC.base, 1, 52, 16, 1);
+  rect(ctx, MARBLE.dark, 1, 56, 16, 1);
+  for (let y = 10; y < 48; y++) {
+    const half = Math.round(3 + ((y - 10) / 38) * 2.5);
+    rect(ctx, INK, 9 - half - 1, y, half * 2 + 2, 1);
+    rect(ctx, MARBLE.base, 9 - half, y, half * 2, 1);
+    rect(ctx, MARBLE.light, 9 - half, y, 1, 1);
+    rect(ctx, MARBLE.dark, 9 + half - 1, y, 1, 1);
+  }
+  for (let y = 2; y < 10; y++) {
+    const half = Math.round(((y - 2) / 8) * 3);
+    rect(ctx, INK, 9 - half - 1, y, half * 2 + 2, 1);
+    rect(ctx, GOLDC.base, 9 - half, y, Math.max(1, half * 2), 1);
+  }
+  rect(ctx, INK, 8, 0, 2, 2);
+  rect(ctx, GOLDC.base, 7, 30, 4, 1);
+  disc(ctx, INK, 9, 22, 2.8);
+  disc(ctx, CORAL, 9, 22, 1.8);
+  rect(ctx, CORAL_LIGHT, 8, 21, 1, 1);
+  rect(ctx, GOLDC.base, 7, 36, 4, 1);
+}
+
+/** A topiary ball in a terracotta pot with a gold ribbon (16 x 24). */
+function drawTopiary(ctx: Ctx) {
+  rect(ctx, INK, 3, 17, 10, 7);
+  rect(ctx, "#c9744a", 4, 18, 8, 5);
+  rect(ctx, "#e0935f", 4, 18, 8, 1);
+  rect(ctx, INK, 2, 16, 12, 2);
+  rect(ctx, "#e0935f", 3, 16, 10, 1);
+  rect(ctx, INK, 7, 12, 2, 5);
+  disc(ctx, INK, 8, 8, 7.5);
+  disc(ctx, "#3f8a4a", 8, 8, 6.5);
+  disc(ctx, "#5fae5a", 7, 7, 5);
+  disc(ctx, "#8fd07a", 5, 5, 2);
+  rect(ctx, GOLDC.base, 1, 9, 14, 1);
+  rect(ctx, GOLDC.dark, 7, 10, 2, 2);
+}
+
+/** A marble garden planter overflowing with flowers (44 x 24). */
+function drawPlazaGarden(ctx: Ctx) {
+  for (let i = 0; i < 44; i++) {
+    const x = 3 + Math.floor(hash(i, 1, 31) * 38);
+    const y = 1 + Math.floor(hash(i, 2, 31) * 10);
+    rect(ctx, hash(i, 3, 31) > 0.5 ? "#4f9e54" : "#6fbf6a", x, y + 1, 1, 13 - y);
+    rect(ctx, ["#f07a9a", "#f5c542", "#cfe7ff", "#b7a4f0", CORAL, "#ffffff"][i % 6], x, y, i % 3 ? 1 : 2, 1);
+  }
+  rect(ctx, INK, 0, 13, 44, 11);
+  rect(ctx, MARBLE.base, 1, 15, 42, 8);
+  rect(ctx, MARBLE.light, 1, 15, 42, 1);
+  rect(ctx, GOLDC.base, 1, 18, 42, 1);
+  rect(ctx, MARBLE.dark, 1, 22, 42, 1);
+  rect(ctx, "#6b4a3a", 1, 14, 42, 1);
+}
+
+/**
+ * Formal grounds in front of an estate (flat, under everything): a marble
+ * forecourt with a gold border, clipped hedges down both sides and flowers.
+ */
+function drawGrounds(ctx: Ctx, w: number, h: number) {
+  const x0 = 14;
+  const x1 = w - 14;
+  rect(ctx, "#8a8298", x0, 0, x1 - x0, h - 6);
+  for (let y = 0; y < h - 7; y++) {
+    for (let x = x0 + 1; x < x1 - 1; x++) {
+      const row = Math.floor(y / 6);
+      const seam = y % 6 === 5 || (x + (row % 2 ? 5 : 0)) % 10 === 0;
+      rect(ctx, seam ? "#a49cb3" : hash(Math.floor((x + (row % 2 ? 5 : 0)) / 10), row, 3) > 0.5 ? "#d8d2e0" : "#cfc8d9", x, y, 1, 1);
+    }
+  }
+  rect(ctx, "#c99a3e", x0 + 1, h - 8, x1 - x0 - 2, 1);
+  rect(ctx, "#6f6880", x0, h - 7, x1 - x0, 1);
+  for (const [hx, dir] of [[2, 1], [w - 14, -1]] as const) {
+    rect(ctx, INK, hx, 0, 12, h - 6);
+    rect(ctx, "#3f8a4a", hx + 1, 0, 10, h - 7);
+    for (let y = 1; y < h - 8; y += 4) rect(ctx, "#5fae5a", hx + 2, y, 8, 2);
+    for (let y = 2; y < h - 8; y += 5) rect(ctx, ["#f07a9a", "#f5c542", "#cfe7ff"][y % 3], hx + 3 + ((y * 3) % 6), y, 1, 1);
+    // topiary at the front corner
+    disc(ctx, INK, hx + 6, h - 6, 6.5, 5.5);
+    disc(ctx, "#3f8a4a", hx + 6, h - 6, 5.5, 4.5);
+    disc(ctx, "#8fd07a", hx + 4 + (dir > 0 ? 0 : 1), h - 8, 2, 1.5);
+    rect(ctx, "#f5c542", hx + 1, h - 6, 11, 1);
+  }
+}
+
+// ---------------------------------------------------------------- moon rocks
+
+const MOONROCK = { deep: "#4f4862", dark: "#6f6880", base: "#9a93a8", light: "#bdb6cb", hi: "#d8d2e2" };
+
+/**
+ * Fill a mask with moon-rock shading (lit from the upper left) and outline it.
+ * `inside(x, y)` says which pixels are rock.
+ */
+function rockShape(ctx: Ctx, w: number, h: number, inside: (x: number, y: number) => boolean, seed: number) {
+  const m: boolean[][] = [];
+  for (let y = 0; y < h; y++) {
+    m.push([]);
+    for (let x = 0; x < w; x++) m[y].push(inside(x, y));
+  }
+  const at = (x: number, y: number) => y >= 0 && y < h && x >= 0 && x < w && m[y][x];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (m[y][x]) {
+        const edgeTL = !at(x - 1, y) || !at(x, y - 1);
+        const edgeBR = !at(x + 1, y) || !at(x, y + 1);
+        const n = hash(x >> 1, y >> 1, seed);
+        let c = n > 0.55 ? MOONROCK.base : MOONROCK.light;
+        if (x > w * 0.55 || y > h * 0.7) c = n > 0.5 ? MOONROCK.dark : MOONROCK.base;
+        if (edgeTL) c = MOONROCK.hi;
+        if (edgeBR) c = MOONROCK.deep;
+        rect(ctx, c, x, y, 1, 1);
+      } else if (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1)) {
+        rect(ctx, INK, x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function pit(ctx: Ctx, x: number, y: number, r: number) {
+  disc(ctx, MOONROCK.deep, x, y, r, r * 0.6);
+  disc(ctx, MOONROCK.dark, x + 0.5, y + 0.5, r * 0.7, r * 0.4);
+  rect(ctx, MOONROCK.hi, Math.round(x + r * 0.3), Math.round(y + r * 0.5), 2, 1);
+}
+
+/** A few chunky pebbles, faceted (three variants). */
+function drawRockSmall(ctx: Ctx, v: number) {
+  const variants: [number, number, number, number][][] = [
+    [[6, 9, 5.5, 4], [14, 10, 4.5, 3.4], [10, 6, 3.5, 3]],
+    [[8, 9, 6.5, 4.5], [16, 11, 3.2, 2.6]],
+    [[5, 10, 4, 3], [12, 8, 5, 4.5], [17, 11, 2.5, 2.2]],
+  ];
+  const stones = variants[v];
+  rockShape(ctx, 20, 15, (x, y) => stones.some(([cx, cy, rx, ry]) => {
+    const jag = (hash(Math.floor(x / 2), Math.floor(y / 2), 20 + v) - 0.5) * 0.35;
+    return ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 < 1 + jag;
+  }), 3 + v);
+  const [cx, cy] = stones[0];
+  rect(ctx, MOONROCK.deep, cx, cy - 1, 2, 1);
+}
+
+/** A big cratered boulder (three variants). */
+function drawRockBig(ctx: Ctx, v: number) {
+  const [rx, ry, sx, sy] = [[15, 10.5, 29, 20], [14, 11.5, 5, 21], [16, 9.5, 28, 11]][v];
+  rockShape(ctx, 36, 26, (x, y) => {
+    const jag = (hash(Math.floor(x / 3), v, 9) - 0.5) * 2.4;
+    return ((x - 17) / rx) ** 2 + ((y - 15 + jag) / ry) ** 2 < 1 || ((x - sx) / 5.5) ** 2 + ((y - sy) / 4.5) ** 2 < 1;
+  }, 5 + v);
+  pit(ctx, 21 - v * 3, 12, 3.5 - v * 0.5);
+  pit(ctx, 11 + v * 2, 17, 2.5);
+  for (let i = 0; i < 5; i++) rect(ctx, MOONROCK.deep, 14 + v * 3 + (i >> 1), 7 + i, 1, 1);
+}
+
+function prismC(ctx: Ctx, cx: number, by: number, hw: number, h: number, c: { light: string; base: string; dark: string }) {
+  for (let dx = -hw - 1; dx <= hw + 1; dx++) rect(ctx, INK, cx + dx, by - h - 1 + Math.round(Math.abs(dx) * 1.4), 1, h + 1 - Math.round(Math.abs(dx) * 1.4));
+  for (let dx = -hw; dx <= hw; dx++) {
+    const top = by - h + Math.round(Math.abs(dx) * 1.4);
+    rect(ctx, dx < 0 ? c.light : dx === 0 ? c.base : c.dark, cx + dx, top, 1, by - top);
+  }
+}
+
+function drawRockCrystal(ctx: Ctx) {
+  const CYAN = { light: "#bff6f2", base: "#6fe3e1", dark: "#3aa6b8" };
+  const VIOLET = { light: "#d7c9ff", base: "#a98ff0", dark: "#7a62c9" };
+  prismC(ctx, 9, 20, 2, 17, CYAN);
+  prismC(ctx, 4, 21, 1, 9, VIOLET);
+  prismC(ctx, 14, 21, 2, 11, CYAN);
+  rect(ctx, "#ffffff", 8, 7, 1, 2);
+  rockShape(ctx, 20, 28, (x, y) => y > 18 && ((x - 9.5) / 9) ** 2 + ((y - 23) / 4.5) ** 2 < 1, 7);
+}
+
+function drawRockSpire(ctx: Ctx) {
+  rockShape(ctx, 18, 36, (x, y) => {
+    if (y < 2) return false;
+    const half = 1.5 + ((y - 2) / 33) ** 0.8 * 7 + (hash(0, Math.floor(y / 3), 11) - 0.5) * 2;
+    const lean = (35 - y) * 0.08;
+    return Math.abs(x + 0.5 - 9 - lean) < half && y < 35;
+  }, 9);
+  for (const y of [12, 20, 27]) rect(ctx, MOONROCK.hi, 6, y, 4, 1);
+}
+
+function drawRockArch(ctx: Ctx) {
+  rockShape(ctx, 52, 40, (x, y) => {
+    const jag = (hash(Math.floor(x / 3), Math.floor(y / 4), 13) - 0.5) * 2.5;
+    const outer = ((x + 0.5 - 26) / 25) ** 2 + ((y + 0.5 - 40) / (37 + jag)) ** 2 < 1;
+    const inner = ((x + 0.5 - 26) / 13) ** 2 + ((y + 0.5 - 40) / 24) ** 2 < 1;
+    return outer && !inner && y < 39;
+  }, 13);
+  pit(ctx, 16, 12, 2.5);
+  pit(ctx, 36, 18, 2);
+  for (const [x, y] of [[8, 30], [44, 28], [22, 6]]) rect(ctx, "#6fe3e1", x, y, 1, 1);
+}
+
+/** An ornate plaza lamppost with a coral banner (14 x 30). */
+function drawGrandLamp(ctx: Ctx) {
+  rect(ctx, INK, 4, 26, 7, 4);
+  rect(ctx, "#5b5470", 5, 27, 5, 2);
+  rect(ctx, INK, 6, 7, 3, 20);
+  rect(ctx, "#5b5470", 7, 8, 1, 19);
+  for (const y of [12, 20]) rect(ctx, "#f5c542", 6, y, 3, 1);
+  // lantern head
+  rect(ctx, INK, 3, 0, 9, 2);
+  rect(ctx, INK, 3, 2, 9, 6);
+  rect(ctx, "#bff6f4", 4, 2, 7, 5);
+  rect(ctx, "#6fe3e1", 5, 4, 5, 2);
+  rect(ctx, "#f5c542", 5, 0, 5, 1);
+  // banner on a side arm
+  rect(ctx, INK, 8, 9, 5, 1);
+  rect(ctx, INK, 9, 10, 5, 10);
+  rect(ctx, CORAL, 10, 10, 3, 8);
+  rect(ctx, "#f5c542", 10, 12, 3, 1);
+  rect(ctx, INK, 11, 18, 1, 2);
+  rect(ctx, CORAL, 10, 18, 1, 1);
+  rect(ctx, CORAL, 12, 18, 1, 1);
 }
 
 /** The ship you arrived in, drawn at native size (twice a person's height). */
@@ -203,9 +496,12 @@ export function buildTextures(scene: Phaser.Scene) {
   registerSprite(scene, "scholar", scholar);
   registerSprite(scene, "rocket", rocket);
   for (const [name, sprite] of Object.entries(ICON_SPRITES)) registerSprite(scene, `icon_${name}`, sprite);
+  for (const [v, sprite] of Object.entries(VILLAGER_ICONS)) registerSprite(scene, `vicon_${v}`, sprite);
+  canvasTex(scene, "task_lantern", 16, 26, drawStoneLantern);
   for (const id of DECOR_ART_IDS) {
     const a = decorArt(id)!;
-    for (let f = 0; f < a.frames; f++) canvasTex(scene, `deco_${id}_${f}`, a.w, a.h, (ctx) => a.draw(ctx, f));
+    for (let f = 0; f < a.frames; f++) canvasTex(scene, `deco_${id}_${f}`, a.w, a.h, (ctx) => a.draw(ctx, f, true));
+    if (decorById(id)?.light) canvasTex(scene, `deco_${id}_off`, a.w, a.h, (ctx) => a.draw(ctx, 0, false));
   }
 
   // Baby clods — the Claude sunburst. Two rotations for a twinkle.
@@ -213,17 +509,34 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "clod_1", 15, 15, (c) => drawSpark(c, 15, Math.PI / 8, true));
   canvasTex(scene, "spark_logo", 24, 24, (c) => drawSpark(c, 24, 0, false));
 
-  canvasTex(scene, "b_player_house", 52, 48, drawPlayerHouse);
-  canvasTex(scene, "b_rabbit_burrow", 56, 40, drawRabbitBurrow);
-  canvasTex(scene, "b_post_office", 64, 56, drawPostOffice);
+  canvasTex(scene, "b_player_house", 112, 108, drawManor);
+  canvasTex(scene, "b_rabbit_burrow", 112, 96, drawHollow);
+  canvasTex(scene, "b_post_office", 112, 116, drawGrandPost);
   canvasTex(scene, "b_mailbox", 16, 24, drawMailbox);
-  canvasTex(scene, "b_clock_tower", 44, 88, drawClockTower);
-  canvasTex(scene, "b_rocket_pad", 64, 22, drawRocketPad);
-  canvasTex(scene, "b_observatory", 60, 60, drawObservatory);
-  canvasTex(scene, "b_library", 64, 56, drawLibrary);
-  canvasTex(scene, "b_plot", 48, 34, drawPlot);
+  canvasTex(scene, "b_clock_tower", 72, 180, drawGrandClock);
+  canvasTex(scene, "b_rocket_pad", 112, 132, drawLaunchComplex);
+  canvasTex(scene, "b_observatory", 112, 124, drawGrandObservatory);
+  canvasTex(scene, "b_library", 128, 120, drawGrandLibrary);
+  // A staked plot per building, the size of its footprint, and its formal grounds.
+  for (const b of Object.keys(SPOTS) as BuildingId[]) {
+    const t = buildingTiles(b);
+    if (b !== "mailbox") canvasTex(scene, `grounds_${b}`, (t.w + 4) * TILE, 44, (ctx) => drawGrounds(ctx, (t.w + 4) * TILE, 44));
+    canvasTex(scene, `plot_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawPlot(ctx, t.w * TILE, t.h * TILE + 16));
+  }
 
   canvasTex(scene, "ship", 28, 57, drawShip);
+  for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f));
+  canvasTex(scene, "obelisk", 18, 58, drawObelisk);
+  canvasTex(scene, "topiary", 16, 24, drawTopiary);
+  canvasTex(scene, "plaza_garden", 44, 24, drawPlazaGarden);
+  for (const v of [0, 1, 2]) {
+    canvasTex(scene, `rock_small_${v}`, 20, 15, (ctx) => drawRockSmall(ctx, v));
+    canvasTex(scene, `rock_big_${v}`, 36, 26, (ctx) => drawRockBig(ctx, v));
+  }
+  canvasTex(scene, "rock_crystal", 20, 28, drawRockCrystal);
+  canvasTex(scene, "rock_spire", 18, 36, drawRockSpire);
+  canvasTex(scene, "rock_arch", 52, 40, drawRockArch);
+  canvasTex(scene, "lamp_grand", 14, 30, drawGrandLamp);
   canvasTex(scene, "earth_s", 28, 28, (ctx) => drawEarth(ctx, 28));
   canvasTex(scene, "earth_l", 56, 56, (ctx) => drawEarth(ctx, 56));
   canvasTex(scene, "spark_plaza", 33, 33, (c) => drawSpark(c, 33, 0, false));
@@ -366,6 +679,7 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("walk-up", ["astro_4", "astro_3", "astro_5", "astro_3"], 8);
   mk("walk-side", ["astro_7", "astro_6", "astro_8", "astro_6"], 8);
   mk("clod-twinkle", ["clod_0", "clod_1"], 4);
+  mk("plaza-fountain", ["plaza_fountain_0", "plaza_fountain_1", "plaza_fountain_2"], 4);
   mk("jade_rabbit-idle", ["rabbit_0", "rabbit_1"], 1.5);
   mk("postmaster-idle", ["postmaster_0", "postmaster_0", "postmaster_0", "postmaster_1"], 2);
   mk("timekeeper-idle", ["timekeeper_0", "timekeeper_1"], 1);

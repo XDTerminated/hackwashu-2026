@@ -11,12 +11,12 @@ import {
 import { ClodActor, VillagerActor, puff } from "../actors";
 import { conversation, mutter } from "../chatter";
 import { ChoreView } from "../choreviews";
-import { decorFootprint, sellPrice } from "../../../shared/decor";
+import { LOVED_POINTS, decorFootprint, happinessFor, sellPrice, yardOf } from "../../../shared/decor";
 import type { Deco } from "../../../shared/game";
 import { itemById, type ShopItem } from "../items";
 import { shadowKey } from "../textures";
 import { Button, C, Label } from "../widgets";
-import { LANDING, SPOTS, TILE, WORLD_H, WORLD_W, besideDoor, buildingFootprint, buildingTiles, canOccupy, footprint, inIsland, inIslandXY, lanternSpot, snapToTiles, type Rect } from "../layout";
+import { LANDING, SPOTS, TILE, WORLD_H, WORLD_W, RESERVED, ROCK_TILES, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter, openTalk } from "../panel";
 import { closeMoonPad } from "../tablet";
@@ -55,8 +55,18 @@ interface Interactable {
   villager?: VillagerId;
 }
 
+/** Window centers on each estate's sprite (sprite pixels), for their warm glow. */
+const WINDOW_GLOWS: Partial<Record<BuildingId, [number, number][]>> = {
+  player_house: [[37, 43], [56, 43], [75, 43], [37, 85], [74, 85], [96, 55], [96, 79], [16, 76], [56, 24]],
+  rabbit_burrow: [[24, 72], [89, 70], [44, 55], [56, 80]],
+  post_office: [[16, 82], [96, 82], [22, 43], [40, 43], [74, 43], [92, 43], [56, 84]],
+  clock_tower: [[26, 114], [48, 114], [36, 158]],
+  observatory: [[32, 92], [80, 92], [56, 100]],
+  library: [[50, 40], [62, 40], [74, 40], [12, 60], [12, 86], [116, 60], [116, 86], [35, 82], [93, 82], [64, 74]],
+};
+
 /** Something picked up to be set down elsewhere: a new purchase, a placed decoration, or a building. */
-type Held = { kind: "new"; item: ShopItem } | { kind: "deco"; id: string; item: ShopItem } | { kind: "building"; b: BuildingId };
+type Held = { kind: "new"; item: ShopItem } | { kind: "deco"; id: string; item: ShopItem } | { kind: "building"; b: BuildingId } | { kind: "lantern"; id: string };
 
 type Deferred = { promise: Promise<void>; resolve: () => void };
 function deferred(): Deferred {
@@ -79,7 +89,6 @@ export class GameScene extends Phaser.Scene {
   private prompt!: Label;
   private promptText = "";
   private callBtn!: Button;
-  private lastCall = false;
   private doorCall: Interactable | null = null;
   /** The on-screen action button is being held (for hold-to-sweep). */
   private uiHold = false;
@@ -103,6 +112,7 @@ export class GameScene extends Phaser.Scene {
     this.chatting.clear();
     this.buildingObjs.clear();
     this.decoViews.clear();
+    this.lanternViews.clear();
     this.solids = [];
 
     this.bakeGround();
@@ -194,19 +204,14 @@ export class GameScene extends Phaser.Scene {
     });
     // The UI's action button mirrors whatever you could do right here.
     const press = () => {
-      if (!this.panelOpen && !this.arranging) this.target?.act();
+      if (!this.panelOpen && !this.arranging) this.eTarget()?.act();
     };
     const hold = (on: boolean) => (this.uiHold = on);
-    const call = () => {
-      if (!this.panelOpen && !this.arranging) this.doorCall?.act();
-    };
     this.game.events.on("action-press", press);
     this.game.events.on("action-hold", hold);
-    this.game.events.on("call-press", call);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off("action-press", press);
       this.game.events.off("action-hold", hold);
-      this.game.events.off("call-press", call);
     });
 
     const rabbit = this.villagers.get("jade_rabbit");
@@ -238,9 +243,65 @@ export class GameScene extends Phaser.Scene {
     paths.refresh();
     this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
 
-    // A coral Claude-spark mosaic set into the plaza stones.
-    this.add.image(PLAZA.x, PLAZA.y, "spark_plaza").setDepth(-9).setAlpha(0.9);
-    for (const p of lampSpots((b) => !!store.buildings[b])) this.addLamp(p.x, p.y);
+    this.bakePlaza();
+    for (const p of lampSpots((b) => !!store.buildings[b])) this.addLamp(p.x, p.y, !p.building);
+    this.placeRocks();
+  }
+
+  /**
+   * The grand plaza: open marble paving around the Earthrise Fountain, with
+   * obelisks just outside the rim (lampposts are added with the other lamps).
+   * Everything sits on the tile grid.
+   */
+  private bakePlaza() {
+    const P = PLAZA;
+    const prop = (key: string, dx: number, dy: number, solidW = 0) => {
+      const x = P.x + dx;
+      const y = P.y + dy;
+      this.add.image(x, y - 1, shadowKey(this, Math.max(10, solidW || 12))).setDepth(-8);
+      const img = this.add.image(x, y, key).setOrigin(0.5, 1).setDepth(y);
+      if (solidW) this.solids.push(new Phaser.Geom.Rectangle(x - solidW / 2, y - 10, solidW, 10));
+      return img;
+    };
+    const fy = P.y + 16;
+    this.add.image(P.x, P.y + 8, shadowKey(this, 116)).setDepth(-8);
+    this.add.sprite(P.x, fy, "plaza_fountain_0").setOrigin(0.5, 1).setDepth(fy).play("plaza-fountain");
+    this.add.image(P.x, P.y - 58, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa07a).setAlpha(0.3).setDepth(fy + 1);
+    this.add.image(P.x, P.y + 4, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0x9fe3f0).setAlpha(0.18).setDepth(fy + 1);
+    this.solids.push(new Phaser.Geom.Rectangle(P.x - 50, P.y - 8, 100, 22));
+    // Obelisks stand just outside the rim, between the paths; the paving stays open.
+    for (const o of plazaRing().obelisks) {
+      prop("obelisk", o.x - P.x, o.y - P.y, 14);
+      this.add.image(o.x, o.y - 36, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff8a6a).setAlpha(0.35).setDepth(o.y + 1);
+    }
+  }
+
+  private rocks: Rock[] = [];
+
+  /** Moon rocks all over the island (solid; crystal outcrops glow). */
+  private placeRocks() {
+    const avoid = [
+      ...store.decos.flatMap((d) => {
+        const item = itemById(d.item);
+        return item ? [decorFootprint(item, d.x, d.y)] : [];
+      }),
+      ...store.lanterns.map((l, i) => footprint(lanternAt(l, i).x, lanternAt(l, i).y, 1, 1)),
+    ];
+    this.rocks = rockSpots(avoid);
+    for (const r of this.rocks) {
+      const w = ROCK_TILES[r.kind] * TILE;
+      this.add.image(r.x, r.y - 1, shadowKey(this, w)).setDepth(-8);
+      // Variants and mirroring (never scaling) so no two rock fields look alike.
+      const n = Math.abs(Math.round(r.x / 16) * 7 + Math.round(r.y / 16) * 13);
+      const key = r.kind === "small" || r.kind === "big" ? `rock_${r.kind}_${n % 3}` : `rock_${r.kind}`;
+      this.add.image(r.x, r.y, key).setOrigin(0.5, 1).setDepth(r.y).setFlipX(n % 2 === 1);
+      if (r.kind === "crystal") {
+        const g = this.add.image(r.x, r.y - 12, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setDepth(r.y + 1);
+        this.tweens.add({ targets: g, alpha: { from: 0.2, to: 0.5 }, duration: 1600 + (r.x % 7) * 150, yoyo: true, repeat: -1, ease: "sine.inout" });
+      }
+      const f = rockRect(r);
+      this.solids.push(new Phaser.Geom.Rectangle(f.x + 2, f.y + 4, f.w - 4, f.h - 4));
+    }
   }
 
   private lamps: { x: number; y: number; glow: Phaser.GameObjects.Image }[] = [];
@@ -251,10 +312,10 @@ export class GameScene extends Phaser.Scene {
   private sweepBar!: Phaser.GameObjects.Graphics;
   private pathTex!: Phaser.Textures.CanvasTexture;
 
-  private addLamp(x: number, y: number) {
-    this.add.image(x, y, shadowKey(this, 8)).setDepth(-8);
-    this.add.image(x, y, "lamp").setOrigin(0.5, 1).setDepth(y);
-    const glow = this.add.image(x, y - 15, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setAlpha(0.35).setDepth(y + 1);
+  private addLamp(x: number, y: number, grand = false) {
+    this.add.image(x, y, shadowKey(this, grand ? 10 : 8)).setDepth(-8);
+    this.add.image(x, y, grand ? "lamp_grand" : "lamp").setOrigin(0.5, 1).setDepth(y);
+    const glow = this.add.image(x, y - (grand ? 26 : 15), "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setAlpha(0.35).setDepth(y + 1);
     this.lamps.push({ x, y, glow });
   }
 
@@ -274,17 +335,16 @@ export class GameScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
 
     if (store.buildings[b]) {
-      objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.6)).setDepth(-8));
+      if (b !== "mailbox") objs.push(this.add.image(s.x, s.y - 2, `grounds_${b}`).setOrigin(0.5, 0).setDepth(-9.2));
+      objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.2)).setDepth(-8));
       const img = this.add.image(s.x, s.y, s.texture).setOrigin(0.5, 1).setDepth(s.y);
       objs.push(img);
-      if (b === "rocket_pad") {
-        objs.push(this.add.image(s.x - 4, s.y - 6, "ship").setOrigin(0.5, 1).setDepth(s.y + 0.5));
-      }
       // Signs hang above the roofline so villagers at the door never cover them.
-      const top = s.y - (b === "rocket_pad" ? 63 : img.height) - 2;
+      const top = s.y - img.height - 2;
       const tag = new Label(this, s.x, top, def.name, { bg: C.wood, border: C.woodDark, color: C.paperLight, padX: 2 }).setDepth(s.y + 1);
       objs.push(tag);
       this.solids.push(new Phaser.Geom.Rectangle(s.x - s.fw, s.y - s.fh, s.fw * 2, s.fh));
+      objs.push(...this.flourishes(b, s));
       const resident = def.resident;
       if (resident) {
         const p = besideDoor(b, 1);
@@ -294,7 +354,7 @@ export class GameScene extends Phaser.Scene {
       }
       if (animate) this.construct(b, img, [tag, ...objs.filter((o) => o !== img && o !== tag)]);
     } else if (store.progress.revealed.includes(b) && b !== "mailbox") {
-      const plot = this.add.image(s.x, s.y, "b_plot").setOrigin(0.5, 1).setDepth(s.y - 20);
+      const plot = this.add.image(s.x, s.y, `plot_${b}`).setOrigin(0.5, 1).setDepth(s.y - 20);
       const sign = new Label(this, s.x, s.y + 2, `${def.name}\n${def.price ? `${def.price}¢ - ` : ""}E to build`, { bg: C.paperLight, border: C.woodDark, originY: 0 }).setDepth(s.y + 1);
       objs.push(plot, sign);
       if (animate) {
@@ -305,6 +365,75 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.buildingObjs.set(b, objs);
+  }
+
+  /** Live details on the grand buildings (all hidden while under construction). */
+  private flourishes(b: BuildingId, s: { x: number; y: number }): Phaser.GameObjects.GameObject[] {
+    const pulse = (img: Phaser.GameObjects.Image, from: number, to: number, ms: number) =>
+      this.tweens.add({ targets: img, alpha: { from, to }, duration: ms, yoyo: true, repeat: -1, ease: "sine.inout" });
+    // Warm light in the windows.
+    const tex = this.textures.get(SPOTS[b].texture).getSourceImage();
+    const glows = (WINDOW_GLOWS[b] ?? []).map(([wx, wy], i) => {
+      const g = this.add.image(Math.round(s.x - tex.width / 2 + wx), Math.round(s.y - tex.height + wy), "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffc070).setDepth(s.y + 1);
+      pulse(g, 0.16, 0.3, 1800 + i * 230);
+      return g;
+    });
+    const extra = this.flourish(b, s, pulse);
+    return [...glows, ...extra];
+  }
+
+  private flourish(b: BuildingId, s: { x: number; y: number }, pulse: (img: Phaser.GameObjects.Image, from: number, to: number, ms: number) => void): Phaser.GameObjects.GameObject[] {
+    if (b === "clock_tower") {
+      const hands = this.add.graphics().setDepth(s.y + 0.6);
+      this.clockHands = { g: hands, x: s.x, y: s.y - 96, drawn: "" };
+      return [hands];
+    }
+    if (b === "rocket_pad") {
+      const beacon = this.add.image(s.x + 32, s.y - 128, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff4a3a).setDepth(s.y + 1);
+      pulse(beacon, 0.1, 0.9, 700);
+      return [beacon];
+    }
+    if (b === "observatory") {
+      const star = this.add.image(s.x + 44, s.y - 113, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setDepth(s.y + 1);
+      pulse(star, 0.15, 0.7, 1300);
+      return [star];
+    }
+    return [];
+  }
+
+  private clockHands: { g: Phaser.GameObjects.Graphics; x: number; y: number; drawn: string } | null = null;
+  private smokeT = 0;
+  private smokeSide = false;
+
+  /** The clock tower tells the real time; the farmhouse chimney smokes. */
+  private updateFlourishes(dt: number) {
+    const c = this.clockHands;
+    if (c?.g.active) {
+      const now = new Date();
+      const key = `${now.getHours()}:${now.getMinutes()}`;
+      if (key !== c.drawn) {
+        c.drawn = key;
+        const hand = (turns: number, len: number, color: number) => {
+          const a = turns * Math.PI * 2 - Math.PI / 2;
+          for (let i = 0; i <= len; i++) c.g.fillStyle(color, 1).fillRect(Math.round(c.x - 0.5 + Math.cos(a) * i), Math.round(c.y - 0.5 + Math.sin(a) * i), 1, 1);
+        };
+        c.g.clear();
+        const hours = ((now.getHours() % 12) + now.getMinutes() / 60) / 12;
+        hand(hours, 6, 0x3b2a3a);
+        c.x += 1;
+        hand(hours, 6, 0x3b2a3a);
+        c.x -= 1;
+        hand(now.getMinutes() / 60, 10, 0x3b2a3a);
+        c.g.fillStyle(0xd9503f, 1).fillRect(Math.round(c.x - 1.5), Math.round(c.y - 1.5), 3, 3);
+      }
+    }
+    this.smokeT -= dt;
+    if (this.smokeT <= 0 && store.buildings.player_house && !this.constructing.has("player_house")) {
+      this.smokeT = 0.7;
+      const s = SPOTS.player_house;
+      this.smokeSide = !this.smokeSide;
+      if (this.distTo(s.x, s.y) < 460) puff(this, this.smokeSide ? s.x + 18 : s.x - 40, this.smokeSide ? s.y - 108 : s.y - 79);
+    }
   }
 
   /**
@@ -408,7 +537,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private decoViews = new Map<string, { item: ShopItem; x: number; y: number; objs: Phaser.GameObjects.Components.Alpha[]; solid: Phaser.Geom.Rectangle | null }>();
+  private decoViews = new Map<string, { item: ShopItem; x: number; y: number; off: boolean; objs: Phaser.GameObjects.Components.Alpha[]; solid: Phaser.Geom.Rectangle | null }>();
 
   private spawnDeco(d: Deco) {
     const item = itemById(d.item);
@@ -416,10 +545,11 @@ export class GameScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.Components.Alpha[] = [];
     const depth = item.flat ? -6 : d.y;
     if (!item.flat) objs.push(this.add.image(d.x, d.y - 1, shadowKey(this, Math.max(10, Math.round(item.w * 0.7)))).setDepth(-8));
-    const spr = this.add.sprite(d.x, d.y, item.texture).setOrigin(0.5, 1).setDepth(depth);
-    if (item.anim) spr.play({ key: item.anim, startFrame: Phaser.Math.Between(0, 1) });
+    const off = !!(item.light && d.off);
+    const spr = this.add.sprite(d.x, d.y, off ? `deco_${item.id}_off` : item.texture).setOrigin(0.5, 1).setDepth(depth);
+    if (item.anim && !off) spr.play({ key: item.anim, startFrame: Phaser.Math.Between(0, 1) });
     objs.push(spr);
-    if (item.glow) {
+    if (item.glow && !off) {
       const g = item.glow;
       objs.push(this.add.image(d.x + g.dx, d.y + g.dy, "glow").setBlendMode(Phaser.BlendModes.ADD).setAlpha(g.alpha).setTint(g.color).setDepth(depth - 1));
     }
@@ -428,7 +558,7 @@ export class GameScene extends Phaser.Scene {
       const r = decorFootprint(item, d.x, d.y);
       this.solids.push((solid = new Phaser.Geom.Rectangle(r.x, r.y, r.w, r.h)));
     }
-    this.decoViews.set(d.id, { item, x: d.x, y: d.y, objs, solid });
+    this.decoViews.set(d.id, { item, x: d.x, y: d.y, off, objs, solid });
   }
 
   private removeDecoView(id: string) {
@@ -439,10 +569,18 @@ export class GameScene extends Phaser.Scene {
     this.decoViews.delete(id);
   }
 
+  /** Stone lanterns from finished tasks, by lantern id. */
+  private lanternViews = new Map<string, { x: number; y: number; objs: (Phaser.GameObjects.Image & Phaser.GameObjects.Components.Alpha)[] }>();
+
   private plantLantern(i: number, animate: boolean) {
-    const p = lanternSpot(i);
-    const img = this.add.image(p.x, p.y, "deco_lantern_0").setOrigin(0.5, 1).setDepth(p.y);
-    const glow = this.add.image(p.x + 3, p.y - 15, "glow").setBlendMode(Phaser.BlendModes.ADD).setTint(0xf5c542).setAlpha(0.45).setDepth(p.y - 1);
+    const l = store.lanterns[i];
+    if (!l) return;
+    this.lanternViews.get(l.id)?.objs.forEach((o) => o.destroy());
+    const p = lanternAt(l, i);
+    const shadow = this.add.image(p.x, p.y - 1, shadowKey(this, 12)).setDepth(-8);
+    const img = this.add.image(p.x, p.y, "task_lantern").setOrigin(0.5, 1).setDepth(p.y);
+    const glow = this.add.image(p.x, p.y - 14, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xf5c542).setAlpha(0.45).setDepth(p.y - 1);
+    this.lanternViews.set(l.id, { x: p.x, y: p.y, objs: [shadow, img, glow] });
     if (animate) {
       img.setAlpha(0);
       glow.setAlpha(0);
@@ -770,7 +908,29 @@ export class GameScene extends Phaser.Scene {
         const v = this.decoViews.get(e.id);
         if (!v) break;
         this.removeDecoView(e.id);
-        this.spawnDeco({ id: e.id, item: v.item.id, x: e.x, y: e.y });
+        this.spawnDeco(store.decos.find((d) => d.id === e.id) ?? { id: e.id, item: v.item.id, x: e.x, y: e.y });
+        break;
+      }
+      case "happiness": {
+        // Decorations placed by their home: the villager notices.
+        if (!e.gained || !store.residents.includes(e.villager)) break;
+        const a = this.villagers.get(e.villager);
+        const d = this.doorOf(VILLAGER_HOME[e.villager]);
+        this.floatText(d.x, d.y - 30, `+${e.gained.loved ? LOVED_POINTS : 1} ♥`, 0xff8fb1, 1400);
+        if (a && !a.isHeld) a.say(e.gained.loved ? `A ${e.gained.item}! I love it! ♥` : `Ooh, a ${e.gained.item} by my home. Thank you!`, 3200);
+        break;
+      }
+      case "lantern_moved": {
+        const i = store.lanterns.findIndex((l) => l.id === e.id);
+        if (i >= 0) this.plantLantern(i, false);
+        break;
+      }
+      case "deco_toggled": {
+        const d = store.decos.find((d) => d.id === e.id);
+        if (!d || !this.decoViews.has(e.id)) break;
+        this.removeDecoView(e.id);
+        this.spawnDeco(d);
+        sfx.blip();
         break;
       }
       case "deco_sold": {
@@ -814,15 +974,25 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.mouse?.disableContextMenu();
+    // Drag and drop, or click to pick up and click again to set down.
+    const overUI = (p: Phaser.Input.Pointer) => this.scene.get("UI").input.hitTestPointer(p).length > 0;
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      if (!this.arranging || this.panelOpen) return;
-      // Clicks on the toolbar or banner aren't clicks on the island.
-      if (this.scene.get("UI").input.hitTestPointer(p).length) return;
+      this.pressedAt = null;
+      if (!this.arranging || this.panelOpen || overUI(p)) return;
       if (p.rightButtonDown()) return this.cancelHeld();
       if (this.held) return this.dropHeld();
       const wp = this.cameras.main.getWorldPoint(p.x, p.y);
       const m = this.movableAt(wp.x, wp.y);
-      if (m) this.pickUp(m.held, { x: m.base.x - wp.x, y: m.base.y - wp.y });
+      if (!m) return;
+      this.pickUp(m.held, { x: m.base.x - wp.x, y: m.base.y - wp.y });
+      this.pressedAt = { x: p.x, y: p.y };
+    });
+    this.input.on("pointerup", (p: Phaser.Input.Pointer) => {
+      const from = this.pressedAt;
+      this.pressedAt = null;
+      // A plain click keeps it in hand (SELL / CANCEL); letting go after a drag sets it down.
+      if (!from || !this.held || overUI(p)) return;
+      if (Math.hypot(p.x - from.x, p.y - from.y) > 6) this.dropHeld();
     });
   }
 
@@ -966,10 +1136,11 @@ export class GameScene extends Phaser.Scene {
         46,
       );
     }
-    // Placed decorations: move or sell. Slightly less eager than everything else nearby.
+    // Lights you've placed switch on and off (moving and selling is in edit mode).
     for (const [id, v] of this.decoViews) {
+      if (!v.item.light) continue;
       const r = Math.max(16, v.item.w / 2 + 4);
-      add({ verb: "ARRANGE", label: `[E] ${v.item.name}`, x: v.x, y: v.y - v.item.h - 2, d: dist(v.x, v.y - 4) + 6, act: () => this.editDeco(id) }, r + 6);
+      add({ verb: v.off ? "TURN ON" : "TURN OFF", label: `[E] turn ${v.off ? "on" : "off"}`, x: v.x, y: v.y - v.item.h - 2, d: dist(v.x, v.y - 4) + 6, act: () => net.send({ type: "toggle_deco", id }) }, r + 6);
     }
     // Things you stand on: prompts float above the player's head.
     const head = this.player.y - 30;
@@ -1057,6 +1228,8 @@ export class GameScene extends Phaser.Scene {
   private footG!: Phaser.GameObjects.Graphics;
   private gridKey = "";
   private resumeAt: { x: number; y: number } | null = null;
+  /** Where the pointer went down to pick something up (screen px), to tell a drag from a click. */
+  private pressedAt: { x: number; y: number } | null = null;
 
   private get arranging() {
     return this.editMode || this.held !== null;
@@ -1087,12 +1260,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private heldName(h: Held) {
+    if (h.kind === "lantern") {
+      const l = store.lanterns.find((l) => l.id === h.id);
+      return l ? `${VILLAGER_NAMES[l.villager]}'s lantern` : "lantern";
+    }
     return h.kind === "building" ? BUILDINGS[h.b].name : h.item.name;
   }
 
   private heldTiles(h: Held): { w: number; h: number; apron: number } {
     if (h.kind === "building") return { ...buildingTiles(h.b), apron: h.b === "mailbox" ? 0 : 1 };
+    if (h.kind === "lantern") return { w: 1, h: 1, apron: 0 };
     return { w: h.item.tiles[0], h: h.item.tiles[1], apron: 0 };
+  }
+
+  /** Every tile the held thing would claim at (x, y). */
+  private heldRects(h: Held, x: number, y: number): Rect[] {
+    if (h.kind === "building") return buildingRects(h.b, { x, y });
+    const t = this.heldTiles(h);
+    return [footprint(x, y, t.w, t.h, t.apron)];
   }
 
   /** Buildings you can see: built ones, and plots waiting to be built. */
@@ -1103,8 +1288,10 @@ export class GameScene extends Phaser.Scene {
   /** Footprints of everything placed, except what you're holding. */
   private occupied(h: Held | null): Rect[] {
     const out: Rect[] = [];
-    for (const b of BUILDING_IDS) if (this.isShown(b) && !(h?.kind === "building" && h.b === b)) out.push(buildingFootprint(b));
+    for (const b of BUILDING_IDS) if (this.isShown(b) && !(h?.kind === "building" && h.b === b)) out.push(...buildingRects(b));
     for (const [id, v] of this.decoViews) if (!(h?.kind === "deco" && h.id === id)) out.push(decorFootprint(v.item, v.x, v.y));
+    for (const [id, v] of this.lanternViews) if (!(h?.kind === "lantern" && h.id === id)) out.push(footprint(v.x, v.y, 1, 1));
+    for (const r of this.rocks) out.push(rockRect(r));
     return out;
   }
 
@@ -1117,9 +1304,13 @@ export class GameScene extends Phaser.Scene {
   /** Its tiles are free and on the island, and it wouldn't land on top of you. */
   private canDrop(h: Held, x: number, y: number) {
     const t = this.heldTiles(h);
-    if (!canOccupy(footprint(x, y, t.w, t.h, t.apron), this.occupied(h))) return false;
+    if (!canOccupy(this.heldRects(h, x, y), this.occupied(h))) return false;
     const solid =
-      h.kind === "building" ? { x: x - SPOTS[h.b].fw, y: y - SPOTS[h.b].fh, w: SPOTS[h.b].fw * 2, h: SPOTS[h.b].fh } : h.item.flat ? null : footprint(x, y, t.w, t.h);
+      h.kind === "building"
+        ? { x: x - SPOTS[h.b].fw, y: y - SPOTS[h.b].fh, w: SPOTS[h.b].fw * 2, h: SPOTS[h.b].fh }
+        : h.kind === "lantern" || h.item.flat
+          ? null
+          : footprint(x, y, t.w, t.h);
     const px = this.player.x;
     const py = this.player.y;
     return !solid || !(px > solid.x && px < solid.x + solid.w && py > solid.y && py < solid.y + solid.h);
@@ -1133,8 +1324,8 @@ export class GameScene extends Phaser.Scene {
     for (const b of BUILDING_IDS) {
       if (!this.isShown(b) || this.constructing.has(b)) continue;
       const s = SPOTS[b];
-      const tex = this.textures.get(store.buildings[b] ? s.texture : "b_plot").getSourceImage();
-      const h = b === "rocket_pad" && store.buildings[b] ? 63 : tex.height;
+      const tex = this.textures.get(store.buildings[b] ? s.texture : `plot_${b}`).getSourceImage();
+      const h = tex.height;
       if (hit(s.x, s.y, tex.width, h) && s.y > bestY) {
         bestY = s.y;
         best = { held: { kind: "building", b }, base: { x: s.x, y: s.y } };
@@ -1146,12 +1337,19 @@ export class GameScene extends Phaser.Scene {
         best = { held: { kind: "deco", id, item: v.item }, base: { x: v.x, y: v.y } };
       }
     }
+    for (const [id, v] of this.lanternViews) {
+      if (hit(v.x, v.y, 16, 26) && v.y >= bestY) {
+        bestY = v.y;
+        best = { held: { kind: "lantern", id }, base: { x: v.x, y: v.y } };
+      }
+    }
     return best;
   }
 
   private fadeOriginal(h: Held, alpha: number) {
     if (h.kind === "building") this.buildingObjs.get(h.b)?.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(alpha));
     else if (h.kind === "deco") this.decoViews.get(h.id)?.objs.forEach((o) => o.setAlpha(alpha));
+    else if (h.kind === "lantern") this.lanternViews.get(h.id)?.objs.forEach((o, i) => o.setAlpha(i === 2 ? alpha * 0.45 : alpha));
   }
 
   private pickUp(h: Held, grab = { x: 0, y: 8 }) {
@@ -1159,7 +1357,7 @@ export class GameScene extends Phaser.Scene {
     this.held = h;
     this.grabOffset = grab;
     this.fadeOriginal(h, 0.35);
-    const key = h.kind === "building" ? (store.buildings[h.b] ? SPOTS[h.b].texture : "b_plot") : h.item.texture;
+    const key = h.kind === "building" ? (store.buildings[h.b] ? SPOTS[h.b].texture : `plot_${h.b}`) : h.kind === "lantern" ? "task_lantern" : h.item.texture;
     this.ghost = this.add.image(this.player.x, this.player.y, key).setOrigin(0.5, 1).setAlpha(0.8).setDepth(99998);
     sfx.blip();
     this.emitArrange();
@@ -1187,7 +1385,9 @@ export class GameScene extends Phaser.Scene {
         ? net.send({ type: "place_deco", item: h.item.id, x, y })
         : h.kind === "deco"
           ? net.send({ type: "move_deco", id: h.id, x, y })
-          : net.send({ type: "move_building", building: h.b, x, y });
+          : h.kind === "lantern"
+            ? net.send({ type: "move_lantern", id: h.id, x, y })
+            : net.send({ type: "move_building", building: h.b, x, y });
     if (!sent) {
       sfx.deny();
       return;
@@ -1223,19 +1423,56 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Holding a decoration: outline the villagers' yards and say whose happiness
+   * it would change if set down here.
+   */
+  private showYards(h: Extract<Held, { kind: "new" | "deco" }>, x: number, y: number) {
+    const now = store.decos;
+    const then = [...now.filter((d) => h.kind !== "deco" || d.id !== h.id), { item: h.item.id, x, y }];
+    const lines: string[] = [];
+    for (const v of store.residents) {
+      const yard = yardOf(v);
+      this.footG.fillStyle(0xf5c542, 0.05).fillRect(yard.x, yard.y, yard.w, yard.h);
+      this.footG.fillStyle(0xf5c542, 0.5).fillRect(yard.x, yard.y, yard.w, 1).fillRect(yard.x, yard.y + yard.h - 1, yard.w, 1).fillRect(yard.x, yard.y, 1, yard.h).fillRect(yard.x + yard.w - 1, yard.y, 1, yard.h);
+      const delta = happinessFor(v, then).score - happinessFor(v, now).score;
+      if (delta > 0) lines.push(`+${delta} ♥ ${VILLAGER_NAMES[v]}${h.item.likes.includes(v) ? " loves it!" : ""}`);
+      else if (delta < 0) lines.push(`${delta} ♥ ${VILLAGER_NAMES[v]}`);
+    }
+    const text = lines.join("\n");
+    this.prompt.setVisible(!!text);
+    if (!text) return;
+    if (text !== this.promptText) this.prompt.setText((this.promptText = text));
+    this.prompt.place(x, y - h.item.h - 4);
+  }
+
+  private cursor = "default";
+
+  /**
+   * The cursor over the island when not over a button. Only set on change:
+   * setting it every frame would stomp on buttons' pointer cursors.
+   */
+  private setCursor(c: string) {
+    if (c === this.cursor) return;
+    this.cursor = c;
+    this.input.setDefaultCursor(c);
+  }
+
   private updateArrange() {
     const on = this.arranging && !this.panelOpen;
     this.gridG.setVisible(on);
     this.footG.clear();
-    this.input.setDefaultCursor(on ? (this.held ? "grabbing" : "grab") : "default");
-    if (!on) return;
+    if (!on) return this.setCursor("default");
     this.drawGrid();
     if (this.held && this.ghost) {
+      this.setCursor("grabbing");
       const h = this.held;
       const { x, y } = this.dropSpot(h);
       const ok = this.canDrop(h, x, y);
-      const t = this.heldTiles(h);
-      this.drawFoot(footprint(x, y, t.w, t.h, t.apron), ok ? 0x7cf08c : 0xff5a5a);
+      // Tiles that are already taken, including things you can't move (lamps, the plaza, the ship).
+      for (const r of [...RESERVED, ...this.occupied(h)]) this.footG.fillStyle(0xff5a5a, 0.18).fillRect(Math.round(r.x), Math.round(r.y), r.w, r.h);
+      for (const r of this.heldRects(h, x, y)) this.drawFoot(r, ok ? 0x7cf08c : 0xff5a5a);
+      if (h.kind === "new" || h.kind === "deco") this.showYards(h, x, y);
       this.ghost.setPosition(x, y).setTint(ok ? 0xffffff : 0xff9a9a);
       return;
     }
@@ -1243,23 +1480,15 @@ export class GameScene extends Phaser.Scene {
     const p = this.input.activePointer;
     const wp = this.cameras.main.getWorldPoint(p.x, p.y);
     const m = this.movableAt(wp.x, wp.y);
+    this.setCursor(m ? "grab" : "default");
     if (!m) return;
-    const r = m.held.kind === "building" ? buildingFootprint(m.held.b) : decorFootprint(m.held.item, m.base.x, m.base.y);
-    this.drawFoot(r, 0xf5c542);
+    const rects = this.heldRects(m.held, m.base.x, m.base.y);
+    for (const r of rects) this.drawFoot(r, 0xf5c542);
+    const r = rects[0];
     this.prompt.setVisible(true);
     const label = `${this.heldName(m.held)} - click to move`;
     if (label !== this.promptText) this.prompt.setText((this.promptText = label));
     this.prompt.place(m.base.x, Math.round(r.y) - 2);
-  }
-
-  private editDeco(id: string) {
-    const v = this.decoViews.get(id);
-    if (!v) return;
-    const refund = sellPrice(v.item);
-    openInfo(v.item.name.toUpperCase(), [v.item.blurb, `Move it anywhere for free, or sell it back to the Supply Pod for ${refund}¢.`], [
-      { label: "MOVE", kind: "ok", onClick: () => (closePanel(), this.pickUp({ kind: "deco", id, item: v.item })) },
-      { label: `SELL +${refund}¢`, onClick: () => (closePanel(), net.send({ type: "sell_deco", id })) },
-    ]);
   }
 
   // ================================================================ helpers
@@ -1279,7 +1508,9 @@ export class GameScene extends Phaser.Scene {
 
   /** For the minimap. */
   minimapDots() {
+    const meteors = [...this.choreViews.values()].filter((c) => c.falling || c.grabbable).map((c) => ({ x: c.x, y: c.y, incoming: c.falling }));
     return {
+      meteors,
       player: { x: this.player.x, y: this.player.y },
       villagers: [...this.villagers.values()].map((a) => ({ id: a.id, x: a.x, y: a.y })),
       clods: [...this.clods.values()].map((c) => ({ x: c.x, y: c.y, status: c.status })),
@@ -1309,7 +1540,12 @@ export class GameScene extends Phaser.Scene {
       const partners = [...this.villagers.values()].filter((b) => b.id !== v && b.isFree && !this.chatting.has(b.id));
       const roll = Math.random();
       if (roll < 0.35 && partners.length) void this.visit(a, Phaser.Utils.Array.GetRandom(partners));
-      else if (roll < 0.5) void this.strollTo(a, PLAZA.x + Phaser.Math.Between(-34, 34), PLAZA.y + Phaser.Math.Between(-26, 26));
+      else if (roll < 0.5) {
+        // A turn around the fountain.
+        const t = Math.random() * Math.PI * 2;
+        const r = Phaser.Math.Between(72, 108);
+        void this.strollTo(a, PLAZA.x + Math.cos(t) * r, PLAZA.y + 10 + Math.sin(t) * r * 0.8);
+      }
       else {
         const home = this.homeSpot(v);
         void this.strollTo(a, home.x + Phaser.Math.Between(-44, 44), home.y + Phaser.Math.Between(2, 34)).then((ok) => {
@@ -1379,17 +1615,13 @@ export class GameScene extends Phaser.Scene {
     if (this.panelOpen || this.arranging) this.doorCall = null;
     this.callBtn.setVisible(!!this.doorCall);
     if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
-    const action = this.target ? `${this.target.verb}|${this.target.hold ? 1 : 0}` : "";
+    // The toolbar's action button does exactly what E would (including CALL at a door).
+    const e = this.eTarget();
+    const action = e ? `${e.verb}|${e.hold ? 1 : 0}` : "";
     if (action !== this.lastAction) {
       this.lastAction = action;
-      this.game.events.emit("action", this.target ? { verb: this.target.verb, hold: !!this.target.hold } : null);
+      this.game.events.emit("action", e ? { verb: e.verb, hold: !!e.hold } : null);
     }
-    const calling = !!this.doorCall;
-    if (calling !== this.lastCall) {
-      this.lastCall = calling;
-      this.game.events.emit("call", calling);
-    }
-    const e = this.eTarget();
     this.prompt.setVisible(!!e);
     if (e) {
       if (e.label !== this.promptText) this.prompt.setText((this.promptText = e.label));
@@ -1398,6 +1630,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateArrange();
+    this.updateFlourishes(dt);
   }
 
   private updatePlayer(dt: number) {
