@@ -513,7 +513,8 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     const audience: Audience = from === "chore" ? "chore" : texting ? "text" : "talk";
     const answer = (BRAIN === "mock" ? await mockVillager(v, text, taskId) : await runVillager(v, text, taskId, audience)) || "Done!";
     // Face to face, a long answer becomes a short spoken one; the rest is kept for "tell me more".
-    let reply = answer;
+    // An email sign-off ("— sent from the Moon") never belongs on a chat reply.
+    let reply = answer.replace(/\s*[-—–]+\s*sent from the moon\.?\s*$/i, "").trim() || answer;
     let notes: string | undefined;
     if (audience === "talk" && BRAIN !== "mock" && tooLongToSay(answer)) {
       setVillager(v, { status: "thinking", activity: "finding the words…" });

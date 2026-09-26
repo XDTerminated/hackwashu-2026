@@ -8,6 +8,7 @@ import { IntroScene } from "./scenes/IntroScene";
 import { EndingScene } from "./scenes/EndingScene";
 import * as net from "./net";
 import { initChatter } from "./chatter";
+import { startMusic } from "./music";
 import { initPanel } from "./panel";
 import { initMoonPad } from "./tablet";
 import { initTextInput } from "./textinput";
@@ -38,6 +39,10 @@ if (new URLSearchParams(location.search).has("fresh")) {
   }
   history.replaceState(null, "", location.pathname);
 }
+
+// Music is on by default: it starts with your first key press or click
+// (browsers don't allow sound before that).
+for (const type of ["pointerdown", "keydown"] as const) window.addEventListener(type, () => startMusic(), { once: true });
 
 initTextInput();
 initPanel();

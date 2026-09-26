@@ -772,6 +772,7 @@ class Dialog {
     // Talking over a villager cuts them off; what they were saying stays on screen.
     this.flush();
     this.add("you", text);
+    logTalk(talkingTo, "you", text);
     sfx.blip();
     if (net.send({ type: "task", villager: talkingTo, text })) this.expectReply();
     else this.add("sys", "The line to the colony server is down - start it with npm run dev:server.");
@@ -780,6 +781,23 @@ class Dialog {
 
 let dialog: Dialog | null = null;
 let talkingTo: VillagerId | null = null;
+
+// ---------------------------------------------------------------- picking up where you left off
+// Walk off mid-conversation and come back soon, and it carries on: what was
+// said is still there and nobody introduces themselves again. After a while
+// away it's a fresh hello.
+
+const RESUME_MS = 5 * 60_000;
+type TalkLine = { kind: "you" | "them"; text: string };
+const talks = new Map<VillagerId, { at: number; lines: TalkLine[] }>();
+
+function logTalk(v: VillagerId, kind: TalkLine["kind"], text: string) {
+  const t = talks.get(v) ?? { at: 0, lines: [] };
+  t.lines.push({ kind, text });
+  if (t.lines.length > 12) t.lines.splice(0, t.lines.length - 12);
+  t.at = Date.now();
+  talks.set(v, t);
+}
 /** The villager whose account we're connecting in the open dialog, if any. */
 let callingFor: VillagerId | null = null;
 let toggleCb: (open: boolean) => void = () => {};
@@ -840,8 +858,11 @@ export function initPanel() {
       return;
     }
     if (e.type === "friendship" && dialog?.visible) dialog.refreshHearts();
+    // A reply that lands after you walked off is waiting when you come back.
+    if (e.type === "say" && talks.has(e.villager) && !(dialog?.visible && talkingTo === e.villager)) logTalk(e.villager, "them", e.text);
     if (!dialog?.visible || !talkingTo) return;
     if (e.type === "say" && e.villager === talkingTo) {
+      logTalk(e.villager, "them", e.text);
       dialog.say(e.text);
     } else if (e.type === "handoff" && e.from === talkingTo) {
       dialog.note("sys", `-> handed to ${VILLAGER_NAMES[e.to]}: "${e.text.slice(0, 80)}${e.text.length > 80 ? "..." : ""}"`);
@@ -881,7 +902,17 @@ export function openTalk(v: VillagerId, greeting: string) {
   // job, so it only shows once she can coordinate.
   const example = v !== "jade_rabbit" || store.rabbitTeamwork ? EXAMPLES[v] : undefined;
   dialog.open(VILLAGER_NAMES[v].toUpperCase(), true, { face: { villager: v, mode: "talk" }, mic: true, placeholder: example });
-  dialog.say(greeting);
+  const recent = talks.get(v);
+  if (recent && recent.lines.length && Date.now() - recent.at < RESUME_MS) {
+    // Back soon: the conversation carries on, no introductions.
+    for (const l of recent.lines.slice(-8)) dialog.add(l.kind, l.text);
+    const status = store.villagers[v]?.status;
+    if (recent.lines[recent.lines.length - 1].kind === "you" && (status === "thinking" || status === "working")) dialog.expectReply();
+  } else {
+    talks.set(v, { at: Date.now(), lines: [] });
+    logTalk(v, "them", greeting);
+    dialog.say(greeting);
+  }
   choreToggle(v);
   const nudge = realAccountNudge(v);
   if (nudge) {
@@ -1156,6 +1187,9 @@ export function closePanel() {
   panelSeq++;
   accountsOpen = false;
   if (!dialog?.visible) return;
+  // (the clock for "coming back soon" starts when you walk off)
+  const left = talkingTo && talks.get(talkingTo);
+  if (left) left.at = Date.now();
   agentView = null;
   dialog.close();
   talkingTo = null;
