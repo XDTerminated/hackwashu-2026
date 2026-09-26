@@ -326,7 +326,7 @@ function page(res: ServerResponse, status: number, title: string, body: string, 
 <style>
   body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0a1a radial-gradient(#ffffff22 1px,transparent 1px) 0 0/22px 22px;color:#f4d9a6;font:16px/1.6 ui-monospace,Menlo,monospace}
   .card{max-width:480px;margin:24px;padding:28px 30px;background:#1a1430;border:4px solid #8a4b1f;box-shadow:0 6px 0 #3b2a3a}
-  h1{margin:0 0 4px;color:#f5c542;font-size:28px;letter-spacing:.06em}h2{color:#e08a6b;margin-top:0}
+  h1{margin:0 0 4px;color:#f5c542;font-size:28px;letter-spacing:.06em}h2{color:#f2a3b8;margin-top:0}
   .tag{color:#b8b0c4;margin:0 0 20px}
   a.btn{display:inline-block;margin:6px 0;padding:10px 16px;background:#fbfaf6;color:#1a1430;text-decoration:none;font-weight:700;border:3px solid #3b2a3a;box-shadow:0 3px 0 #3b2a3a}
   a.btn:hover{background:#f5c542}

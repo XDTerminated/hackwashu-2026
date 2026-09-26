@@ -291,7 +291,7 @@ export class GameScene extends Phaser.Scene {
       const ready = store.clods.filter((c) => c.status === "ready").length;
       this.time.delayedCall(900, () => {
         const text = ready
-          ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing clods to collect!`
+          ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
           : "Welcome to the Moon! A new neighbor's lot is waiting: follow the gold ★ to fix it up. I'm always around if you need me.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
@@ -798,7 +798,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Construction site: foundation, scaffolding and hammering baby clods, with the
+   * Construction site: foundation, scaffolding and hammering little stars, with the
    * building revealed bottom-up in stages (cropped, never scaled). ~5 seconds.
    */
   private constructing = new Map<BuildingId, Array<() => void>>();
@@ -1615,7 +1615,7 @@ export class GameScene extends Phaser.Scene {
           y: s.y - 36,
           d: dist(s.x, s.y),
           act: () =>
-            openInfo(`BUILD: ${def.name.toUpperCase()}`, [`Unlocks: ${def.unlocks}.`, def.price ? `Cost: ${def.price}¢ (you have ${store.coins}¢).${store.coins < def.price ? " Earn coins: pop clods after your neighbors finish work, sweep moondust, grab meteor rocks, and do today's requests." : ""}` : "Free: a gift from the colony."], [
+            openInfo(`BUILD: ${def.name.toUpperCase()}`, [`Unlocks: ${def.unlocks}.`, def.price ? `Cost: ${def.price}¢ (you have ${store.coins}¢).${store.coins < def.price ? " Earn coins: pop stars after your neighbors finish work, sweep moondust, grab meteor rocks, and do today's requests." : ""}` : "Free: a gift from the colony."], [
               {
                 label: store.coins >= def.price ? (def.price ? `BUILD (${def.price}¢)` : "BUILD") : "NOT ENOUGH COINS",
                 kind: store.coins >= def.price ? "ok" : "",
@@ -1644,7 +1644,7 @@ export class GameScene extends Phaser.Scene {
     // Things you stand on: prompts float above the player's head.
     const head = this.player.y - 30;
     const clod = this.nearestPoppable();
-    if (clod) add({ verb: "POP", label: "[E] pop clod", x: clod.x, y: head, d: dist(clod.x, clod.y - 6), act: () => this.tryPop() }, 30);
+    if (clod) add({ verb: "POP", label: "[E] pop star", x: clod.x, y: head, d: dist(clod.x, clod.y - 6), act: () => this.tryPop() }, 30);
     const rock = this.nearestChore("meteor", 24);
     if (rock) add({ verb: "GRAB", label: "[E] grab moon-rock", x: rock.x, y: head, d: dist(rock.x, rock.y), act: () => this.tryGrabMeteor() }, 24);
     const drift = this.nearestChore("dust", 22);

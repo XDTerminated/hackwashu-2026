@@ -25,7 +25,7 @@ const POOL: Template[] = [
   { kind: "shard", villager: "stargazer", text: "Find a Moon Shard hidden on the island", goal: 1, reward: 30 },
   { kind: "text", villager: "postmaster", text: "Text a neighbor on the MoonPad", goal: 1, reward: 15 },
   { kind: "visit", villager: "jade_rabbit", text: "Ask a neighbor for help in person", goal: 1, reward: 20 },
-  { kind: "pop", villager: "jade_rabbit", text: "Pop 2 glowing clods", goal: 2, reward: 25 },
+  { kind: "pop", villager: "jade_rabbit", text: "Pop 2 glowing stars", goal: 2, reward: 25 },
   { kind: "place", villager: "jade_rabbit", text: "Place 3 new decorations around the colony", goal: 3, reward: 30 },
 ];
 

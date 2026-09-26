@@ -318,8 +318,8 @@ export function addLantern(l: Lantern) {
 
 export function popClod(clodId: string): { ok: true; reward: number } | { ok: false; reason: string } {
   const c = typeof clodId === "string" && Object.hasOwn(world.clods, clodId) ? world.clods[clodId] : undefined;
-  if (!c) return { ok: false, reason: "no such clod" };
-  if (c.status !== "ready" && c.status !== "failed") return { ok: false, reason: `clod is ${c.status}` };
+  if (!c) return { ok: false, reason: "no such star" };
+  if (c.status !== "ready" && c.status !== "failed") return { ok: false, reason: `that star is ${c.status}` };
   const reward = c.status === "ready" ? c.reward : 1;
   c.status = "popped";
   world.coins += reward;

@@ -49,7 +49,7 @@ export class EndingScene extends Cutscene {
   /** Fireworks bursting over the colony, until the cut. */
   private fireworks(skyBottom: number) {
     const { W } = this;
-    const colors = [0xf5c542, 0xe08a6b, 0x8ff0f0, 0xb7a4f0, 0x9ae0a8];
+    const colors = [0xf5c542, 0xf2a3b8, 0x8ff0f0, 0xb7a4f0, 0x9ae0a8];
     this.every(700, () => {
       const x = Phaser.Math.Between(24, W - 24);
       const y = Phaser.Math.Between(this.BAR + 20, Math.max(this.BAR + 30, skyBottom - 40));

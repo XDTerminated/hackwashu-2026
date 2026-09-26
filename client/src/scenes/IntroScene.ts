@@ -187,7 +187,7 @@ export class IntroScene extends Cutscene {
     }
     you.set({ pose: "shrug", mouth: "open" });
     await this.famSay(you, "WAIT-", 400);
-    const vote = this.keep(this.add.image(cx, BAR + 26, this.bigText("4 TO 1", "#e08a6b")).setDepth(60));
+    const vote = this.keep(this.add.image(cx, BAR + 26, this.bigText("4 TO 1", "#f5c542")).setDepth(60));
     sfx.stamp();
     this.cameras.main.shake(160, 0.006);
     await this.wait(600);
@@ -278,7 +278,7 @@ export class IntroScene extends Cutscene {
       await this.wait(550);
       img.destroy();
     }
-    const lift = this.keep(this.add.image(Math.round(W / 2), BAR + 30, this.bigText("LIFTOFF!", "#e08a6b")).setDepth(60));
+    const lift = this.keep(this.add.image(Math.round(W / 2), BAR + 30, this.bigText("LIFTOFF!", "#f5c542")).setDepth(60));
     sfx.go();
     sfx.rumble(4);
     this.cameras.main.shake(3200, 0.004);
@@ -353,13 +353,13 @@ export class IntroScene extends Cutscene {
     const bars = this.add.graphics();
     const setBars = (n: number) => {
       bars.clear();
-      for (let i = 0; i < 4; i++) bars.fillStyle(i < n ? 0xfff6e6 : 0xb85c3e, 1).fillRect(20 + i * 3, -46 - i * 2, 2, 3 + i * 2);
+      for (let i = 0; i < 4; i++) bars.fillStyle(i < n ? 0xfff6e6 : 0xb44f6c, 1).fillRect(20 + i * 3, -46 - i * 2, 2, 3 + i * 2);
     };
     setBars(2);
     phone.add([name, bars]);
     await this.tween({ targets: phone, y: Math.round(H / 2), duration: 400, ease: "back.out" });
     const bubble = (y: number, s: string) => {
-      const l = new Label(this, 34, y, s, { bg: 0xd97757, border: C.outline, color: C.cream, maxWidth: 52, originX: 1, originY: 0, align: "left" });
+      const l = new Label(this, 34, y, s, { bg: 0xe0708a, border: C.outline, color: C.cream, maxWidth: 52, originX: 1, originY: 0, align: "left" });
       phone.add(l);
       sfx.message();
       return l;

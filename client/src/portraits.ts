@@ -118,7 +118,7 @@ function jadeRabbit(g: Grid, f: PortraitFrame) {
 function postmaster(g: Grid, f: PortraitFrame) {
   const n = "#8a6a4a", nd = "#6f5238", m = "#a88257", W = "#f4ead8", Wd = "#dccbb0";
   const Y = "#f5c542", Yd = "#d9a441", b = "#e08a3c", bd = "#b8672a";
-  const B = "#3f5aa0", Bd = "#2f4580", Bl = "#5a78c4", O = "#d97757";
+  const B = "#3f5aa0", Bd = "#2f4580", Bl = "#5a78c4", O = "#e0708a";
   g.oval(24, 51, 18, 13, n, nd);
   g.oval(24, 50, 9, 10, m);
   g.dots(n, [21, 43], [22, 44], [26, 44], [27, 43], [23, 47], [24, 48], [25, 47], [20, 46], [28, 46]);
@@ -242,7 +242,7 @@ function scholar(g: Grid, f: PortraitFrame) {
 }
 
 function stargazer(g: Grid, f: PortraitFrame) {
-  const c = "#7a5fd0", cd = "#5e45b0", C = "#9a7ff0", W = "#f6f6fa", p = "#f0a8bc", O = "#d97757", Od = "#b85c3e", Y = "#f5c542";
+  const c = "#7a5fd0", cd = "#5e45b0", C = "#9a7ff0", W = "#f6f6fa", p = "#f0a8bc", O = "#e0708a", Od = "#b44f6c", Y = "#f5c542";
   g.line(19, 13, 15, 5, cd);
   g.line(29, 13, 33, 5, cd);
   g.oval(15, 3.5, 2.2, 2.2, Y, "#d9a441");

@@ -313,7 +313,7 @@ export function puff(scene: Phaser.Scene, x: number, y: number) {
 }
 
 /**
- * A baby clod — one piece of an agent's work (one tool call). It runs off to
+ * A little star — one piece of an agent's work (one tool call). It runs off to
  * the building, works, then glows when the result is ready to collect.
  */
 export class ClodActor {

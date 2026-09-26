@@ -124,7 +124,7 @@ it (or try them on sample data), and then they work with your real mail, calenda
 **Materials:** moonstone from clearing boulders (free now: small rocks give 1, big ones 2 or 3), rubble and
 fallen meteor rocks; stardust from sweeping moondust drifts; moon shards from the 12 glinting in the wilds
 (spending them doesn't un-find them: find all 12 and the beacon still relights). **Coins** come from popping
-clods after your neighbors finish work (so using them pays), sweeping, meteors, requests and shards.
+stars after your neighbors finish work (so using them pays), sweeping, meteors, requests and shards.
 Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), built onto its east wall with a brass mail tube from the Post Office into the rocket. It lets him send your replies, with your OK, and it moves with the Post Office in edit mode.
 Saves from the old quest chain carry over: anyone who had a house counts as moved in.
 
@@ -218,10 +218,10 @@ always pay out, arches usually do, pebbles rarely.
 
 ## Earning coins
 
-- **Pop clods**: every real tool call a villager makes leaves a clod worth a few coins.
+- **Pop stars**: every real tool call a villager makes leaves a star worth a few coins.
 - **Moondust**: drifts pile up by the solar lamps and dim them, even while you're away. Hold E (or SPACE) by one to sweep it (3¢).
 - **Meteors**: a shadow and a whistle, then a glowing moon-rock. Grab it (E) before it cools (8¢). Sometimes a shower comes.
-- **Colony requests**: three small goals a day from the neighbors who live here (sweep drifts, catch a meteor, clear a rock, decorate a yard, find a shard, text someone, ask for help in person, pop clods), paid when done. New ones each day; the gold badge on the Quests button counts what's left, and the Quests list shows them first.
+- **Colony requests**: three small goals a day from the neighbors who live here (sweep drifts, catch a meteor, clear a rock, decorate a yard, find a shard, text someone, ask for help in person, pop stars), paid when done. New ones each day; the gold badge on the Quests button counts what's left, and the Quests list shows them first.
 - **Moon Shards**: 12 glowing pieces of the old colony's broken beacon are hidden across the wilds. Walk over one to pick it up (15¢); find all 12 and Nova relights the beacon (+200¢). The first shard you find, Nova explains all this; halfway she cheers you on, and the Quests list tracks them.
 - **Villager chores** (opt-in, per villager): tick **[ ] CHORES** in their dialog and, when idle, they do a small real check every 15 minutes (unread mail, next 24h, what's due, space news). Each round uses real API calls. Chores never count toward quests.
 
@@ -238,7 +238,7 @@ what they actually fetched for you (no extra API calls).
 |---|---|
 | Villager walks to a building | Using that tool: Mailbox = read inbox, Post Office = draft, Mail Rocket = send, Clock Tower = calendar, Library = Canvas, Observatory = web |
 | Thought bubble over a villager (click it) | Its latest reasoning |
-| Baby clod runs off, then glows | One real tool call finished. E pops it for the result and coins |
+| Little star runs off, then glows | One real tool call finished. E pops it for the result and coins |
 | Two villagers meet, a letter flies | A handoff between agents |
 | Villager at your door with ❗ and a letter | Needs your OK to send an email or book an event. The same letter texts your phone |
 | Building smokes | A tool failed ("the post office is closed") |
@@ -288,7 +288,7 @@ Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at t
 - **Quests** (scroll) · **Help** (?)
 - **Music** (note) and **Sound effects** (speaker): separate mutes, remembered per browser.
 - **Edit layout** (pencil): drag any building, plot, decoration or task lantern (the stone lanterns planted when villagers finish real work) anywhere on the island, or click a decoration to sell it. Task lanterns can be moved but not sold. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
-- **Action button** (right end): does exactly what E would, and its icon shows what that is: calling a villager home from their door (also a CALL button at the door itself), talk, read a letter, build, pop a clod, grab a moon-rock, hold to sweep, or switch a light on or off. Lights (the Glow Lamp and the Habitat Dome) are the only decorations you interact with outside edit mode; moving and selling happen in edit mode.
+- **Action button** (right end): does exactly what E would, and its icon shows what that is: calling a villager home from their door (also a CALL button at the door itself), talk, read a letter, build, pop a star, grab a moon-rock, hold to sweep, or switch a light on or off. Lights (the Glow Lamp and the Habitat Dome) are the only decorations you interact with outside edit mode; moving and selling happen in edit mode.
 
 **Decorations are part of the daily requests.** Every day one neighbor who lives here makes a **wish**
 for a decoration they love that isn't in their yard yet ("Hoot: I'd love an Owl Birdbath by my home!").

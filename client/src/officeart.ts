@@ -1,11 +1,11 @@
 // The Office, inside and out: the room, desks with live monitors (code while
 // an agent works, "..." while it thinks), and the agents themselves, drawn as
-// the Claude Code mascot (seen from behind at their desks, tapping away with
-// their side nubs, and from the front when they walk; the lead wears a crown).
+// little stars (seen from behind at their desks, wiggling as they type, and
+// from the front when they walk; the lead wears a crown).
 // Native size, like everything else.
 
 import { type Ctx, INK as O, disc, hash, rect } from "./pix";
-import { drawMascot } from "./mascot";
+import { drawStar } from "./star";
 
 export const ROOM_W = 448;
 export const ROOM_H = 322;
@@ -97,7 +97,7 @@ export function drawDesk(ctx: Ctx, screen: DeskScreen) {
       const row = (i + shift) % 7;
       const w = 4 + Math.floor(hash(row, 3, 9) * 13);
       const indent = Math.floor(hash(row, 4, 9) * 3) * 2;
-      rect(ctx, ["#6fe3e1", "#f5c542", "#b7a4f0", "#9ae0a8", "#eb9a7c"][row % 5], 15 + indent, 3 + i * 2 + 1, Math.min(w, 18 - indent), 1);
+      rect(ctx, ["#6fe3e1", "#f5c542", "#b7a4f0", "#9ae0a8", "#f2a3b8"][row % 5], 15 + indent, 3 + i * 2 + 1, Math.min(w, 18 - indent), 1);
     }
   } else if (screen.startsWith("think")) {
     // "..." filling in: the agent is thinking
@@ -136,25 +136,25 @@ export function drawDesk(ctx: Ctx, screen: DeskScreen) {
   rect(ctx, "#b8b0c4", 5, 22, 6, 1);
 }
 
-/** An agent at their desk, seen from behind in an office chair; `f` taps their nubs (typing). 34 x 20. */
+/** An agent at their desk, seen from behind in an office chair; `f` wiggles them (typing). 26 x 26. */
 export function drawWorkerBack(ctx: Ctx, look: number, f: number) {
   // the chair back peeks out below
-  rect(ctx, O, 11, 12, 12, 8);
-  rect(ctx, "#3b3a4a", 12, 13, 10, 6);
-  rect(ctx, "#5b5a6e", 12, 13, 10, 1);
-  drawMascot(ctx, 0, 1, 2, { shade: look, eyes: false, legs: false, nubs: f ? [-1, 1] : [1, -1] });
+  rect(ctx, O, 7, 17, 12, 9);
+  rect(ctx, "#3b3a4a", 8, 18, 10, 7);
+  rect(ctx, "#5b5a6e", 8, 18, 10, 1);
+  drawStar(ctx, 1, 0, 24, { color: look, face: false, rot: f ? 0.08 : -0.08 });
 }
 
-/** An agent standing, facing you (walking in and out). 34 x 18; the lead (with a crown) is 34 x 24. */
+/** An agent standing, facing you (walking in and out). 24 x 24; the lead (with a crown) is 24 x 30. */
 export function drawWorkerFront(ctx: Ctx, look: number, crown = false) {
   const by = crown ? 6 : 0;
-  drawMascot(ctx, 0, by, 2, { shade: look });
+  drawStar(ctx, 0, by, 24, { color: look });
   if (crown) {
-    rect(ctx, O, 11, 0, 12, 7);
-    rect(ctx, "#f5c542", 12, 3, 10, 3);
-    for (const cx of [12, 16, 20]) rect(ctx, "#f5c542", cx, 1, 2, 2);
-    rect(ctx, "#fff0a8", 12, 3, 10, 1);
-    rect(ctx, "#e05a5a", 16, 4, 2, 1);
+    rect(ctx, O, 6, 0, 12, 6);
+    rect(ctx, "#f5c542", 7, 2, 10, 3);
+    for (const cx of [7, 11, 15]) rect(ctx, "#f5c542", cx, 1, 2, 1);
+    rect(ctx, "#fff0a8", 7, 2, 10, 1);
+    rect(ctx, "#e05a5a", 11, 3, 2, 1);
   }
 }
 
@@ -267,8 +267,8 @@ export function drawOfficeTower(ctx: Ctx) {
   rect(ctx, O, 29, 19, 2, 4);
   rect(ctx, O, 46, 8, 40, 15);
   rect(ctx, "#1f2a4d", 47, 9, 38, 13);
-  rect(ctx, "#d97757", 50, 12, 2, 7);
-  rect(ctx, "#d97757", 48, 15, 2, 1);
+  rect(ctx, "#e0708a", 50, 12, 2, 7);
+  rect(ctx, "#e0708a", 48, 15, 2, 1);
   rect(ctx, "#6fe3e1", 56, 12, 3, 1);
   rect(ctx, "#6fe3e1", 55, 14, 5, 1);
   rect(ctx, "#6fe3e1", 57, 16, 6, 1);

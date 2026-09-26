@@ -7,7 +7,7 @@ const ROCK = { base: "#a79fb4", dark: "#8a8298", light: "#c9c1d4" };
 const METAL = { base: "#c9cbd6", dark: "#8f93a3", light: "#eef0f6" };
 const WOOD = { base: "#a86f43", dark: "#8a5a3b", light: "#c98f5a" };
 const JADE = { base: "#5fb58a", dark: "#3f8a66", light: "#8fdcb0" };
-const CORAL = "#d97757";
+const ROSE = "#e0708a";
 
 export interface DecorArt {
   w: number;
@@ -59,7 +59,7 @@ const art: Record<string, DecorArt> = {
         for (let v = 0; v < H; v++) {
           const edge = v === 0 || v === H - 1 || u === W - 1;
           const moon = (u - 6) ** 2 + (v - 4) ** 2 <= 7 && !((u - 7.3) ** 2 + (v - 3.3) ** 2 <= 5);
-          const c = edge ? O : moon ? "#fff6e6" : v === H - 2 ? "#b85c3e" : v === 1 ? "#eb9a7c" : CORAL;
+          const c = edge ? O : moon ? "#fff6e6" : v === H - 2 ? "#b44f6c" : v === 1 ? "#f2a3b8" : ROSE;
           rect(ctx, c, 9 + u, 5 + v + dy, 1, 1);
         }
       }
@@ -356,7 +356,7 @@ const art: Record<string, DecorArt> = {
       rect(ctx, O, 3, 10, 26, 9);
       rect(ctx, METAL.light, 4, 11, 24, 7);
       rect(ctx, METAL.base, 4, 16, 24, 2);
-      rect(ctx, CORAL, 4, 14, 24, 1);
+      rect(ctx, ROSE, 4, 14, 24, 1);
       rect(ctx, O, 3, 8, 12, 3);
       rect(ctx, "#2f4f8f", 4, 9, 10, 1);
       rect(ctx, O, 17, 4, 11, 7);
@@ -741,8 +741,8 @@ Object.assign(art, {
         const half = Math.round(5 + ((y - 18) / 34) * 4);
         const band = Math.floor((y - 18) / 7) % 2 === 0;
         rect(ctx, O, 18 - half - 1, y, half * 2 + 2, 1);
-        rect(ctx, band ? CORAL : "#fff6e6", 18 - half, y, half * 2, 1);
-        rect(ctx, band ? "#b85c3e" : "#e3d8c6", 18 + half - 2, y, 2, 1);
+        rect(ctx, band ? ROSE : "#fff6e6", 18 - half, y, half * 2, 1);
+        rect(ctx, band ? "#b44f6c" : "#e3d8c6", 18 + half - 2, y, 2, 1);
       }
       // door and a window
       rect(ctx, O, 15, 45, 6, 8);
@@ -760,9 +760,9 @@ Object.assign(art, {
       if (lit) rect(ctx, "#ffffff", 14, 6, 2, 3);
       rect(ctx, O, 17, 5, 1, 7);
       rect(ctx, O, 11, 3, 14, 2);
-      rect(ctx, "#b85c3e", 12, 3, 12, 1);
+      rect(ctx, "#b44f6c", 12, 3, 12, 1);
       rect(ctx, O, 16, 0, 4, 3);
-      rect(ctx, CORAL, 17, 1, 2, 2);
+      rect(ctx, ROSE, 17, 1, 2, 2);
     },
   },
 
@@ -843,7 +843,7 @@ Object.assign(art, {
     frames: 1,
     draw(ctx) {
       // books standing in a row
-      const spines = ["#d9503f", "#5b78c4", "#f5c542", "#5fb58a", "#9a7ff0", "#d97757", "#5b78c4", "#e89aa8"];
+      const spines = ["#d9503f", "#5b78c4", "#f5c542", "#5fb58a", "#9a7ff0", "#e0708a", "#5b78c4", "#e89aa8"];
       spines.forEach((c, i) => {
         const bx = 4 + i * 3;
         const h = 6 + ((i * 5) % 4);
@@ -981,7 +981,7 @@ Object.assign(art, {
       const sag = (x: number) => Math.round(5 + 5 * (1 - ((x - 24) / 20) ** 2));
       for (let x = 5; x < 43; x++) rect(ctx, O, x, sag(x), 1, 1);
       // little pennants that flutter in turn
-      const cols = [CORAL, GOLD.base, "#5fb58a", "#5b78c4", "#e89aa8", "#9a7ff0"];
+      const cols = [ROSE, GOLD.base, "#5fb58a", "#5b78c4", "#e89aa8", "#9a7ff0"];
       [9, 15, 21, 27, 33, 39].forEach((x0, i) => {
         const x = x0 + (f && i % 2 ? 1 : 0);
         const y = sag(x0) + 1;
@@ -1005,7 +1005,7 @@ Object.assign(art, {
       rect(ctx, O, 7, 31, 6, 5);
       rect(ctx, METAL.dark, 8, 32, 4, 3);
       const bs: [number, number, string][] = [
-        [5, 9, CORAL],
+        [5, 9, ROSE],
         [15, 8, "#5b78c4"],
         [10, 5, GOLD.base],
       ];

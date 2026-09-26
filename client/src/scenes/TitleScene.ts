@@ -70,7 +70,7 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
     if (auth.state === "out") {
-      if (auth.note) centered(Math.round(H * 0.72), auth.note, 0xe08a6b);
+      if (auth.note) centered(Math.round(H * 0.72), auth.note, 0xf2a3b8);
       const btn = new Button(this, 0, Math.round(H * 0.78), "SIGN IN WITH GOOGLE", C.greenBtn, () => net.signIn(), 120);
       btn.setX(cx - Math.round(btn.width_ / 2));
       this.add.existing(btn);

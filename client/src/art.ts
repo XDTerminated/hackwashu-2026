@@ -2,7 +2,7 @@
 // palette; "." is transparent. Every row in a frame must be the same width.
 //
 // The little Claude critters are NOT here — they're rasterized from polar math
-// in textures.ts so the sunburst stays radially true.
+// in textures.ts so the stars stay crisp.
 
 export interface PixelSprite {
   palette: Record<string, string>;
@@ -19,8 +19,8 @@ const SUIT = {
   V: "#1f3a4d", // visor glass
   L: "#4fa8b8", // visor reflection
   l: "#c8f4ff", // visor highlight
-  O: "#d97757", // coral trim
-  o: "#b85c3e", // coral shade
+  O: "#e0708a", // rose trim
+  o: "#b44f6c", // rose shade
   G: "#8a7f9c", // life-support pack
   B: "#6b4a3a", // leather boots
 };
@@ -265,7 +265,7 @@ export const postmaster: PixelSprite = {
     k: "#241a16",
     b: "#e08a3c",
     B: "#3f5aa0",
-    O: "#d97757",
+    O: "#e0708a",
   },
   frames: [
     [
@@ -426,7 +426,7 @@ export const stargazer: PixelSprite = {
     W: "#f6f6fa",
     k: "#241a16",
     p: "#f0a8bc",
-    O: "#d97757",
+    O: "#e0708a",
     Y: "#f5c542",
   },
   frames: [
@@ -454,7 +454,7 @@ export const rocket: PixelSprite = {
     K: "#3b2a3a",
     W: "#e9e9f2",
     S: "#b9bcce",
-    O: "#d97757",
+    O: "#e0708a",
     V: "#1c2748",
     G: "#767888",
   },

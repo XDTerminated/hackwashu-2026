@@ -105,7 +105,7 @@ interface Look {
 }
 
 export const LOOKS: Record<FamilyId, Look> = {
-  you: { skin: "#f2c49b", skinShade: "#d9a27a", hair: "#5a3a2a", hairShade: "#402a1f", style: "spiky", shirt: "#d97757", shirtShade: "#b85c3e" },
+  you: { skin: "#f2c49b", skinShade: "#d9a27a", hair: "#5a3a2a", hairShade: "#402a1f", style: "spiky", shirt: "#e0708a", shirtShade: "#b44f6c" },
   mom: { skin: "#e8b48a", skinShade: "#cc956c", hair: "#7a3a28", hairShade: "#5a2a1e", style: "long", shirt: "#5aa878", shirtShade: "#3f8a5c" },
   dad: { skin: "#d9a07a", skinShade: "#bd845e", hair: "#3a2a24", hairShade: "#2a1e1a", style: "short", shirt: "#4a78c8", shirtShade: "#355ea8", glasses: true, mustache: true },
   grandma: { skin: "#f0c8a8", skinShade: "#d8aa88", hair: "#e4e0ec", hairShade: "#b8b2c8", style: "bun", shirt: "#8a5aa8", shirtShade: "#6e4690", glasses: true, blush: true },
@@ -241,9 +241,9 @@ function drawBust(ctx: Ctx, id: FamilyId, pose: Pose, eyes: Eyes, mouth: Mouth) 
       fill(L.hair, 11, 3, 4, 4);
       fill(L.hair, 10, 4, 6, 2);
       fill(L.hairShade, 14, 4, 1, 2);
-      set(16, 2, "#d97757");
-      set(15, 3, "#d97757");
-      set(9, 6, "#d97757");
+      set(16, 2, "#e0708a");
+      set(15, 3, "#e0708a");
+      set(9, 6, "#e0708a");
     } else if (L.style === "pigtails") {
       fill(L.hair, 4, 10, 4, 4);
       fill(L.hair, 5, 14, 2, 1);
@@ -453,7 +453,7 @@ export function drawTable(scene: Phaser.Scene): string {
           set(sx, 11, "#e8f4ff");
           set(sx - 1, 12, "#e8f4ff");
           set(sx, 13, "#e8f4ff");
-          fill("#d97757", sx - 5, 11, 2, 2);
+          fill("#e0708a", sx - 5, 11, 2, 2);
           set(sx + 4, 13, "#f5c542");
           return;
         }
@@ -825,7 +825,7 @@ export function drawLaunchSite(scene: Phaser.Scene, W: number, H: number, ground
       }
     for (let y = top; y < groundY; y += 10) rect(ctx, "#8a7f9c", gx, y, 14, 1);
     rect(ctx, INK, gx - 12, groundY - 60, 14, 4);
-    rect(ctx, "#b85c3e", gx - 11, groundY - 59, 12, 2);
+    rect(ctx, "#b44f6c", gx - 11, groundY - 59, 12, 2);
     rect(ctx, "#8a7f9c", gx - 2, top - 6, 18, 6);
     rect(ctx, INK, gx - 2, top - 6, 18, 1);
     // floodlights
@@ -897,7 +897,7 @@ export function drawPhone(scene: Phaser.Scene): string {
     rect(ctx, "#e8eef8", 5, 10, 74, 108);
     rect(ctx, "#1a1628", 36, 4, 12, 2);
     rect(ctx, "#4a4460", 34, 121, 16, 3);
-    rect(ctx, "#d97757", 5, 10, 74, 13);
+    rect(ctx, "#e0708a", 5, 10, 74, 13);
   });
 }
 
@@ -908,8 +908,8 @@ export function drawTicket(scene: Phaser.Scene): string {
     rect(ctx, INK, 1, 0, W - 2, H);
     rect(ctx, INK, 0, 1, W, H - 2);
     rect(ctx, "#fff2d6", 1, 1, W - 2, H - 2);
-    rect(ctx, "#d97757", 1, 1, W - 2, 15);
-    rect(ctx, "#b85c3e", 1, 15, W - 2, 1);
+    rect(ctx, "#e0708a", 1, 1, W - 2, 15);
+    rect(ctx, "#b44f6c", 1, 15, W - 2, 1);
     // perforation between the stub and the ticket
     for (let y = 18; y < H - 2; y += 4) rect(ctx, "#c8a878", 44, y, 1, 2);
     for (const y of [0, H - 1]) {
@@ -1009,9 +1009,9 @@ export function drawYouPortrait(scene: Phaser.Scene, f: 0 | 1): string {
     rect(ctx, "#c8f4ff", 15, 20, 3, 1);
     rect(ctx, "#4fa8b8", 14, 21, 2, 3);
     rect(ctx, "#c8f4ff", 32, 31, 2, 1);
-    rect(ctx, "#d97757", 8, 42, 32, 3);
-    rect(ctx, "#b85c3e", 8, 44, 32, 1);
+    rect(ctx, "#e0708a", 8, 42, 32, 3);
+    rect(ctx, "#b44f6c", 8, 44, 32, 1);
     rect(ctx, INK, 36, 4, 1, 9);
-    disc(ctx, "#d97757", 36, 4, 2);
+    disc(ctx, "#e0708a", 36, 4, 2);
   });
 }

@@ -402,7 +402,7 @@ export class UIScene extends Phaser.Scene {
       g.fillStyle(store.buildings[b] ? 0xfff6e6 : 0xc9a26b, 1).fillRect(X(spot.x) - 1, Y(spot.y) - 2, 3, 2);
     }
     const dots = game.minimapDots();
-    for (const c of dots.clods) g.fillStyle(c.status === "ready" ? 0xffb07a : 0xd97757, 1).fillRect(X(c.x), Y(c.y), 1, 1);
+    for (const c of dots.clods) g.fillStyle(c.status === "ready" ? 0xffe58a : 0xe0708a, 1).fillRect(X(c.x), Y(c.y), 1, 1);
     // Meteors: blinking red while falling, orange once landed (grab it!).
     const fast = Math.floor(time / 150) % 2 === 0;
     for (const m of dots.meteors) {
@@ -870,12 +870,12 @@ export class UIScene extends Phaser.Scene {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot here. Clear its rubble, repair the foundation with materials, build the house with coins, and put something they love in the yard: then they move in. Materials: moonstone (clear boulders, rubble and fallen meteor rocks), stardust (sweep moondust), moon shards (glinting in the wilds). Once they're home, connect your account so they can help with your real stuff, or try them on sample data.",
-      "The toolbar icons (hover for names): MoonPad, Supply Pod (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a clod, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
+      "The toolbar icons (hover for names): MoonPad, Supply Pod (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Supply Pod): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Supply Pod says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
-      "Finished work leaves glowing clods - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
+      "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
       "Every day the neighbors post three COLONY REQUESTS (the gold badge on Quests) that pay coins. 12 MOON SHARDS (pieces of the old colony's beacon) glint out in the wilds: walk over one to pick it up (15¢), and find all 12 to relight the beacon (+200¢). Clearing a rock sometimes turns up treasure.",
       this.accountSummary(),
       "Villager not home? Walk up to their door and press CALL (the green button, the button at the door, or E) - they'll walk back.",

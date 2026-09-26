@@ -33,7 +33,7 @@ function page(res: ServerResponse, status: number, title: string, body: string) 
   res.end(`<!doctype html><meta charset="utf-8"><title>${title}</title>
 <body style="font-family:ui-monospace,monospace;background:#0b0a1a;color:#f4d9a6;display:grid;place-items:center;min-height:100vh;margin:0">
 <div style="max-width:560px;padding:24px;border:4px solid #8a4b1f;background:#1a1430;line-height:1.6">
-<h2 style="color:#e08a6b;margin-top:0">${title}</h2>${body}</div></body>`);
+<h2 style="color:#f2a3b8;margin-top:0">${title}</h2>${body}</div></body>`);
 }
 
 const httpServer = createServer(async (req, res) => {
@@ -91,7 +91,7 @@ const httpServer = createServer(async (req, res) => {
 <p><a style="color:#f5c542;font-size:1.1em" href="/connect/google">Sign in with Google now →</a></p>
 <p style="opacity:.75">Until Google verifies the app, players see a "Google hasn't verified this app" screen: Advanced → Go to Fl-AI Me to the Moon continues.</p>`);
     }
-    const step = (n: number, html: string) => `<li style="margin:0 0 14px"><b style="color:#e08a6b">${n}.</b> ${html}</li>`;
+    const step = (n: number, html: string) => `<li style="margin:0 0 14px"><b style="color:#f2a3b8">${n}.</b> ${html}</li>`;
     const link = (href: string, text: string) => `<a style="color:#f5c542" target="_blank" rel="noopener" href="${href}">${text}</a>`;
     return page(res, 200, "Set up Google sign-in", `<p>Do this once, as the host, and every player can sign in with their own Google account. About 5 minutes.</p>
 <ol style="list-style:none;padding:0">

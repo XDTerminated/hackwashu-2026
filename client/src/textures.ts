@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { drawMascot, drawMascotIcon, mascotSize } from "./mascot";
+import { drawStar } from "./star";
 import type { PixelSprite } from "./art";
 import {
   astronaut,
@@ -21,9 +21,9 @@ import { type Ctx, INK, box, disc, hash, rect } from "./pix";
 import { PORTRAIT, drawPortrait, drawPortraitSky, type PortraitFrame } from "./portraits";
 import { ROOM_H, ROOM_W, WORKER_LOOKS, drawCoffee, drawCouch, drawDesk, drawOfficeTower, drawPlant, drawRoom, drawWorkerBack, drawWorkerFront } from "./officeart";
 
-const CORAL = "#d97757";
-const CORAL_DARK = "#b85c3e";
-const CORAL_LIGHT = "#eb9a7c";
+const ROSE = "#e0708a";
+const ROSE_DARK = "#b44f6c";
+const ROSE_LIGHT = "#f2a3b8";
 
 function drawRows(ctx: Ctx, rows: string[], palette: Record<string, string>) {
   for (let y = 0; y < rows.length; y++) {
@@ -55,38 +55,6 @@ function canvasTex(scene: Phaser.Scene, key: string, w: number, h: number, draw:
   tex.refresh();
 }
 
-/**
- * The Claude sunburst, rasterized per-pixel from polar coordinates so every
- * ray is radially true at tiny sizes. `rot` spins it; `eyes` makes it a critter.
- */
-function drawSpark(ctx: Ctx, size: number, rot: number, eyes: boolean) {
-  const c = (size - 1) / 2;
-  const RAYS = 8;
-  const rCore = size * 0.17;
-  const rTip = size * 0.49;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = x - c;
-      const dy = y - c;
-      const r = Math.hypot(dx, dy);
-      const theta = Math.atan2(dy, dx) + rot;
-      const t = Math.abs(Math.cos((RAYS * theta) / 2));
-      const reach = rCore + (rTip - rCore) * Math.pow(t, 1.35);
-      if (r > reach) continue;
-      const f = r / rTip;
-      ctx.fillStyle = f < 0.3 ? CORAL_LIGHT : f < 0.78 ? CORAL : CORAL_DARK;
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-  if (eyes) {
-    const ex = Math.round(c - size * 0.1);
-    const ex2 = Math.round(c + size * 0.1);
-    const ey = Math.round(c - 1);
-    rect(ctx, "#2a1712", ex, ey, 1, 2);
-    rect(ctx, "#2a1712", ex2, ey, 1, 2);
-  }
-}
-
 // ---------------------------------------------------------------- the plaza
 
 const P_STONE = { base: "#b8b0c4", dark: "#8a8298", light: "#dcd6e4" };
@@ -108,7 +76,7 @@ function bowl(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, wall: nu
   disc(ctx, P_WATER.dark, cx + 2, cy + 1.5, (rx - 4.5) * 0.55, (ry - 3.4) * 0.45);
 }
 
-/** The Earthrise Fountain: three tiers of marble and gold under a turning spark (120 x 100). */
+/** The Earthrise Fountain: three tiers of marble and gold under a turning star (120 x 100). */
 function drawPlazaFountain(ctx: Ctx, f: number) {
   bowl(ctx, 60, 82, 57, 13, 5);
   // lily pads in the great basin
@@ -155,19 +123,16 @@ function drawPlazaFountain(ctx: Ctx, f: number) {
     rect(ctx, P_WATER.light, 45, 31 + y, 1, 1);
     rect(ctx, P_WATER.light, 75, 31 + y, 1, 1);
   }
-  // gold orb pedestal and the turning spark
+  // gold orb pedestal and the turning star
   disc(ctx, INK, 60, 25, 4.5, 3);
   disc(ctx, GOLDC.base, 60, 25, 3.5, 2);
-  ctx.save();
-  ctx.translate(48, 0);
-  drawSpark(ctx, 25, (f * Math.PI) / 16, false);
-  ctx.restore();
+  drawStar(ctx, 48, 0, 25, { face: false, rot: (f * Math.PI) / 16 });
   // sparkles on the water
   const glints = [[[22, 80], [70, 86], [96, 84], [50, 49]], [[40, 84], [88, 80], [26, 88], [68, 50]], [[58, 88], [30, 82], [104, 86], [56, 27]]][f];
   for (const [x, y] of glints) rect(ctx, "#ffffff", x, y, 2, 1);
 }
 
-/** A marble obelisk with a gold tip and a glowing coral gem (18 x 58). */
+/** A marble obelisk with a gold tip and a glowing rose gem (18 x 58). */
 function drawObelisk(ctx: Ctx) {
   rect(ctx, INK, 0, 48, 18, 10);
   rect(ctx, MARBLE.base, 1, 49, 16, 8);
@@ -189,8 +154,8 @@ function drawObelisk(ctx: Ctx) {
   rect(ctx, INK, 8, 0, 2, 2);
   rect(ctx, GOLDC.base, 7, 30, 4, 1);
   disc(ctx, INK, 9, 22, 2.8);
-  disc(ctx, CORAL, 9, 22, 1.8);
-  rect(ctx, CORAL_LIGHT, 8, 21, 1, 1);
+  disc(ctx, ROSE, 9, 22, 1.8);
+  rect(ctx, ROSE_LIGHT, 8, 21, 1, 1);
   rect(ctx, GOLDC.base, 7, 36, 4, 1);
 }
 
@@ -216,7 +181,7 @@ function drawPlazaGarden(ctx: Ctx) {
     const x = 3 + Math.floor(hash(i, 1, 31) * 38);
     const y = 1 + Math.floor(hash(i, 2, 31) * 10);
     rect(ctx, hash(i, 3, 31) > 0.5 ? "#4f9e54" : "#6fbf6a", x, y + 1, 1, 13 - y);
-    rect(ctx, ["#f07a9a", "#f5c542", "#cfe7ff", "#b7a4f0", CORAL, "#ffffff"][i % 6], x, y, i % 3 ? 1 : 2, 1);
+    rect(ctx, ["#f07a9a", "#f5c542", "#cfe7ff", "#b7a4f0", ROSE, "#ffffff"][i % 6], x, y, i % 3 ? 1 : 2, 1);
   }
   rect(ctx, INK, 0, 13, 44, 11);
   rect(ctx, MARBLE.base, 1, 15, 42, 8);
@@ -344,7 +309,7 @@ function drawGrounds(ctx: Ctx, w: number, h: number, b: BuildingId) {
         rect(ctx, INK, px - 1, py - 1, pw2 + 2, ph2 + 2);
         rect(ctx, "#c98f5a", px, py, pw2, ph2);
         rect(ctx, "#fff6ee", px + Math.floor(pw2 / 2), py, 1, ph2);
-        rect(ctx, "#d97757", px + 1, py + 1, 2, 1);
+        rect(ctx, "#e0708a", px + 1, py + 1, 2, 1);
       }
       break;
     }
@@ -593,7 +558,7 @@ function drawShip(ctx: Ctx) {
   for (let y = 33; y < 51; y++) {
     const reach = 8 + Math.round((y - 33) * 0.42);
     for (let d = 7; d <= reach; d++) {
-      const c = y > 47 ? "#b85c3e" : "#d97757";
+      const c = y > 47 ? "#b44f6c" : "#e0708a";
       set(cx - 1 - d, y, c);
       set(cx + d, y, c);
     }
@@ -612,8 +577,8 @@ function drawShip(ctx: Ctx) {
       const d = x + 0.5 - cx;
       if (Math.abs(d) > hw) continue;
       let c = d > hw * 0.35 ? "#cbbfd6" : d < -hw + 2 ? "#ffffff" : "#f6efe2";
-      if ((y === 17 || y === 18 || y === 40 || y === 41) && y < 44) c = d > hw * 0.35 ? "#b85c3e" : "#d97757";
-      if (y < 5) c = d > 0 ? "#b85c3e" : "#d97757";
+      if ((y === 17 || y === 18 || y === 40 || y === 41) && y < 44) c = d > hw * 0.35 ? "#b44f6c" : "#e0708a";
+      if (y < 5) c = d > 0 ? "#b44f6c" : "#e0708a";
       set(x, y, c);
     }
   }
@@ -701,12 +666,10 @@ export function buildTextures(scene: Phaser.Scene) {
     if (decorById(id)?.light) canvasTex(scene, `deco_${id}_off`, a.w, a.h, (ctx) => a.draw(ctx, 0, false));
   }
 
-  // Baby clods (and the little builders): the Claude Code mascot, two steps of a walk.
-  const one = mascotSize(1);
-  canvasTex(scene, "clod_0", one.w, one.h, (c) => drawMascot(c, 0, 0, 1, { step: 1 }));
-  canvasTex(scene, "clod_1", one.w, one.h, (c) => drawMascot(c, 0, 0, 1, { step: 2 }));
-  const two = mascotSize(2);
-  canvasTex(scene, "spark_logo", two.w, two.h, (c) => drawMascot(c, 0, 0, 2));
+  // The little stars that run errands (and build): a waddle, two frames.
+  canvasTex(scene, "clod_0", 17, 17, (c) => drawStar(c, 0, 0, 17, { rot: -0.1 }));
+  canvasTex(scene, "clod_1", 17, 17, (c) => drawStar(c, 0, 0, 17, { rot: 0.1 }));
+  canvasTex(scene, "spark_logo", 24, 24, (c) => drawStar(c, 0, 0, 24, { face: false }));
 
   canvasTex(scene, "b_player_house", 112, 108, drawManor);
   canvasTex(scene, "b_rabbit_burrow", 112, 96, drawHollow);
@@ -721,10 +684,10 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
   for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
   for (let look = 0; look < WORKER_LOOKS; look++) {
-    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 34, 20, (ctx) => drawWorkerBack(ctx, look, f));
-    canvasTex(scene, `worker_front_${look}`, 34, 18, (ctx) => drawWorkerFront(ctx, look));
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 26, 26, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 24, 24, (ctx) => drawWorkerFront(ctx, look));
   }
-  canvasTex(scene, "office_lead", 34, 24, (ctx) => drawWorkerFront(ctx, 0, true));
+  canvasTex(scene, "office_lead", 24, 30, (ctx) => drawWorkerFront(ctx, 0, true));
   canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
   canvasTex(scene, "office_plant", 18, 26, drawPlant);
   canvasTex(scene, "office_couch", 52, 26, drawCouch);
@@ -755,8 +718,8 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "lamp_grand", 14, 30, drawGrandLamp);
   canvasTex(scene, "earth_s", 28, 28, (ctx) => drawEarth(ctx, 28));
   canvasTex(scene, "earth_l", 56, 56, (ctx) => drawEarth(ctx, 56));
-  canvasTex(scene, "spark_plaza", 33, 33, (c) => drawSpark(c, 33, 0, false));
-  canvasTex(scene, "clod_icon", 13, 7, (c) => drawMascotIcon(c, 0, 0));
+  canvasTex(scene, "spark_plaza", 33, 33, (c) => drawStar(c, 0, 0, 33, { face: false }));
+  canvasTex(scene, "clod_icon", 11, 11, (c) => drawStar(c, 0, 0, 11));
   canvasTex(scene, "dot", 5, 5, (ctx) => disc(ctx, "#ffffff", 2.5, 2.5, 2.5));
   canvasTex(scene, "bang_s", 7, 10, (ctx) => {
     box(ctx, "#f5c542", 0, 0, 7, 10);
@@ -857,7 +820,7 @@ export function buildTextures(scene: Phaser.Scene) {
       rect(ctx, INK, 1 + i, 1 + i, 1, 1);
       rect(ctx, INK, 10 - i, 1 + i, 1, 1);
     }
-    rect(ctx, CORAL, 5, 5, 2, 2);
+    rect(ctx, ROSE, 5, 5, 2, 2);
   });
 
   canvasTex(scene, "bang", 9, 13, (ctx) => {

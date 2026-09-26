@@ -245,7 +245,7 @@ export function drawManor(ctx: Ctx) {
   archWindow(ctx, 91, 47, 10, 15);
   archWindow(ctx, 91, 71, 10, 15);
   shingles(ctx, 96, 12, 28, 1, 15, TEAL_ROOF);
-  pennant(ctx, 95, 0, "#d97757");
+  pennant(ctx, 95, 0, "#e0708a");
   // porch
   shingles(ctx, 56, 65, 5, 29, 31, RED_ROOF);
   rect(ctx, O, 28, 72, 56, 29);
@@ -367,7 +367,7 @@ export function drawGrandPost(ctx: Ctx) {
   rect(ctx, O, 10, 6, 2, 44);
   rect(ctx, GOLD, 10, 5, 2, 1);
   rect(ctx, O, 12, 7, 16, 11);
-  rect(ctx, "#d97757", 13, 8, 14, 9);
+  rect(ctx, "#e0708a", 13, 8, 14, 9);
   box(ctx, "#fff6ee", 16, 9, 8, 6, O);
   rect(ctx, O, 17, 10, 3, 1);
   rect(ctx, O, 20, 10, 3, 1);
@@ -418,7 +418,7 @@ export function drawGrandPost(ctx: Ctx) {
   for (const [x, y, w, h] of [[3, 98, 10, 8], [5, 91, 7, 7], [100, 99, 9, 7]] as const) {
     box(ctx, "#c98f5a", x, y, w, h, O);
     rect(ctx, "#fff6ee", x + Math.floor(w / 2), y + 1, 1, h - 2);
-    rect(ctx, "#d97757", x + 1, y + 1, 2, 1);
+    rect(ctx, "#e0708a", x + 1, y + 1, 2, 1);
   }
 }
 
@@ -669,7 +669,7 @@ export function drawMailRocket(ctx: Ctx) {
   for (let y = 12; y < 28; y++) {
     const half = Math.round(((y - 12) / 16) * 6);
     rect(ctx, O, cx - half - 1, y, half * 2 + 3, 1);
-    rect(ctx, "#d97757", cx - half, y, half * 2 + 1, 1);
+    rect(ctx, "#e0708a", cx - half, y, half * 2 + 1, 1);
   }
   rect(ctx, "#f0a080", cx - 1, 16, 1, 6);
   rect(ctx, O, cx - 7, 28, 15, 60);
@@ -688,7 +688,7 @@ export function drawMailRocket(ctx: Ctx) {
   for (const dir of [-1, 1]) {
     const fx = dir < 0 ? cx - 12 : cx + 7;
     rect(ctx, O, fx, 74, 6, 18);
-    rect(ctx, "#d97757", fx + 1, 76, 4, 15);
+    rect(ctx, "#e0708a", fx + 1, 76, 4, 15);
   }
   rect(ctx, O, cx - 5, 88, 11, 6);
   rect(ctx, STEEL.dark, cx - 4, 88, 9, 5);
