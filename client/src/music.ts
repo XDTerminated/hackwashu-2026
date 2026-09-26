@@ -219,10 +219,10 @@ function scheduleBar(at: number, i: number) {
   const b = chord.root - 12;
   const into = next.root - 12;
   const walk = [b, b + chord.tones[1], b + 7, into + (into > b + 7 ? -1 : 1)];
-  walk.forEach((m, k) => tone(m, t(k), BEAT * 0.85, 0.11, { type: "triangle", attack: 0.005 }));
+  walk.forEach((m, k) => tone(m, t(k), BEAT * 0.85, 0.07, { type: "triangle", attack: 0.005 }));
 
   // comping: short chord stabs on the "and" of 2 and on 4, like a swing piano
-  for (const beat of [1.5, 3]) for (const c of chord.tones) tone(chord.root + 12 + c, t(beat), BEAT * 0.4, 0.014, { type: "triangle", attack: 0.01 });
+  for (const beat of [1.5, 3]) for (const c of chord.tones) tone(chord.root + 12 + c, t(beat), BEAT * 0.4, 0.009, { type: "triangle", attack: 0.01 });
 
   // drums: soft kick on 1 and 3, the swung ride ("ding, ding-da, ding, ding-da"), a closed hat on 2 and 4
   kick(t(0), 0.1);
@@ -231,11 +231,14 @@ function scheduleBar(at: number, i: number) {
   for (const beat of [1, 3]) hat(t(beat), 0.022, 0.05, 4000);
 
   // the lead: the tune on even choruses, a solo over the changes on odd ones
-  const lead = chorus % 2 === 0 ? HEAD[i % HEAD.length] : solo(i, chorus);
-  const vol = chorus % 2 === 0 ? 1 : 0.8;
+  // the tune twice, then a solo chorus over the changes, then the tune again
+  const soloing = chorus % 3 === 2;
+  const lead = soloing ? solo(i, chorus) : HEAD[i % HEAD.length];
+  const vol = soloing ? 0.75 : 1;
   for (const [beat, midi, len] of lead) {
-    tone(midi, t(beat), len * BEAT * 0.95, 0.075 * vol, { type: "triangle", attack: 0.02, vibrato: true });
-    tone(midi, t(beat), len * BEAT * 0.95, 0.014 * vol, { duty: 0.5, attack: 0.02, vibrato: true });
+    // (the melody is the loudest thing in the mix: a round triangle with a clear square edge)
+    tone(midi, t(beat), len * BEAT * 0.95, 0.11 * vol, { type: "triangle", attack: 0.015, vibrato: true });
+    tone(midi, t(beat), len * BEAT * 0.95, 0.03 * vol, { duty: 0.5, attack: 0.015, vibrato: true });
   }
   // a soft sparkle at the top of each chorus
   if (i % CHORDS.length === 0) tone(96, at, 1.2, 0.015, { type: "sine" });
@@ -264,7 +267,7 @@ export function startMusic() {
   // Take the fizz off the top, and add a soft slapback echo for warmth.
   const soften = ctx.createBiquadFilter();
   soften.type = "lowpass";
-  soften.frequency.value = 2600;
+  soften.frequency.value = 3400;
   soften.Q.value = 0.5;
   master.connect(soften).connect(ctx.destination);
   const echo = ctx.createDelay(1);

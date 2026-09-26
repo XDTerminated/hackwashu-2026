@@ -11,22 +11,21 @@
 // chords, then the tune again.
 
 export const TUNE = `
-# Moonlight Swing: opens with a nod to "Fly me to the moon, let me play among the stars"
-# (bars 1-4, and the first phrase again in bar 9) over circle-of-fifths changes;
-# the rest of the melody is our own.
-bpm 116
-Am7   | C5:1.5 B4:.5 A4:.5 G4:1.5
-Dm7   | F4:1.5 G4:.5 A4:.5 C5:1.5
-G7    | B4:1.5 A4:.5 G4:.5 F4:1.5
+# Moonlight Swing: a nod to "Fly me to the moon, let me play among the stars" (bars 1-4,
+# and again in bars 9-12) over circle-of-fifths changes; the rest of the melody is our own.
+bpm 120
+Am7   | C5:1.5 B4:.5 A4:1 G4:1
+Dm7   | F4:1.5 G4:.5 A4:1 C5:1
+G7    | B4:1.5 A4:.5 G4:1 F4:1
 Cmaj7 | E4:2.5 r:.5 G4:.5 E4:.5
 Fmaj7 | A4:1 C5:.5 E5:.5 D5:1 C5:1
 Bm7b5 | B4:1 A4:.5 F4:.5 D4:1.5 r:.5
 E7    | G#4:1 B4:.5 D5:.5 C5:1 B4:1
 Am7   | A4:3 r:1
-Am7   | C5:1.5 B4:.5 A4:.5 G4:.5 F4:1
-Dm7   | D4:.5 F4:.5 A4:.5 C5:1.5 A4:1
-G7    | G4:1 B4:.5 D5:.5 F5:1 D5:1
-Cmaj7 | E5:1.5 D5:.5 C5:.5 B4:.5 G4:1
+Am7   | C5:1.5 B4:.5 A4:1 G4:1
+Dm7   | F4:1.5 G4:.5 A4:1 C5:1
+G7    | B4:1.5 A4:.5 G4:1 F4:1
+Cmaj7 | E4:3 r:1
 Fmaj7 | A4:1 F4:.5 A4:.5 C5:1 A4:1
 Bm7b5 | D5:1 C5:.5 A4:.5 F4:1 D4:1
 E7    | E4:.5 G#4:.5 B4:.5 D5:1.5 B4:1
