@@ -687,7 +687,7 @@ export class UIScene extends Phaser.Scene {
 
   private buildToolbar() {
     const MIC_TIP = (on: boolean) =>
-      !micSupported ? "Open mic needs Chrome, Edge or Safari" : on ? "Open mic: ON - just talk to whoever you're standing next to" : "Open mic: off - turn on to talk to nearby neighbors hands-free (or hold TAB)";
+      !micSupported ? "Open mic needs Chrome, Edge or Safari" : on ? "Open mic: ON - press E by a neighbor, then just talk (Enter still types)" : "Open mic: off - turn on to talk hands-free once you press E by a neighbor";
     const W = this.scale.width;
     const H = this.scale.height;
     // Each button: its icon with a word underneath.

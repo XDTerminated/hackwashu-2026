@@ -31,6 +31,8 @@ export interface NearHost {
 const STAY_MS = 30_000;
 /** Walk further than this from them and the conversation's over. */
 const LEAVE_PX = 96;
+/** While the chat is up, the camera keeps you this far down the screen (so the log never covers you). */
+const LIFT_TO = 0.3;
 /** Come back within this long and they don't introduce themselves again. */
 const GREET_AGAIN_MS = 5 * 60_000;
 
@@ -195,7 +197,16 @@ export class NearTalk {
 
   // ---------------------------------------------------------------- typing
 
-  /** E or Enter next to someone: the chat bar opens (and "..." over your head while you type). */
+  /** E next to someone: with the open mic on, just start talking; otherwise the chat bar opens. */
+  talk(v: VillagerId) {
+    if (!openOn || !micSupported) return this.startTyping(v);
+    this.begin(v);
+    this.flashMine("(listening: just talk)", 2500);
+    sfx.blip();
+    this.syncOpenMic();
+  }
+
+  /** Enter (or E without the open mic) next to someone: the chat bar opens (and "..." over your head while you type). */
   startTyping(v: VillagerId) {
     if (this.typing) return;
     this.begin(v);
@@ -254,19 +265,26 @@ export class NearTalk {
     });
   }
 
-  /** The open mic runs while it's on and you're next to someone (and nothing else needs you). */
+  /**
+   * The open mic only listens in a conversation you started (E next to someone),
+   * while you're still beside them: never just because you walked past. It goes
+   * quiet when you walk off, or after half a minute of nobody saying anything.
+   */
   private syncOpenMic() {
-    const v = this.host.nearest();
-    const want = openOn && !!v && !this.typing && !this.listening && !this.host.blocked() && Date.now() >= this.quietUntil;
+    const v = this.with;
+    const talking = !!v && this.isWith(v) && this.host.nearest() === v;
+    const want = openOn && micSupported && talking && !this.typing && !this.listening && !this.host.blocked() && Date.now() >= this.quietUntil;
     if (want && !this.open) {
       this.open = listenOpen(
         (phrase) => {
-          const who = this.host.nearest();
-          if (!who || Date.now() < this.quietUntil) return;
-          this.begin(who);
+          if (!this.with || Date.now() < this.quietUntil) return;
           this.say(phrase);
         },
-        (partial) => partial && this.host.nearest() && this.showMine(partial, true),
+        (partial) => {
+          if (!partial || !this.with) return;
+          this.lastAt = Date.now(); // (still talking: don't let the conversation lapse mid-sentence)
+          this.showMine(partial, true);
+        },
         (problem) => {
           this.flashMine(problem);
           if (openOn) toggleOpenMic();
@@ -311,7 +329,7 @@ export class NearTalk {
     this.speaking = this.speaking.then(async () => {
       const buf = line ? await voice.ready(line) : null;
       if (seq !== this.replySeq || !a.sprite.scene) return;
-      const speech = line ? voice.play(line, buf) : null;
+      const speech = line ? voice.play(line, buf, a) : null;
       const total = parts.reduce((n, p) => n + p.length, 0);
       const spoken = speech?.duration ?? 0;
       for (const p of parts) {
@@ -358,16 +376,19 @@ export class NearTalk {
         H,
         box: pin(scene.add.graphics()),
         line: pin(ptext(scene, 0, 0, "", C.ink), 1),
-        hint: pin(ptext(scene, 0, 0, "ENTER: send    ESC: close    TAB: speak", 0xe8e0f0, "sm"), 1),
+        hint: pin(ptext(scene, 0, 0, "ENTER send  /  ESC close  /  TAB speak", 0xb9aed0, "sm"), 1),
         logBg: pin(scene.add.graphics()),
         log: [],
       };
     const c = this.chat;
-    const barW = Math.min(W - 32, 380);
+    const PAD = 8;
+    const barW = Math.min(W - 32, 460);
     const x0 = Math.round((W - barW) / 2);
-    const barH = 16;
+    const barH = 22;
     const barY = H - TOOLBAR_H - barH - 6;
+    const hintH = 14;
     const who = this.with ? VILLAGER_SHORT[this.with] : "";
+    const panel = 0x1b1530;
 
     // the bar
     c.box.clear();
@@ -376,48 +397,59 @@ export class NearTalk {
     c.hint.setVisible(this.typing);
     if (this.typing) {
       // (the key hints sit on a dark strip that joins the log above)
-      c.box.fillStyle(0x1b1530, 0.72).fillRect(x0, barY - 11, barW, 11);
+      c.box.fillStyle(panel, 0.8).fillRect(x0, barY - hintH, barW, hintH);
       woodFrame(c.box, x0, barY, barW, barH, C.paperLight);
       const cursor = Math.floor(performance.now() / 500) % 2 ? "_" : " ";
-      const prefix = `to ${who}: `;
+      const prefix = `to ${who}:  `;
       const typed = input.value;
       c.line.setTint(typed ? C.ink : C.inkSoft);
       // keep the end of a long line in view
       let shown = typed || this.placeholder();
       c.line.setText(prefix + shown + (typed ? cursor : ""));
-      while (typed && measure(c.line).w > barW - 12 && shown.length > 1) {
+      while (typed && measure(c.line).w > barW - PAD * 2 && shown.length > 1) {
         shown = shown.slice(1);
         c.line.setText(`${prefix}...${shown}${cursor}`);
       }
-      c.line.setPosition(x0 + 6, barY + 5);
-      c.hint.setPosition(x0 + barW - measure(c.hint).w - 2, barY - 8);
+      c.line.setPosition(x0 + PAD, barY + Math.round((barH - measure(c.line).h) / 2));
+      c.hint.setPosition(x0 + barW - measure(c.hint).w - PAD, barY - hintH + 4);
     }
 
     if (barOnly) return;
-    // the conversation so far
+    // the conversation so far: names in their own column, messages wrapped beside them
     for (const t of c.log) t.destroy();
     c.log = [];
     c.logBg.clear();
     const lines = this.with ? (this.history.get(this.with)?.lines ?? []) : [];
     const showLog = lines.length > 0 && (this.typing || Date.now() < this.logUntil);
     if (!showLog) return;
-    const top = barY - (this.typing ? 11 : 0);
-    const maxH = Math.min(96, Math.round(H * 0.3));
-    let y = top;
+    const bottom = this.typing ? barY - hintH : barY + barH;
+    // (it stops short of your feet: the camera lifts you into the top third while the chat is up)
+    const maxH = Math.min(170, bottom - Math.round(H * LIFT_TO) - 20);
+    const names = [...new Set(lines.map((l) => (l.you ? "You" : VILLAGER_SHORT[this.with!])))];
+    const probe = ptext(scene, 0, 0, "", C.ink, "pxb");
+    const nameW = Math.max(...names.map((n) => (probe.setText(n), measure(probe).w))) + 8;
+    probe.destroy();
+    const textW = barW - PAD * 2 - nameW;
+    let y = bottom - PAD + 2;
     for (let i = lines.length - 1; i >= 0; i--) {
       const l = lines[i];
-      const t = pin(ptext(scene, x0 + 5, 0, `${l.you ? "you" : VILLAGER_SHORT[this.with!]}: ${l.text}`, l.you ? 0xffe2a0 : 0xffffff, "sm"), 1);
-      t.setMaxWidth(barW - 10);
-      const h = measure(t).h;
-      if (top - (y - h - 3) > maxH && c.log.length) {
-        t.destroy();
+      const color = l.you ? 0xffd98a : 0xffffff;
+      const msg = pin(ptext(scene, x0 + PAD + nameW, 0, l.text, l.you ? 0xfff0cf : 0xf0ecf8), 1);
+      msg.setMaxWidth(textW).setLineSpacing(2);
+      const h = measure(msg).h;
+      if (bottom - (y - h) > maxH && c.log.length) {
+        msg.destroy();
         break;
       }
-      y -= h + 3;
-      t.setY(y);
-      c.log.push(t);
+      y -= h;
+      msg.setY(y);
+      const name = pin(ptext(scene, x0 + PAD, y, l.you ? "You" : VILLAGER_SHORT[this.with!], color, "pxb"), 1);
+      c.log.push(msg, name);
+      y -= 7; // breathing room between messages
     }
-    c.logBg.fillStyle(0x1b1530, 0.72).fillRect(x0, y - 4, barW, top - y + 4);
+    const top = y - PAD + 9;
+    c.logBg.fillStyle(panel, 0.8).fillRect(x0, top, barW, bottom - top);
+    c.logBg.fillStyle(0x3a2f5c, 1).fillRect(x0, top, barW, 1);
   }
 
   // ---------------------------------------------------------------- your bubble
@@ -466,6 +498,10 @@ export class NearTalk {
   /** Every frame: keep your bubble over you, end the conversation when you walk off, run the open mic. */
   update() {
     this.place();
+    // Lift the view while the chat is up (the camera eases there on its own).
+    const cam = this.host.scene.cameras.main;
+    const chatUp = this.typing || !!this.chat?.log.length;
+    cam.followOffset.y = chatUp ? -Math.round(cam.height * (0.5 - LIFT_TO)) : 0;
     if (this.typing) this.renderChat(true); // (the cursor blinks)
     else if (this.chat?.log.length && Date.now() > this.logUntil) this.renderChat(); // (the log tucks away)
     if (this.with) {

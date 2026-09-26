@@ -5,7 +5,7 @@
 import Phaser from "phaser";
 import type { Chore } from "../../shared/game";
 import { puff } from "./actors";
-import { sfx } from "./sfx";
+import { sfxAt } from "./sfx";
 import { shadowKey } from "./textures";
 
 const HOT = Phaser.Display.Color.ValueToColor(0xffffff);
@@ -38,7 +38,7 @@ export class ChoreView {
       this.meteor = scene.add.image(chore.x, chore.y, "meteor").setDepth(99990).setVisible(false);
       for (let i = 0; i < 4; i++) this.trail.push(scene.add.image(chore.x, chore.y, "meteor").setDepth(99989).setAlpha(0.5 - i * 0.1).setVisible(false));
       this.objs.push(this.shadow, this.meteor, ...this.trail);
-      if (near(chore.x, chore.y, 420)) sfx.whistle();
+      if (near(chore.x, chore.y, 420)) sfxAt(chore.x, chore.y).whistle();
     }
   }
 
@@ -73,7 +73,7 @@ export class ChoreView {
     if (fresh) {
       for (let i = 0; i < 8; i++) this.scene.time.delayedCall(i * 30, () => puff(this.scene, x + Phaser.Math.Between(-10, 10), y - 2));
       if (this.near(x, y, 260)) {
-        sfx.thunk();
+        sfxAt(x, y).thunk();
         this.scene.cameras.main.shake(160, 0.006);
       }
     }

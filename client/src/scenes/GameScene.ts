@@ -33,7 +33,7 @@ import { toggleMusic } from "../music";
 import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter } from "../panel";
 import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
-import { sfx } from "../sfx";
+import { clearListener, setListener, sfx, sfxAt } from "../sfx";
 import { PLAZA, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
 import { pendingApprovalFor, store } from "../store";
 
@@ -836,7 +836,7 @@ export class GameScene extends Phaser.Scene {
         const c = Phaser.Utils.Array.GetRandom(crew);
         c.y = s.y + 2 - (c.y === s.y + 2 ? 3 : 0);
         c.x = Phaser.Math.Clamp(c.x + Phaser.Math.Between(-3, 3), left + 4, left + w - 4);
-        if (Math.random() < 0.5) sfx.hammer();
+        if (Math.random() < 0.5) sfxAt(s.x, s.y).hammer();
       },
     });
 
@@ -875,7 +875,7 @@ export class GameScene extends Phaser.Scene {
       const burst = this.add.particles(s.x, s.y - h / 2, "spark", { speed: { min: 30, max: 90 }, lifespan: 600, quantity: 20, alpha: { start: 1, end: 0 }, emitting: false }).setDepth(99985);
       burst.explode(20);
       this.time.delayedCall(700, () => burst.destroy());
-      sfx.buy();
+      sfxAt(s.x, s.y, 0.2).buy();
       this.layPath(b);
       onDone?.();
       const waiting = this.constructing.get(b) ?? [];
@@ -1132,7 +1132,7 @@ export class GameScene extends Phaser.Scene {
           await a.walkTo(d.x + (e.villager === "postmaster" ? -8 : 8), d.y + 4);
           const c = new ClodActor(this, e.clod, { x: a.x, y: a.y - 6 }, this.clodSpot(b));
           this.clods.set(e.clod.id, c);
-          sfx.blip();
+          sfxAt(a.x, a.y).blip();
           await a.wait(650);
         });
         break;
@@ -1146,7 +1146,7 @@ export class GameScene extends Phaser.Scene {
             c.setStatus(e.ok ? "ready" : "failed");
             c.setLabel(e.ok ? e.result : `✗ ${e.result}`);
           }
-          if (e.ok) sfx.coin();
+          if (e.ok) (c ? sfxAt(c.x, c.y, 0.15) : sfx).coin();
           await a?.wait(350);
         };
         a ? a.enqueue(run) : void run();
@@ -1159,7 +1159,7 @@ export class GameScene extends Phaser.Scene {
           this.clods.get(e.approval.clodId)?.setStatus("stuck");
           a.carryLetter(true);
           a.setAlert("bang");
-          sfx.message();
+          sfxAt(a.x, a.y, 0.35).message();
           a.say("I need your OK on this one!", 2200);
           const door = this.houseDoorFor(e.villager);
           await a.walkTo(door.x, door.y);
@@ -1193,7 +1193,7 @@ export class GameScene extends Phaser.Scene {
           for (let i = 0; i < 14; i++) this.time.delayedCall(i * 300, () => puff(this, s.x + Phaser.Math.Between(-12, 12), s.y - 30));
           a?.setAlert("smoke");
           a?.say(`The ${BUILDINGS[e.building].name} is closed! ${e.message.slice(0, 80)}`, 3500);
-          sfx.deny();
+          sfxAt(s.x, s.y, 0.3).deny();
           await a?.wait(900);
         };
         a ? a.enqueue(run) : void run();
@@ -1205,7 +1205,7 @@ export class GameScene extends Phaser.Scene {
         const index = store.lanterns.findIndex((l) => l.id === e.lantern.id);
         a?.enqueue(async () => {
           this.riseLantern(a.x, a.y);
-          sfx.buy();
+          sfxAt(a.x, a.y, 0.15).buy();
           this.plantLantern(index >= 0 ? index : store.lanterns.length - 1, true);
           await a.wait(900);
           const home = this.homeSpot(e.villager);
@@ -1427,7 +1427,8 @@ export class GameScene extends Phaser.Scene {
       blocked: () => this.windowOpen() || this.arranging || isMoonPadOpen(),
       greeting: (v) => this.greeting(v),
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.near.destroy());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.near.destroy(), clearListener()));
+    this.events.on(Phaser.Scenes.Events.SLEEP, () => clearListener());
     kb.on("keydown-ENTER", () => {
       if (this.near.typing || this.near.justSent || this.windowOpen() || this.arranging || isMoonPadOpen()) return;
       const v = this.talkable();
@@ -1560,7 +1561,7 @@ export class GameScene extends Phaser.Scene {
       if (letter) add({ verb: "READ LETTER", label: "[E] read letter", x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openLetter(letter)) }, 36);
       // Just moved in and their account isn't connected yet: that comes first.
       else if (this.needsConnect(v)) add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => openConnect(v) }, 34);
-      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => this.near.startTyping(v) }, 34);
+      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => this.near.talk(v) }, 34);
     }
     for (const v of VILLAGERS) {
       const home = VILLAGER_HOME[v];
@@ -1710,7 +1711,7 @@ export class GameScene extends Phaser.Scene {
     const bell = this.bells.get(v);
     const a = this.villagers.get(v);
     if (!bell || !a) return;
-    sfx.bell();
+    sfxAt(bell.x, bell.y).bell();
     for (let i = 0; i < 6; i++) this.time.delayedCall(i * 110, () => bell.img.setTexture(`bell_${(i + 1) % 2}`));
     if (a.working) {
       const doing = store.villagers[v]?.activity ?? "working";
@@ -2162,6 +2163,7 @@ export class GameScene extends Phaser.Scene {
     }
     nearest?.showLabel(true);
     this.player.setDepth(this.player.y);
+    setListener(this.player.x, this.player.y); // (sounds in the colony are heard from where you stand)
     this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
 
     this.target = this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();

@@ -30,6 +30,49 @@ export function onSfxToggle(fn: (muted: boolean) => void) {
   return () => listeners.delete(fn);
 }
 
+// ---------------------------------------------------------------- where sounds happen
+// In the colony, sounds come from somewhere: the nearer you are, the louder,
+// and they lean left or right with where they are on screen. The game scene
+// keeps the listener (you) up to date; menus and cutscenes stay centered.
+
+/** Full volume within this distance (px)... */
+const NEAR = 70;
+/** ...fading to silence out here. */
+const FAR = 560;
+let listener: { x: number; y: number } | null = null;
+let spot: { x: number; y: number; min: number } | null = null;
+
+export function setListener(x: number, y: number) {
+  listener = listener ?? { x: 0, y: 0 };
+  listener.x = x;
+  listener.y = y;
+}
+
+export function clearListener() {
+  listener = null;
+}
+
+/** How loud (0..1) and how far left/right (-1..1) a sound at (x, y) is from you. */
+export function hearing(x: number, y: number, min = 0): { vol: number; pan: number } {
+  if (!listener) return { vol: 1, pan: 0 };
+  const d = Math.hypot(x - listener.x, y - listener.y);
+  const t = Math.min(1, Math.max(0, (d - NEAR) / (FAR - NEAR)));
+  return { vol: Math.max(min, (1 - t) ** 1.6), pan: Math.max(-0.8, Math.min(0.8, (x - listener.x) / 380)) };
+}
+
+/** Where a sound goes: straight out, or through its distance and pan. Null if it's too far to hear. */
+function output(a: AudioContext): AudioNode | null {
+  if (!spot || !listener) return a.destination;
+  const { vol, pan } = hearing(spot.x, spot.y, spot.min);
+  if (vol < 0.03) return null;
+  const g = a.createGain();
+  g.gain.value = vol;
+  const p = a.createStereoPanner();
+  p.pan.value = pan;
+  g.connect(p).connect(a.destination);
+  return g;
+}
+
 function ac(): AudioContext | null {
   try {
     if (!ctx) ctx = new AudioContext();
@@ -50,7 +93,8 @@ function beep(
 ) {
   if (muted) return;
   const a = ac();
-  if (!a) return;
+  const out = a && output(a);
+  if (!a || !out) return;
   const t0 = a.currentTime + delay;
   const osc = a.createOscillator();
   const gain = a.createGain();
@@ -59,7 +103,7 @@ function beep(
   if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
   gain.gain.setValueAtTime(vol, t0);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(gain).connect(a.destination);
+  osc.connect(gain).connect(out);
   osc.start(t0);
   osc.stop(t0 + dur + 0.02);
 }
@@ -68,7 +112,8 @@ function beep(
 function noise(dur: number, vol: number, freq: number, delay = 0, slideTo?: number) {
   if (muted) return;
   const a = ac();
-  if (!a) return;
+  const out = a && output(a);
+  if (!a || !out) return;
   const t0 = a.currentTime + delay;
   const len = Math.max(1, Math.floor(a.sampleRate * dur));
   const buf = a.createBuffer(1, len, a.sampleRate);
@@ -84,7 +129,7 @@ function noise(dur: number, vol: number, freq: number, delay = 0, slideTo?: numb
   gain.gain.setValueAtTime(0.0001, t0);
   gain.gain.linearRampToValueAtTime(vol, t0 + Math.min(0.3, dur / 4));
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(filter).connect(gain).connect(a.destination);
+  src.connect(filter).connect(gain).connect(out);
   src.start(t0);
   src.stop(t0 + dur + 0.02);
 }
@@ -163,3 +208,23 @@ export const sfx = {
     beep(1175, 0.1, "sine", 0.08, undefined, 0.07);
   },
 };
+
+type Sfx = typeof sfx;
+
+/**
+ * A sound that happens somewhere in the world: sfxAt(x, y).hammer().
+ * `min` keeps important ones (a letter arriving) faintly audible from anywhere.
+ */
+export function sfxAt(x: number, y: number, min = 0): Sfx {
+  const placed = {} as Record<string, unknown>;
+  for (const [k, fn] of Object.entries(sfx) as [string, (...args: unknown[]) => void][])
+    placed[k] = (...args: unknown[]) => {
+      spot = { x, y, min };
+      try {
+        fn(...args);
+      } finally {
+        spot = null;
+      }
+    };
+  return placed as Sfx;
+}

@@ -254,8 +254,12 @@ hello. Walk away and the conversation ends. (Letters to approve and account conn
 their own windows.)
 
 - **Speak instead of typing**: tap or hold **TAB** next to a villager.
-- **Open mic** (the **mic** button on the toolbar): always listening while you stand next to someone,
-  so you can just talk. It pauses while they answer, so it never hears itself.
+- **Open mic** (the **mic** button on the toolbar): press **E** next to someone and just talk, no keys
+  (Enter still opens the chat bar). It only listens in a conversation you started, never because you
+  walked past someone; it turns off when you walk away or after 30 seconds of quiet, and pauses while
+  they answer so it never hears itself.
+- **Sounds are spatial**: hammering, bells, meteors, finished jobs and villagers' voices are louder
+  close up, fade with distance, and pan left or right toward where they happen.
 
 - **Voices**: every villager has their own ElevenLabs voice (set `ELEVENLABS_API_KEY`; the free plan
   works). Each reply's first couple of sentences are spoken, the rest types out, and every line is

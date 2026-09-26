@@ -4,6 +4,7 @@
 // villager never goes silent. Only in-person talk is voiced; texts stay quiet.
 
 import { SERVER_HTTP } from "./net";
+import { hearing } from "./sfx";
 import type { VillagerId } from "../../shared/game";
 
 const SERVER = SERVER_HTTP;
@@ -137,15 +138,19 @@ export async function ready(line: Line, waitMs = 4000): Promise<AudioBuffer | nu
   return buf;
 }
 
-/** Say a line in the villager's own voice, or the browser's without one. Null when muted. */
-export function play(line: Line, buf: AudioBuffer | null): Speech | null {
+/**
+ * Say a line in the villager's own voice, or the browser's without one. Null when muted.
+ * `at` is where they're standing: quieter from further off, and panned to their side.
+ */
+export function play(line: Line, buf: AudioBuffer | null, at?: { x: number; y: number }): Speech | null {
   if (muted) return null;
   stopSpeaking();
-  current = (buf && playClip(line.v, buf)) || sayInBrowser(line.v, line.text);
+  const heard = at ? hearing(at.x, at.y, 0.25) : { vol: 1, pan: 0 };
+  current = (buf && playClip(line.v, buf, heard)) || sayInBrowser(line.v, line.text, heard.vol);
   return current;
 }
 
-function playClip(v: VillagerId, buf: AudioBuffer): Speech | null {
+function playClip(v: VillagerId, buf: AudioBuffer, heard: { vol: number; pan: number }): Speech | null {
   const a = audio();
   if (!a) return null;
   const src = a.createBufferSource();
@@ -153,7 +158,11 @@ function playClip(v: VillagerId, buf: AudioBuffer): Speech | null {
   src.playbackRate.value = PITCH[v];
   const meter = a.createAnalyser();
   meter.fftSize = 256;
-  src.connect(meter).connect(a.destination);
+  const gain = a.createGain();
+  gain.gain.value = heard.vol;
+  const pan = a.createStereoPanner();
+  pan.pan.value = heard.pan;
+  src.connect(meter).connect(gain).connect(pan).connect(a.destination);
   const samples = new Uint8Array(meter.fftSize);
   let playing = true;
   let finish = () => {};
@@ -186,13 +195,14 @@ function playClip(v: VillagerId, buf: AudioBuffer): Speech | null {
   };
 }
 
-function sayInBrowser(v: VillagerId, text: string): Speech | null {
+function sayInBrowser(v: VillagerId, text: string, volume = 1): Speech | null {
   const synth = window.speechSynthesis;
   if (!synth) return null;
   const p = BROWSER[v];
   const u = new SpeechSynthesisUtterance(text);
   u.pitch = p.pitch;
   u.rate = p.rate;
+  u.volume = volume;
   const voice = pickVoice(v, synth);
   if (voice) u.voice = voice;
   let speaking = true;
