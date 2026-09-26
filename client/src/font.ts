@@ -361,19 +361,13 @@ export function buildFonts(scene: Phaser.Scene) {
 }
 
 /**
- * A big display logo: bold glyphs upscaled with Scale2x twice, which rounds
- * the diagonals while keeping every output pixel one art pixel.
+ * A big display logo: bold glyphs upscaled with Scale2x, which rounds the
+ * diagonals while keeping every output pixel one art pixel. "\n" stacks
+ * centered lines; `sizes` says how many Scale2x passes each line gets
+ * (2 = four times the glyph size, 1 = twice).
  */
-export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: string, outline: string, shadow: string) {
+export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: string, outline: string, shadow: string, sizes: number[] = []) {
   if (scene.textures.exists(key)) return;
-  let mask: boolean[][] = Array.from({ length: 7 }, () => [] as boolean[]);
-  for (const ch of text) {
-    const rows = ch === " " ? Array(7).fill("...") : bolden(parse(G[ch] ?? G["?"])).slice(0, 7);
-    for (let y = 0; y < 7; y++) {
-      for (const c of rows[y]) mask[y].push(c === "#");
-      mask[y].push(false);
-    }
-  }
   const scale2x = (m: boolean[][]) => {
     const h = m.length;
     const w = m[0].length;
@@ -389,7 +383,29 @@ export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: 
       }
     return out;
   };
-  mask = scale2x(scale2x(mask));
+  const lines = text.split("\n").map((line, i) => {
+    let m: boolean[][] = Array.from({ length: 7 }, () => [] as boolean[]);
+    for (const ch of line) {
+      const rows = ch === " " ? Array(7).fill("...") : bolden(parse(G[ch] ?? G["?"])).slice(0, 7);
+      for (let y = 0; y < 7; y++) {
+        for (const c of rows[y]) m[y].push(c === "#");
+        m[y].push(false);
+      }
+    }
+    for (let k = 0; k < (sizes[i] ?? 2); k++) m = scale2x(m);
+    return m;
+  });
+  // stack the lines, centered, with a little air between them
+  const GAP = 5;
+  const width = Math.max(...lines.map((m) => m[0].length));
+  const mask: boolean[][] = [];
+  const bands: [number, number][] = [];
+  lines.forEach((m, i) => {
+    if (i) for (let g = 0; g < GAP; g++) mask.push(new Array<boolean>(width).fill(false));
+    bands.push([mask.length, m.length]);
+    const pad = Math.floor((width - m[0].length) / 2);
+    for (const row of m) mask.push([...new Array<boolean>(pad).fill(false), ...row, ...new Array<boolean>(width - pad - row.length).fill(false)]);
+  });
   const h = mask.length;
   const w = mask[0].length;
   const tex = scene.textures.createCanvas(key, w + 4, h + 5)!;
@@ -406,8 +422,8 @@ export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: 
   paint(shadow, 0, 3, true);
   paint(outline, 0, 0, true);
   paint(fill, 0, 0, false);
-  // light band across the top of each letter
+  // light band across the top of each letter (each line gets its own)
   ctx.fillStyle = "rgba(255,255,255,0.25)";
-  for (let y = 0; y < Math.floor(h / 3); y++) for (let x = 0; x < w; x++) if (on(x, y)) ctx.fillRect(x + 2, y + 2, 1, 1);
+  for (const [top, lh] of bands) for (let y = top; y < top + Math.floor(lh / 3); y++) for (let x = 0; x < w; x++) if (on(x, y)) ctx.fillRect(x + 2, y + 2, 1, 1);
   tex.refresh();
 }

@@ -89,15 +89,15 @@ const httpServer = createServer(async (req, res) => {
       services.announceConnections();
       return page(res, 200, "Google sign-in is ready", `<p>Saved (privately, on this computer). Players can now press <b>CONNECT GOOGLE</b> in the game and sign in with their own account.</p>
 <p><a style="color:#f5c542;font-size:1.1em" href="/connect/google">Sign in with Google now →</a></p>
-<p style="opacity:.75">Until Google verifies the app, players see a "Google hasn't verified this app" screen: Advanced → Go to Moon Village continues.</p>`);
+<p style="opacity:.75">Until Google verifies the app, players see a "Google hasn't verified this app" screen: Advanced → Go to Fl-AI Me to the Moon continues.</p>`);
     }
     const step = (n: number, html: string) => `<li style="margin:0 0 14px"><b style="color:#e08a6b">${n}.</b> ${html}</li>`;
     const link = (href: string, text: string) => `<a style="color:#f5c542" target="_blank" rel="noopener" href="${href}">${text}</a>`;
     return page(res, 200, "Set up Google sign-in", `<p>Do this once, as the host, and every player can sign in with their own Google account. About 5 minutes.</p>
 <ol style="list-style:none;padding:0">
-${step(1, `${link("https://console.cloud.google.com/projectcreate", "Create a Google Cloud project")} (name it "Moon Village").`)}
+${step(1, `${link("https://console.cloud.google.com/projectcreate", "Create a Google Cloud project")} (name it "Fl-AI Me to the Moon").`)}
 ${step(2, `In that project, turn on the ${link("https://console.cloud.google.com/apis/library/gmail.googleapis.com", "Gmail API")} and the ${link("https://console.cloud.google.com/apis/library/calendar-json.googleapis.com", "Google Calendar API")} (press Enable on each).`)}
-${step(3, `Open ${link("https://console.cloud.google.com/auth/overview", "Google Auth Platform")} → Get started: app name "Moon Village", your email, Audience <b>External</b>.`)}
+${step(3, `Open ${link("https://console.cloud.google.com/auth/overview", "Google Auth Platform")} → Get started: app name "Fl-AI Me to the Moon", your email, Audience <b>External</b>.`)}
 ${step(4, `${link("https://console.cloud.google.com/auth/audience", "Audience")} → <b>Publish app</b>, so anyone can sign in with their own Google account.`)}
 ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clients → Create client")}: type <b>Web application</b>, and under Authorized redirect URIs add<br><code style="user-select:all;background:#0b0a1a;padding:2px 6px">${GOOGLE_REDIRECT}</code><br>Create, then copy the Client ID and Client secret into the boxes below.`)}
 </ol>
@@ -542,7 +542,7 @@ async function bridgeRoute(req: import("node:http").IncomingMessage, res: Server
 }
 
 httpServer.listen(PORT, () => {
-  console.log(`[server] Moon Village agents on http://localhost:${PORT}`);
+  console.log(`[server] Fl-AI Me to the Moon agents on http://localhost:${PORT}`);
   const brains = { claude: "Claude (claude-opus-5)", groq: `Groq (${process.env.GROQ_MODEL ?? "openai/gpt-oss-120b"})`, mock: "⚠ MOCK — scripted villagers, real tools & approvals, no model" };
   console.log(`[server] villager brains: ${brains[BRAIN]}`);
   console.log(`[server] villager voices: ${voiceSummary()}`);

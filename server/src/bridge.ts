@@ -39,12 +39,12 @@ function slim(state: AgentsState): AgentsState {
 
 async function main() {
   if (!BASE || !code) {
-    say("Moon Village: link your Claude Code to your Office.");
+    say("Fl-AI Me to the Moon: link your Claude Code to your Office.");
     say("Get the command from the game (Office > LINK) and paste it into a terminal.");
     process.exit(1);
   }
   say("");
-  say("  ☾  Moon Village · linking your Claude Code");
+  say("  ☾  Fl-AI Me to the Moon · linking your Claude Code");
   say("");
   let token: string;
   try {
@@ -54,7 +54,7 @@ async function main() {
       process.exit(1);
     }
     token = data.token;
-    say(`  ✓ Linked${data.name ? ` to ${data.name}'s` : " to your"} Moon Village.`);
+    say(`  ✓ Linked${data.name ? ` to ${data.name}'s` : " to your"} game.`);
   } catch (err) {
     say(`  ✕ Couldn't reach the game: ${err instanceof Error ? err.message : err}`);
     process.exit(1);

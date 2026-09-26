@@ -292,7 +292,7 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(900, () => {
         const text = ready
           ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing clods to collect!`
-          : "Welcome to Moon Village! A new neighbor's lot is waiting: follow the gold ★ to fix it up. I'm always around if you need me.";
+          : "Welcome to the Moon! A new neighbor's lot is waiting: follow the gold ★ to fix it up. I'm always around if you need me.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
         const seen = rabbit.x > v.x + 40 && rabbit.x < v.right - 40 && rabbit.y - 40 > v.y + 30 && rabbit.y < v.bottom - 60;

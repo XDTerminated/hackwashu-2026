@@ -190,7 +190,7 @@ export class UIScene extends Phaser.Scene {
         }
       }),
     );
-    this.unsubs.push(net.onNotice((t, tone) => this.toast("Moon Village", t, tone === "ok" ? C.green : C.red)));
+    this.unsubs.push(net.onNotice((t, tone) => this.toast("Fl-AI Me to the Moon", t, tone === "ok" ? C.green : C.red)));
     this.unsubs.push(net.onAgents(() => this.noticeAgents()));
     this.game.events.on("toggle-shop", this.toggleShop, this);
     this.input.keyboard!.on("keydown-ESC", () => {
@@ -577,7 +577,7 @@ export class UIScene extends Phaser.Scene {
   private playCutscene(key: "Intro" | "Ending") {
     if (this.scene.isActive("Intro") || this.scene.isActive("Ending")) return;
     if (!this.scene.isActive("Game")) {
-      this.toast("Moon Village", "Step outside to watch.", C.red);
+      this.toast("Fl-AI Me to the Moon", "Step outside to watch.", C.red);
       return;
     }
     if (key === "Ending") setFinalePending(false);

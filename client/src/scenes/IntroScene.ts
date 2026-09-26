@@ -412,7 +412,7 @@ export class IntroScene extends Cutscene {
       at(cx - 250, horizon + 22, "rock_big_0");
       const sx = cx - 150;
       at(sx, ground + 10, drawSign(this));
-      const l1 = this.keep(ptext(this, 0, ground + 10 - 34, "MOON VILLAGE", C.ink, "pxb").setDepth(ground + 11));
+      const l1 = this.keep(ptext(this, 0, ground + 10 - 34, "MOON COLONY", C.ink, "pxb").setDepth(ground + 11));
       l1.setX(sx - Math.round(measure(l1).w / 2));
       const l2 = this.keep(ptext(this, 0, ground + 10 - 25, "pop. 2 (and you)", C.inkSoft).setDepth(ground + 11));
       l2.setX(sx - Math.round(measure(l2).w / 2));
@@ -464,7 +464,7 @@ export class IntroScene extends Cutscene {
     this.tweens.add({ targets: astro, y: ground - 8, duration: 160, yoyo: true, repeat: 2, ease: "quad.out" });
     sfx.buy();
     await you("This is the BEST DAY OF MY LIFE.");
-    await yutu("Hee! Then welcome to Moon Village. Let's get you a line home!");
+    await yutu("Hee! Then welcome to the Moon. Let's get you a line home!");
   }
 
   // ------------------------------------------------------------ 6. Title
@@ -474,11 +474,11 @@ export class IntroScene extends Cutscene {
     const dim = this.keep(this.add.rectangle(0, 0, W, H, 0x07060f, 0).setOrigin(0).setDepth(800));
     await this.tween({ targets: dim, fillAlpha: 0.7, duration: 500 });
     const logo = this.keep(this.add.image(Math.round(W / 2) + 8, Math.round(H / 2 - 16), "logo").setAlpha(0).setDepth(801));
-    const spark = this.keep(this.add.image(Math.round(logo.x - logo.width / 2 - 20), logo.y + 1, "spark_logo").setAlpha(0).setDepth(801));
+    const spark = this.keep(this.add.image(Math.round(logo.x - logo.width / 2 - 20), Math.round(logo.y - logo.height / 2 + 18), "spark_logo").setAlpha(0).setDepth(801));
     this.every(400, () => spark.setFlipX(!spark.flipX));
     sfx.bell();
     await this.tween({ targets: [logo, spark], alpha: 1, duration: 600 });
-    const ch = this.keep(ptext(this, 0, logo.y + 26, "CHAPTER 1:  A LINE HOME", 0xf5c542, "pxb").setDepth(801));
+    const ch = this.keep(ptext(this, 0, Math.round(logo.y + logo.height / 2) + 8, "CHAPTER 1:  A LINE HOME", 0xf5c542, "pxb").setDepth(801));
     ch.setX(Math.round(W / 2 - measure(ch).w / 2));
     await this.waitOrNext(1500);
   }

@@ -61,11 +61,10 @@ export async function retell(v: VillagerId, asked: string, answer: string): Prom
     v === "stargazer"
       ? `Now SAY the answer out loud: 1-3 short sentences, under 60 words. Your first sentence IS the answer
 to their question, with the specifics that matter (numbers, dates, names, places); then say where it's
-from ("NASA says..."). No warm-up, no small talk, no feelings about it. If there's more worth telling,
-end by offering it.`
+from ("NASA says..."). No warm-up, no small talk, no feelings about it, nothing tacked on at the end.`
       : `Now SAY it to them out loud, the way you'd tell a friend: 1-3 short sentences, under 45 words. Lead
-with what they most want to know. If there's more worth telling, end by offering it ("Want to hear
-about the comets too?").`;
+with what they most want to know. Only if there's clearly more they'd want, offer it in a few words
+("Want the rest?"). Nothing else tacked on at the end.`;
   const system = `${personaFor(v)}
 
 The player is standing in front of you and just asked you something. You've already done the work;

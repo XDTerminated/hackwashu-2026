@@ -11,7 +11,7 @@ export class BootScene extends Phaser.Scene {
     buildTextures(this);
     buildAnims(this);
     buildFonts(this);
-    buildLogo(this, "logo", "MOON VILLAGE", "#e08a6b", "#3b2a3a", "#1a1030");
+    buildLogo(this, "logo", "FL-AI ME\nTO THE MOON", "#e08a6b", "#3b2a3a", "#1a1030", [2, 1]);
     this.scene.start("Title");
   }
 }

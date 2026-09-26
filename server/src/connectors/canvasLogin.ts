@@ -36,7 +36,7 @@ const SIGNED_IN = `(async () => {
 // Ask Canvas for a key, the same thing "+ New Access Token" in settings does.
 const MAKE_TOKEN = `(async () => {
   const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )_csrf_token=([^;]+)/) || [])[1] || "");
-  const body = new URLSearchParams({ "token[purpose]": "Moon Village (Mabel reads your courses)" });
+  const body = new URLSearchParams({ "token[purpose]": "Fl-AI Me to the Moon (Mabel reads your courses)" });
   const r = await fetch("/api/v1/users/self/tokens", { method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": csrf, "Content-Type": "application/x-www-form-urlencoded" }, body }).catch(() => null);
   const t = r ? await r.json().catch(() => ({})) : {};
   return r && r.ok && t.visible_token ? { token: t.visible_token } : { error: "status " + (r ? r.status : "failed") };
@@ -53,7 +53,7 @@ const OPEN_DIALOG = `(() => {
     const purpose = [...document.querySelectorAll("input[name='token[purpose]'], #access_token_purpose, [role=dialog] input[type=text]")].find(shown);
     if (purpose && !purpose.value) {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-      set.call(purpose, "Moon Village");
+      set.call(purpose, "Fl-AI Me to the Moon");
       purpose.dispatchEvent(new Event("input", { bubbles: true }));
       purpose.dispatchEvent(new Event("change", { bubbles: true }));
     }

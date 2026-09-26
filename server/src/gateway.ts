@@ -340,9 +340,9 @@ function privacyPage(res: ServerResponse) {
   page(
     res,
     200,
-    "Moon Village · Privacy",
+    "Fl-AI Me to the Moon · Privacy",
     `<h2>Privacy</h2>
-<p>Moon Village is a hackathon project (HackWashU 2026).</p>
+<p>Fl-AI Me to the Moon is a hackathon project (HackWashU 2026).</p>
 <ul>
   <li><b>Signing in</b> with Google shares your name and email address, used only to find your village.</li>
   <li><b>If you connect Gmail, Calendar or Canvas</b> in the game, the access Google or Canvas grants is stored on the game's server, only for your village, and used only when you ask a villager to do something. Sending an email or creating an event always waits for your OK.</li>
@@ -427,7 +427,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       deleting.delete(p.id);
     }
     console.log(`[gateway] deleted player ${p.id}`);
-    return page(res, 200, "Deleted", `<h2>All gone</h2><p>Your village, its connections and your account are deleted from Moon Village.</p><p class="small">To also remove the game's access from your Google account: myaccount.google.com → Security → Third-party connections.</p><p><a href="/?signin=deleted">Back to the start</a></p>`, { "set-cookie": sessionCookie(req, "", 0) });
+    return page(res, 200, "Deleted", `<h2>All gone</h2><p>Your village, its connections and your account are deleted from Fl-AI Me to the Moon.</p><p class="small">To also remove the game's access from your Google account: myaccount.google.com → Security → Third-party connections.</p><p><a href="/?signin=deleted">Back to the start</a></p>`, { "set-cookie": sessionCookie(req, "", 0) });
   }
   res.writeHead(404);
   res.end();
@@ -476,7 +476,7 @@ const server = createServer(async (req, res) => {
     res.end("Not found");
   } catch (err) {
     console.error("[gateway]", err);
-    if (!res.headersSent) page(res, 503, "Moon Village", `<h2>One moment</h2><p>${esc(err instanceof Error ? err.message : "Something went wrong.")}</p><p><a href="/">Try again</a></p>`);
+    if (!res.headersSent) page(res, 503, "Fl-AI Me to the Moon", `<h2>One moment</h2><p>${esc(err instanceof Error ? err.message : "Something went wrong.")}</p><p><a href="/">Try again</a></p>`);
     else res.end();
   }
 });
@@ -507,7 +507,7 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 server.listen(PORT, () => {
-  console.log(`[gateway] Moon Village (hosted) on :${PORT} · data in ${ROOT}`);
+  console.log(`[gateway] Fl-AI Me to the Moon (hosted) on :${PORT} · data in ${ROOT}`);
   if (!existsSync(join(CLIENT, "index.html"))) console.log("[gateway] ⚠ the game isn't built: run `npm run build` first");
   if (!process.env.GOOGLE_CLIENT_ID) console.log("[gateway] ⚠ GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set: nobody can sign in");
   if (DEV_LOGIN) console.log("[gateway] ⚠ MOON_DEV_LOGIN is on: anyone can sign in as anyone (testing only)");

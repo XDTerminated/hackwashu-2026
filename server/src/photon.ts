@@ -108,7 +108,7 @@ export async function startLink(input: string): Promise<LinkResult> {
       text: `From ${mask(phone)}, text ${code} to ${user.assignedPhoneNumber} - or scan the code with that phone.`,
       line: user.assignedPhoneNumber,
       code,
-      link: `${textUsLink(user.id)}?msg=${encodeURIComponent(`Moon Village code ${code}`)}`,
+      link: `${textUsLink(user.id)}?msg=${encodeURIComponent(`Moon code ${code}`)}`,
     };
   } catch (err) {
     console.error("[photon] couldn't start linking:", err instanceof Error ? err.message : err);
@@ -221,8 +221,8 @@ export async function startPhoton(): Promise<boolean> {
           link(sender);
         } else publishPhones();
         emit({ type: "phone", direction: "in", text });
-        if (wasPending && /moon village code|^\s*\d{4}\s*$/i.test(text)) {
-          await say(space, `${SIGNATURE.jade_rabbit}: Linked! This phone is now a line home to Moon Village. Text "help" to see who's around, or text any villager by name.`);
+        if (wasPending && /moon (village )?code|^\s*\d{4}\s*$/i.test(text)) {
+          await say(space, `${SIGNATURE.jade_rabbit}: Linked! This phone is now a line home to the Moon. Text "help" to see who's around, or text any villager by name.`);
           continue;
         }
 
@@ -237,7 +237,7 @@ export async function startPhoton(): Promise<boolean> {
 
         if (/^\s*(help|\?|who)\s*[?!.]*\s*$/i.test(text)) {
           const here = residents().map((v) => VILLAGER_NAMES[v]).join(", ");
-          await say(space, `🌙 Moon Village. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
+          await say(space, `🌙 The Moon colony. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
           continue;
         }
 

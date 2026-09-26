@@ -1,4 +1,4 @@
-# 🌙 Moon Village
+# 🌙 Fl-AI Me to the Moon
 
 *Earth sent you to the Moon for talking about AI too much. Turns out AI is how you stay close to everyone.*
 
@@ -192,7 +192,7 @@ with the redirect URI it shows, then takes the Client ID and secret in a form (s
 `server/data/google-client.json`, owner-only; `.env` works too). After that, every player's CONNECT GOOGLE
 opens the real Google sign-in. Publish the app (Google Auth Platform → Audience) so anyone can sign in;
 until Google verifies it, players click through a "Google hasn't verified this app" screen (Advanced →
-Go to Moon Village). Until it's set up, the dialogs offer **sample data** instead of a dead end. **Canvas works at any school.** Mabel's connect dialog asks which school you're at and searches Canvas's
+Go to Fl-AI Me to the Moon). Until it's set up, the dialogs offer **sample data** instead of a dead end. **Canvas works at any school.** Mabel's connect dialog asks which school you're at and searches Canvas's
 public school directory (the one the official Canvas app's "Find your school" uses), or you can type a
 Canvas address like `canvas.myschool.edu` directly. The choice is remembered (CHANGE SCHOOL to switch).
 **Sign in with Canvas** then opens a Chrome window at *that* school's Canvas: log in the

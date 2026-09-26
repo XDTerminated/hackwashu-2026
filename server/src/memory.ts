@@ -122,7 +122,7 @@ export function memoryNote(v: VillagerId, transcript: boolean): string {
   const home = happiness(v).items;
   if (home.length) {
     const list = home.map((i) => (i.loved ? `${i.name} (you love it)` : i.name)).join(", ");
-    parts.push(`The player decorated around your home: ${list}. It makes you happy; mention it now and then.`);
+    parts.push(`The player decorated around your home: ${list}. It makes you happy, but don't bring it up unless they ask about your home or the decorations.`);
   }
   if (m.facts.length) {
     parts.push(`Things you remember about them:\n${m.facts.map((f) => `- ${f}`).join("\n")}`);

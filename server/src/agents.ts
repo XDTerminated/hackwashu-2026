@@ -91,7 +91,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
       input_schema: {
         type: "object",
         properties: {
-          to: { type: "string", description: "Recipient email address (copied from the inbox, never guessed)" },
+          to: { type: "string", description: "Recipient email address: exactly the one the player gave, or one found in their mail. Any address is fine; never make one up." },
           subject: { type: "string" },
           body: { type: "string" },
           reply_to_email_id: { type: "string", description: "Optional: id of the email you're replying to" },
@@ -477,6 +477,28 @@ export function friendlyError(error: unknown): string {
   return "Something rattled loose in the burrow. Check the server log, traveler.";
 }
 
+/**
+ * Stock closers the models love to tack on ("Let me know if...", "Happy to help!",
+ * an emoji) come off the end of a reply. Only whole trailing sentences that are
+ * nothing but filler; the answer itself is never touched.
+ */
+const FILLER = [
+  /^(just )?let me know if (there'?s|you (need|want|'d like|have|ever)|anything)/i,
+  /^(feel free|happy to help|glad (i|to) (could )?help|hope (this|that) helps|anything else\b|is there anything else|enjoy\b|have a (great|nice|good|lovely)\b)/i,
+  /^if you (need|want|'d like|have|spot|see|think of|ever)\b.*\b(let me know|just ask|i'm (always )?(here|around)|holler)[.!]*$/i,
+  /^(i'm (always )?(here|around)( if you need me| to help)?|just (ask|holler|say the word))[.!]*$/i,
+];
+export function trimFiller(text: string): string {
+  let out = text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/[ \t]+([.!?,])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
+  for (;;) {
+    const parts = out.split(/(?<=[.!?…])\s+/);
+    const last = parts[parts.length - 1].trim();
+    if (parts.length < 2 || !FILLER.some((f) => f.test(last))) break;
+    out = parts.slice(0, -1).join(" ").trim();
+  }
+  return out || text.trim();
+}
+
 const busy = new Set<VillagerId>();
 /** Chore rounds are self-started, so they don't earn quest progress. */
 const choreTasks = new Set<string>();
@@ -514,11 +536,11 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     const answer = (BRAIN === "mock" ? await mockVillager(v, text, taskId) : await runVillager(v, text, taskId, audience)) || "Done!";
     // Face to face, a long answer becomes a short spoken one; the rest is kept for "tell me more".
     // An email sign-off ("— sent from the Moon") never belongs on a chat reply.
-    let reply = answer.replace(/\s*[-—–]+\s*sent from the moon\.?\s*$/i, "").trim() || answer;
+    let reply = trimFiller(answer.replace(/\s*[-—–]+\s*sent from the moon\.?\s*$/i, "").trim() || answer);
     let notes: string | undefined;
     if (audience === "talk" && BRAIN !== "mock" && tooLongToSay(answer)) {
       setVillager(v, { status: "thinking", activity: "finding the words…" });
-      reply = (await retell(v, text, answer).catch((err) => (console.warn(`[agents] ${v} retell failed:`, err), ""))) || answer;
+      reply = trimFiller((await retell(v, text, answer).catch((err) => (console.warn(`[agents] ${v} retell failed:`, err), ""))) || answer);
       if (reply !== answer) notes = answer;
     }
     // A text can end with a private note to remember; it's not part of the reply.
