@@ -652,7 +652,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private placeBuilding(b: BuildingId, animate: boolean) {
-    this.buildingObjs.get(b)?.forEach((o) => o.destroy());
+    this.buildingObjs.get(b)?.forEach((o) => {
+      this.tweens.killTweensOf(o);
+      o.destroy();
+    });
     const s = SPOTS[b];
     const def = BUILDINGS[b];
     const objs: Phaser.GameObjects.GameObject[] = [];
@@ -687,7 +690,11 @@ export class GameScene extends Phaser.Scene {
         objs.push(this.add.image(s.x, s.y, lot.repaired ? `foundation_${b}` : `ruins_${b}`).setOrigin(0.5, 1).setDepth(s.y - 21));
         for (const r of this.rubbleSpots(move)) {
           if (lot.cleared.includes(r.i)) continue;
-          objs.push(this.add.image(r.x, r.y, `rubble_${r.i % 2}`).setOrigin(0.5, 1).setDepth(r.y));
+          // A warm glow that breathes in and out, so the heaps are easy to spot.
+          const glow = this.add.image(r.x, r.y - 6, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa860).setAlpha(0.15).setDepth(r.y - 1);
+          const spark = this.add.image(r.x, r.y - 8, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffd27a).setAlpha(0.2).setDepth(r.y + 1);
+          this.tweens.add({ targets: [glow, spark], alpha: { from: 0.12, to: 0.6 }, duration: 900, yoyo: true, repeat: -1, ease: "sine.inout", delay: r.i * 300 });
+          objs.push(glow, this.add.image(r.x, r.y, `rubble_${r.i % 2}`).setOrigin(0.5, 1).setDepth(r.y), spark);
         }
       }
       const plot = this.add.image(s.x, s.y, `plot_${b}`).setOrigin(0.5, 1).setDepth(s.y - 20);
@@ -791,6 +798,11 @@ export class GameScene extends Phaser.Scene {
   private construct(b: BuildingId, img: Phaser.GameObjects.Image, extras: Phaser.GameObjects.GameObject[], onDone?: () => void) {
     this.constructing.set(b, []);
     const s = SPOTS[b];
+    // Standing on the site (or behind it) when it goes up: you step out to the front, by the door.
+    if (this.blocked(this.player.x, this.player.y)) {
+      const door = this.doorOf(b);
+      this.unstick({ x: door.x, y: s.y + 18 });
+    }
     const w = img.width;
     const h = img.height;
     const left = Math.round(s.x - w / 2);
@@ -1970,6 +1982,21 @@ export class GameScene extends Phaser.Scene {
     return this.solids.some((r) => r.contains(x, y));
   }
 
+  /** Move to the nearest spot you can actually stand on (straight down, in front, first). */
+  private unstick(prefer?: { x: number; y: number }) {
+    const free = (x: number, y: number) => inIslandXY(x, y) && !this.blocked(x, y) && !this.blocked(x, y - 6);
+    const go = (x: number, y: number) => {
+      for (let i = 0; i < 5; i++) this.time.delayedCall(i * 40, () => puff(this, x + Phaser.Math.Between(-6, 6), y - Phaser.Math.Between(0, 4)));
+      this.player.setPosition(Math.round(x), Math.round(y));
+      this.playerShadow.setPosition(Math.round(x), Math.round(y) - 1);
+    };
+    if (prefer && free(prefer.x, prefer.y)) return go(prefer.x, prefer.y);
+    const { x, y } = this.player;
+    const dirs = [[0, 1], [1, 0], [-1, 0], [0.7, 0.7], [-0.7, 0.7], [0, -1], [0.7, -0.7], [-0.7, -0.7]];
+    for (let r = 6; r <= 240; r += 6) for (const [dx, dy] of dirs) if (free(x + dx * r, y + dy * r)) return go(x + dx * r, y + dy * r);
+    go(LANDING.x + 34, LANDING.y + 26); // (can't happen, but never leave you stuck)
+  }
+
   private distTo(x: number, y: number) {
     return Phaser.Math.Distance.Between(this.player.x, this.player.y - 8, x, y);
   }
@@ -2134,6 +2161,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePlayer(dt: number) {
+    // Something solid appeared where you're standing (a house going up, a decoration,
+    // a building moved in edit mode): step out instead of being stuck inside it.
+    if (!this.arranging && this.blocked(this.player.x, this.player.y)) this.unstick();
     if (this.startPos && Math.hypot(this.player.x - this.startPos.x, this.player.y - this.startPos.y) > 40) {
       this.startPos = null;
       this.game.events.emit("player-moved");
