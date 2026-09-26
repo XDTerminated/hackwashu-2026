@@ -1,57 +1,79 @@
-// "Moonlight Swing": an original 8-bit jazz tune for the colony, in the
-// spirit of an old moon-crooner standard (the melody is our own). Played live
-// with WebAudio, no audio files: a pulse-wave lead, a walking triangle bass,
-// off-beat chord stabs, and swung brushes. The head (the tune) alternates
-// with an improvised chorus over the same changes, so it never loops stale.
-// Music is on unless you turn it off; starts on your first key press
-// (browsers only allow sound after the player does something).
+// The colony's theme, played live as 8-bit swing with WebAudio (no audio
+// files): a pulse-wave lead, a walking triangle bass, off-beat chord stabs,
+// and swung brushes. The tune itself lives in tune.ts as plain text, so it's
+// easy to change; the head alternates with an improvised chorus over the same
+// changes, so it never loops stale. Music is on unless you turn it off; starts
+// on your first key press (browsers only allow sound after the player acts).
 
-const BPM = 116;
-const BEAT = 60 / BPM;
+import { TUNE } from "./tune";
+
 /** Swung eighths: the off-beat lands two thirds of the way through the beat. */
 const SWING = 2 / 3;
 // (a new key: an older "music off" setting shouldn't keep the new tune silent)
 const MUTE_KEY = "moon-music-off-v2";
 
-// A 16-bar jazz progression, one chord a bar: I vi ii V, iii VI ii V, IV iv iii VI, ii V I (turnaround).
-const CHORDS: { root: number; tones: number[] }[] = [
-  { root: 48, tones: [0, 4, 7, 11] }, // Cmaj7
-  { root: 45, tones: [0, 3, 7, 10] }, // Am7
-  { root: 50, tones: [0, 3, 7, 10] }, // Dm7
-  { root: 43, tones: [0, 4, 7, 10] }, // G7
-  { root: 52, tones: [0, 3, 7, 10] }, // Em7
-  { root: 45, tones: [0, 4, 7, 10] }, // A7
-  { root: 50, tones: [0, 3, 7, 10] }, // Dm7
-  { root: 43, tones: [0, 4, 7, 10] }, // G7
-  { root: 53, tones: [0, 4, 7, 11] }, // Fmaj7
-  { root: 53, tones: [0, 3, 7, 9] }, // Fm6
-  { root: 52, tones: [0, 3, 7, 10] }, // Em7
-  { root: 45, tones: [0, 4, 7, 10] }, // A7
-  { root: 50, tones: [0, 3, 7, 10] }, // Dm7
-  { root: 43, tones: [0, 4, 7, 10] }, // G7
-  { root: 48, tones: [0, 4, 7, 9] }, // C6
-  { root: 43, tones: [0, 4, 7, 10] }, // G7 (back to the top)
-];
+const QUALITY: Record<string, number[]> = {
+  "": [0, 4, 7, 12],
+  m: [0, 3, 7, 12],
+  "7": [0, 4, 7, 10],
+  maj7: [0, 4, 7, 11],
+  m7: [0, 3, 7, 10],
+  "6": [0, 4, 7, 9],
+  m6: [0, 3, 7, 9],
+  m7b5: [0, 3, 6, 10],
+  dim7: [0, 3, 6, 9],
+  dim: [0, 3, 6, 9],
+};
+const PITCH: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const accidental = (a: string) => (a === "#" ? 1 : a === "b" ? -1 : 0);
 
-/** The head: [beat, midi note, length in beats] for each bar. Original melody. */
-const HEAD: [number, number, number][][] = [
-  [[0.5, 76, 0.5], [1, 79, 0.5], [1.5, 81, 1.5], [3, 79, 0.5], [3.5, 76, 0.5]],
-  [[0, 77, 1], [1, 76, 0.5], [1.5, 72, 1.5], [3, 74, 1]],
-  [[0, 77, 1.5], [1.5, 81, 0.5], [2, 84, 1], [3, 81, 0.5], [3.5, 77, 0.5]],
-  [[0, 79, 2], [2.5, 77, 0.5], [3, 74, 0.5], [3.5, 71, 0.5]],
-  [[0, 76, 1], [1, 79, 0.5], [1.5, 83, 1.5], [3, 81, 1]],
-  [[0, 79, 0.5], [0.5, 76, 0.5], [1, 73, 1.5], [3, 76, 1]],
-  [[0, 77, 0.5], [0.5, 74, 0.5], [1, 72, 0.5], [1.5, 69, 1.5], [3, 72, 0.5], [3.5, 74, 0.5]],
-  [[0, 77, 1], [1, 76, 1], [2, 74, 2]],
-  [[0.5, 72, 0.5], [1, 77, 0.5], [1.5, 81, 1], [2.5, 84, 1.5]],
-  [[0, 80, 1], [1, 77, 0.5], [1.5, 74, 1.5], [3, 72, 1]],
-  [[0, 79, 1.5], [1.5, 76, 0.5], [2, 74, 0.5], [2.5, 76, 1.5]],
-  [[0, 73, 0.5], [0.5, 76, 0.5], [1, 79, 0.5], [1.5, 82, 1.5], [3, 81, 1]],
-  [[0, 77, 1], [1, 81, 0.5], [1.5, 79, 0.5], [2, 77, 1], [3, 74, 1]],
-  [[0, 71, 0.5], [0.5, 74, 0.5], [1, 77, 0.5], [1.5, 79, 1.5], [3, 77, 0.5], [3.5, 74, 0.5]],
-  [[0, 76, 3], [3, 72, 1]],
-  [[2, 79, 0.5], [2.5, 77, 0.5], [3, 74, 0.5], [3.5, 71, 0.5]],
-];
+/** "F#m7" -> its bass root (G2..F#3) and chord tones. */
+function chord(sym: string): { root: number; tones: number[] } {
+  const m = sym.match(/^([A-G])([#b]?)(.*)$/);
+  if (!m) return { root: 48, tones: QUALITY[""] };
+  let root = 48 + PITCH[m[1]] + accidental(m[2]);
+  if (root > 54) root -= 12;
+  return { root, tones: QUALITY[m[3]] ?? QUALITY[""] };
+}
+
+/** "C#5" -> MIDI 73 (C4 = 60). */
+function note(n: string): number | null {
+  const m = n.match(/^([A-G])([#b]?)(-?\d)$/);
+  return m ? 12 * (Number(m[3]) + 1) + PITCH[m[1]] + accidental(m[2]) : null;
+}
+
+/** Read tune.ts: the tempo, and each bar's chord and [beat, midi, length] notes. */
+function parseTune(text: string) {
+  let bpm = 116;
+  const chords: { root: number; tones: number[] }[] = [];
+  const head: [number, number, number][][] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const tempo = line.match(/^bpm\s+(\d+)/i);
+    if (tempo) {
+      bpm = Number(tempo[1]);
+      continue;
+    }
+    const [sym, notes = ""] = line.split("|").map((x) => x.trim());
+    chords.push(chord(sym));
+    const bar: [number, number, number][] = [];
+    let beat = 0;
+    for (const tok of notes.split(/\s+/).filter(Boolean)) {
+      const [name, len] = tok.split(":");
+      const beats = Number(len) || 1;
+      const midi = name.toLowerCase() === "r" ? null : note(name);
+      if (midi !== null && beat < 4) bar.push([beat, midi, Math.min(beats, 4 - beat)]);
+      beat += beats;
+    }
+    head.push(bar);
+  }
+  if (!chords.length) chords.push(chord("C"));
+  return { bpm, chords, head };
+}
+
+const { bpm: BPM, chords: CHORDS, head: HEAD } = parseTune(TUNE);
+const BEAT = 60 / BPM;
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
