@@ -113,34 +113,81 @@ function craterlet(ctx: Ctx, cx: number, cy: number, r: number) {
     }
 }
 
-/** Two staggered lines of flagstones on packed regolith. */
+// Flagstone tones: fill, top light, edge. Mostly cream, some cooler and warmer.
+const STONES: [number, string, string, string][] = [
+  [0.45, "#d8d0c4", "#ece6dc", "#8f8578"], // cream
+  [0.25, "#cac6d2", "#e3e0ea", "#86808f"], // cool grey
+  [0.2, "#d6c6ae", "#ebdfcc", "#8f7f68"], // warm tan
+  [0.1, "#c3cad6", "#dde3ec", "#7f8796"], // blue-grey
+];
+
+/**
+ * A flagstone path on packed regolith, no two alike: the band wanders a little
+ * in width, the stones come in mixed sizes and tones, set in two staggered
+ * rows (now and then one big stone across the middle), with the odd cracked,
+ * sunken or missing one, and gravel in between.
+ */
 function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number) {
   const len = Math.hypot(bx - ax, by - ay);
   const ux = (bx - ax) / len;
   const uy = (by - ay) / len;
   const px = -uy;
   const py = ux;
-  for (let t = 0; t <= len; t += 2) {
+  // every path gets its own pattern, from where it starts
+  const seed = Math.floor(hash(Math.round(ax), Math.round(ay), 11) * 9973);
+  const r = (i: number, k: number) => hash(seed + i, k, 5);
+  // the packed band, a little wider or narrower as it goes, with gravel
+  for (let t = 0; t <= len; t += 1) {
+    const half = 5 + Math.round(noise(t / 16 + seed, seed * 0.37) * 3) - 1;
     const x = ax + ux * t;
     const y = ay + uy * t;
-    for (let w = -6; w <= 6; w++) rect(ctx, "#a4999f", x + px * w, y + py * w, 1, 1);
-  }
-  for (let t = 0, i = 0; t <= len; t += 7, i++) {
-    for (const side of [-3, 3]) {
-      const jitter = (hash(i, side, 4) - 0.5) * 2;
-      const x = Math.round(ax + ux * (t + (side > 0 ? 3 : 0)) + px * side + jitter);
-      const y = Math.round(ay + uy * (t + (side > 0 ? 3 : 0)) + py * side + jitter * 0.5);
-      stone(ctx, x - 2, y - 2, 5, 4, i + side);
+    for (let w = -half; w <= half; w++) {
+      const g = hash(Math.round(x + px * w), Math.round(y + py * w), seed % 97);
+      const c = Math.abs(w) === half ? "#978c93" : g > 0.93 ? "#b3a9ae" : g < 0.06 ? "#8e848a" : "#a4999f";
+      rect(ctx, c, Math.round(x + px * w), Math.round(y + py * w), 1, 1);
     }
+    // a pebble kicked just off the edge now and then
+    if (r(t, 21) > 0.94) {
+      const side = r(t, 22) > 0.5 ? 1 : -1;
+      rect(ctx, "#8e848a", Math.round(x + px * side * (half + 2)), Math.round(y + py * side * (half + 2)), 1, 1);
+    }
+  }
+  // the stones
+  let i = 0;
+  for (let t = 1; t <= len - 2; i++) {
+    const big = r(i, 1) > 0.9;
+    const rows = big ? [0] : [-3, 3];
+    for (const side of rows) {
+      const k = i * 3 + side;
+      if (r(k, 2) < 0.07) continue; // missing
+      const w = big ? 7 + Math.floor(r(k, 3) * 3) : 4 + Math.floor(r(k, 3) * 3);
+      const h = big ? 5 : 3 + Math.floor(r(k, 4) * 2);
+      const along = t + (side > 0 ? 3 : 0) + (r(k, 5) - 0.5) * 2;
+      const across = side + (r(k, 6) - 0.5) * 2;
+      const x = Math.round(ax + ux * along + px * across - w / 2);
+      const y = Math.round(ay + uy * along + py * across - h / 2);
+      stone(ctx, x, y, w, h, r(k, 7), r(k, 8));
+    }
+    t += big ? 9 : 6 + Math.floor(r(i, 9) * 3);
   }
 }
 
-function stone(ctx: Ctx, x: number, y: number, w: number, h: number, seed: number) {
-  rect(ctx, "#8f8578", x + 1, y, w - 2, h);
-  rect(ctx, "#8f8578", x, y + 1, w, h - 2);
-  const fill = hash(seed, 1, 9) > 0.5 ? "#d8d0c4" : "#cfc6b8";
-  rect(ctx, fill, x + 1, y + 1, w - 2, h - 2);
-  rect(ctx, "#ece6dc", x + 1, y + 1, w - 3, 1);
+/** One flagstone: `tone` picks its color, `wear` makes the odd one cracked or sunken. */
+function stone(ctx: Ctx, x: number, y: number, w: number, h: number, tone: number, wear: number) {
+  let acc = 0;
+  const [, fill, light, edge] = STONES.find(([p]) => (acc += p) >= tone) ?? STONES[0];
+  rect(ctx, edge, x + 1, y, w - 2, h);
+  rect(ctx, edge, x, y + 1, w, h - 2);
+  const sunken = wear > 0.94;
+  rect(ctx, sunken ? edge : fill, x + 1, y + 1, w - 2, h - 2);
+  if (sunken) rect(ctx, fill, x + 1, y + 2, w - 2, h - 3);
+  else rect(ctx, light, x + 1, y + 1, w - 3, 1);
+  // a hairline crack
+  if (wear < 0.08 && w >= 5) {
+    rect(ctx, edge, x + 2, y + 1, 1, 1);
+    rect(ctx, edge, x + 3, y + 2, 1, 1);
+    if (h > 3) rect(ctx, edge, x + 3, y + 3, 1, 1);
+  }
 }
 
 function plaza(ctx: Ctx) {
