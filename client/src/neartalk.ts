@@ -1,13 +1,14 @@
-// Talking to a neighbor where you stand. Walk up to someone and press E or
-// Enter to text-chat (a chat bar opens above the toolbar, with the conversation
-// so far), or tap / hold TAB to speak, or turn on the OPEN MIC and just talk.
-// They stop, turn to you, and answer in bubbles over their own head, out loud.
-// Letters, account connections and the Office still open their windows.
+// Talking to a neighbor where you stand. One way in: walk up and press E. The
+// chat bar opens (with the conversation so far) and the mic comes on by itself,
+// so you can just speak, or type and press Enter. ESC leaves. They stop, turn
+// to you, and answer out loud in bubbles over their head. The mic button (on
+// the bar and the toolbar) turns voice off, and it stays off until you turn it
+// back on. Letters, account connections and the Office keep their windows.
 
 import Phaser from "phaser";
 import { VILLAGER_SHORT, type VillagerId } from "../../shared/game";
 import type { VillagerActor } from "./actors";
-import { listen, listenOpen, micSupported, type Listening } from "./mic";
+import { listenOpen, micSupported } from "./mic";
 import * as net from "./net";
 import { isSfxMuted, onSfxToggle, sfx } from "./sfx";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
@@ -22,12 +23,12 @@ export interface NearHost {
   nearest(): VillagerId | null;
   hold(v: VillagerId): void;
   release(): void;
-  /** Something else has the keyboard (a window, the MoonPad, the shop, edit mode). */
+  /** Something else needs you (a window, the MoonPad, the shop, edit mode). */
   blocked(): boolean;
   greeting(v: VillagerId): string;
 }
 
-/** A conversation stays open this long after the last thing either of you said. */
+/** After you leave the chat, their answer still arrives over their head for this long. */
 const STAY_MS = 30_000;
 /** Walk further than this from them and the conversation's over. */
 const LEAVE_PX = 96;
@@ -44,33 +45,36 @@ const EXAMPLES: Partial<Record<VillagerId, string>> = {
   stargazer: "when is the next full moon?",
 };
 
-// ---------------------------------------------------------------- the open mic (a toolbar toggle)
+// ---------------------------------------------------------------- the mic setting
+// On unless you turn it off; once off, it stays off (remembered) until you turn it on.
 
-const OPEN_KEY = "moon-open-mic";
-let openOn = (() => {
+const MIC_KEY = "moon-mic-v2";
+let micOn = (() => {
   try {
-    return localStorage.getItem(OPEN_KEY) === "1";
+    return localStorage.getItem(MIC_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 })();
-const openListeners = new Set<(on: boolean) => void>();
+const micListeners = new Set<(on: boolean) => void>();
 
-export const isOpenMic = () => openOn;
+export const isMicOn = () => micOn && micSupported;
 
-export function toggleOpenMic() {
-  openOn = !openOn;
+export function setMic(on: boolean) {
+  micOn = on;
   try {
-    localStorage.setItem(OPEN_KEY, openOn ? "1" : "0");
+    localStorage.setItem(MIC_KEY, on ? "1" : "0");
   } catch {
     /* just for this visit */
   }
-  openListeners.forEach((fn) => fn(openOn));
+  micListeners.forEach((fn) => fn(isMicOn()));
 }
 
-export function onOpenMic(fn: (on: boolean) => void) {
-  openListeners.add(fn);
-  return () => openListeners.delete(fn);
+export const toggleMic = () => setMic(!micOn);
+
+export function onMicToggle(fn: (on: boolean) => void) {
+  micListeners.add(fn);
+  return () => micListeners.delete(fn);
 }
 
 /** The pixel font has no emoji. */
@@ -90,18 +94,20 @@ function pieces(text: string): string[] {
 }
 
 export class NearTalk {
-  typing = false;
+  /** The chat is open: keys go to it, and the mic listens (if it's on). */
+  chatting = false;
   /** Who you're talking with (their replies come as bubbles over their head). */
   private with: VillagerId | null = null;
   private lastAt = 0;
   private mine: Label | null = null;
   private mineTimer: Phaser.Time.TimerEvent | null = null;
-  private listening: Listening | null = null;
-  private listenDownAt = 0;
   private open: { stop(): void } | null = null;
-  /** The open mic pauses while a neighbor is talking (it would hear them). */
+  /** What the mic is hearing right now (before you finish the sentence). */
+  private heard = "";
+  /** The mic waits while they think and talk (so it never hears them, or sends twice). */
   private quietUntil = 0;
-  private sentAt = 0;
+  private them: "thinking" | "talking" | null = null;
+  private note = "";
   private greeted = new Map<VillagerId, number>();
   /** Bumped to cut off whatever they're still saying (you walked away). */
   private replySeq = 0;
@@ -115,47 +121,38 @@ export class NearTalk {
     box: Phaser.GameObjects.Graphics;
     line: Phaser.GameObjects.BitmapText;
     hint: Phaser.GameObjects.BitmapText;
+    mic: Phaser.GameObjects.Image;
+    micWord: Phaser.GameObjects.BitmapText;
     logBg: Phaser.GameObjects.Graphics;
     log: Phaser.GameObjects.BitmapText[];
   } | null = null;
   private owner: InputOwner = {
     render: () => this.renderChat(),
     submit: () => this.submitTyped(),
-    active: () => this.typing,
+    active: () => this.chatting,
   };
   private offs: Array<() => void> = [];
 
   constructor(private host: NearHost) {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && this.typing) return this.cancelTyping();
-      if (e.key !== "Tab") return;
-      const v = this.host.nearest();
-      if (this.host.blocked() && !this.typing) return;
-      if (!v && !this.listening) return;
-      e.preventDefault();
-      if (e.repeat) return;
-      if (this.listening) return void this.listening.stop(); // a second tap sends
-      if (this.typing) this.cancelTyping(); // switch from typing to talking
-      if (v) this.startListening(v);
-    };
-    const up = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || !this.listening) return;
-      e.preventDefault();
-      // a hold sends on release; a quick tap keeps listening until the next tap
-      if (performance.now() - this.listenDownAt > 400) this.listening.stop();
+      if (e.key === "Escape" && this.chatting) this.leave();
     };
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    this.offs.push(() => window.removeEventListener("keydown", down), () => window.removeEventListener("keyup", up));
-    this.offs.push(onOpenMic(() => this.syncOpenMic()));
+    this.offs.push(() => window.removeEventListener("keydown", down));
+    this.offs.push(
+      onMicToggle(() => {
+        this.note = "";
+        this.syncMic();
+        this.renderChat();
+      }),
+    );
     this.offs.push(onSfxToggle((m) => m && voice.stopSpeaking()));
   }
 
   destroy() {
     this.offs.forEach((f) => f());
-    this.stopOpenMic();
-    this.listening?.cancel();
-    this.cancelTyping();
+    this.stopMic();
+    this.leave();
     this.mine?.destroy();
     this.destroyChat();
   }
@@ -167,12 +164,7 @@ export class NearTalk {
 
   /** Are they the one you're talking with (so their replies belong to this conversation)? */
   isWith(v: VillagerId) {
-    return this.with === v && Date.now() - this.lastAt < STAY_MS;
-  }
-
-  /** Just sent something (Enter shouldn't immediately start a new line). */
-  get justSent() {
-    return performance.now() - this.sentAt < 250;
+    return this.with === v && (this.chatting || Date.now() - this.lastAt < STAY_MS);
   }
 
   private placeholder() {
@@ -195,107 +187,73 @@ export class NearTalk {
     }
   }
 
-  // ---------------------------------------------------------------- typing
+  // ---------------------------------------------------------------- the chat
 
-  /** E next to someone: with the open mic on, just start talking; otherwise the chat bar opens. */
-  talk(v: VillagerId) {
-    if (!openOn || !micSupported) return this.startTyping(v);
+  /** E next to someone: the chat opens, and the mic comes on (unless you've turned it off). */
+  start(v: VillagerId) {
+    if (this.chatting) return;
     this.begin(v);
-    this.flashMine("(listening: just talk)", 2500);
-    sfx.blip();
-    this.syncOpenMic();
-  }
-
-  /** Enter (or E without the open mic) next to someone: the chat bar opens (and "..." over your head while you type). */
-  startTyping(v: VillagerId) {
-    if (this.typing) return;
-    this.begin(v);
-    this.typing = true;
-    this.stopOpenMic();
+    this.chatting = true;
+    this.heard = "";
     claimInput(this.owner);
     input.value = "";
-    this.showMine(". . .", true);
-    this.renderChat();
     sfx.blip();
+    this.syncMic();
+    this.renderChat();
   }
 
-  cancelTyping() {
-    if (!this.typing) return;
-    this.typing = false;
+  /** ESC: the chat closes and the mic goes off. (Their answer still arrives over their head.) */
+  leave() {
+    if (!this.chatting) return;
+    this.chatting = false;
+    this.heard = "";
     releaseInput(this.owner);
     this.hideMine();
+    this.stopMic();
     this.renderChat();
-    this.syncOpenMic();
   }
 
-  /** Enter sends and the bar stays open for the next line; Enter on an empty line (or ESC) closes it. */
+  /** Enter sends what you typed. (An empty Enter does nothing; ESC leaves.) */
   private submitTyped() {
     const text = input.value.trim();
-    this.sentAt = performance.now();
-    if (!text || !this.with) return this.cancelTyping();
+    if (!text || !this.with) return;
     input.value = "";
     this.say(text);
-    this.renderChat();
-  }
-
-  // ---------------------------------------------------------------- speaking (TAB, or the open mic)
-
-  private startListening(v: VillagerId) {
-    if (!micSupported) {
-      this.flashMine("Voice needs Chrome, Edge or Safari. Press E to type instead.");
-      return;
-    }
-    this.begin(v);
-    this.stopOpenMic();
-    this.listenDownAt = performance.now();
-    const l = listen(
-      (text) => this.showMine(text || "listening...", !text),
-      (problem) => this.flashMine(problem),
-    );
-    if (!l) return;
-    this.listening = l;
-    this.showMine("listening... (tap TAB to send)", true);
-    sfx.blip();
-    void l.heard.then((text) => {
-      if (this.listening !== l) return;
-      this.listening = null;
-      if (text) this.say(text);
-      else this.hideMine();
-      this.syncOpenMic();
-    });
   }
 
   /**
-   * The open mic only listens in a conversation you started (E next to someone),
-   * while you're still beside them: never just because you walked past. It goes
-   * quiet when you walk off, or after half a minute of nobody saying anything.
+   * The mic listens only while the chat is open (never just because you walked
+   * past someone), and waits while you type or while they think and talk.
    */
-  private syncOpenMic() {
-    const v = this.with;
-    const talking = !!v && this.isWith(v) && this.host.nearest() === v;
-    const want = openOn && micSupported && talking && !this.typing && !this.listening && !this.host.blocked() && Date.now() >= this.quietUntil;
+  private syncMic() {
+    const want = this.chatting && isMicOn() && !!this.with && !input.value && !this.host.blocked() && Date.now() >= this.quietUntil;
     if (want && !this.open) {
       this.open = listenOpen(
         (phrase) => {
-          if (!this.with || Date.now() < this.quietUntil) return;
+          if (!this.chatting || !this.with || Date.now() < this.quietUntil || input.value) return;
+          this.heard = "";
           this.say(phrase);
         },
         (partial) => {
-          if (!partial || !this.with) return;
-          this.lastAt = Date.now(); // (still talking: don't let the conversation lapse mid-sentence)
-          this.showMine(partial, true);
+          if (!this.chatting || Date.now() < this.quietUntil) return;
+          this.heard = partial;
+          if (partial) this.showMine(partial, true);
+          this.renderChat(true);
         },
         (problem) => {
-          this.flashMine(problem);
-          if (openOn) toggleOpenMic();
+          // (the browser said no: turn the mic off and say why, rather than retrying forever)
+          setMic(false);
+          this.note = problem;
+          this.renderChat();
         },
       );
-    } else if (!want && this.open) this.stopOpenMic();
+    } else if (!want && this.open) this.stopMic();
   }
 
-  private stopOpenMic() {
+  private stopMic() {
     this.open?.stop();
     this.open = null;
+    this.heard = "";
   }
 
   // ---------------------------------------------------------------- the conversation
@@ -308,8 +266,14 @@ export class NearTalk {
     this.flashMine(text, Math.max(2200, text.length * 55));
     this.log(v, true, text);
     sfx.blip();
-    if (net.send({ type: "task", villager: v, text })) this.host.actor(v)?.say(". . .", 30_000, this.theirSide());
-    else this.host.actor(v)?.say("(the line to the colony is down)", 3000, this.theirSide());
+    if (net.send({ type: "task", villager: v, text })) {
+      this.host.actor(v)?.say(". . .", 30_000, this.theirSide());
+      // (the mic waits for their answer; a minute at most, in case it never comes)
+      this.them = "thinking";
+      this.quietUntil = Date.now() + 60_000;
+      this.stopMic();
+    } else this.host.actor(v)?.say("(the line to the colony is down)", 3000, this.theirSide());
+    this.renderChat();
   }
 
   /** Their answer: a sentence or two at a time over their head, said out loud. */
@@ -321,7 +285,8 @@ export class NearTalk {
     const parts = pieces(text);
     this.log(v, false, plainText(text));
     // (the mic mustn't hear them talking)
-    this.stopOpenMic();
+    this.stopMic();
+    this.them = "talking";
     this.quietUntil = Date.now() + 60_000;
     // (the toolbar's sound button quiets voices too)
     const line = voice.isMuted() || isSfxMuted() ? null : voice.prepare(v, text);
@@ -341,7 +306,8 @@ export class NearTalk {
         this.lastAt = Date.now();
       }
       this.quietUntil = Date.now() + 700;
-      this.host.scene.time.delayedCall(800, () => this.syncOpenMic());
+      this.them = null;
+      this.host.scene.time.delayedCall(800, () => (this.syncMic(), this.renderChat()));
     });
   }
 
@@ -359,11 +325,11 @@ export class NearTalk {
 
   private destroyChat() {
     if (!this.chat) return;
-    for (const o of [this.chat.box, this.chat.line, this.chat.hint, this.chat.logBg, ...this.chat.log]) o.destroy();
+    for (const o of [this.chat.box, this.chat.line, this.chat.hint, this.chat.mic, this.chat.micWord, this.chat.logBg, ...this.chat.log]) o.destroy();
     this.chat = null;
   }
 
-  /** The bar (while typing) and the conversation so far just above it (while typing, and for a bit after each line). */
+  /** The bar (while the chat is open) and the conversation so far above it (while open, and for a bit after each line). */
   private renderChat(barOnly = false) {
     const scene = this.host.scene;
     const W = scene.scale.width;
@@ -376,10 +342,21 @@ export class NearTalk {
         H,
         box: pin(scene.add.graphics()),
         line: pin(ptext(scene, 0, 0, "", C.ink), 1),
-        hint: pin(ptext(scene, 0, 0, "ENTER send  /  ESC close  /  TAB speak", 0xb9aed0, "sm"), 1),
+        hint: pin(ptext(scene, 0, 0, "", 0xb9aed0, "sm"), 1),
+        mic: pin(scene.add.image(0, 0, "icon_mic_0").setOrigin(0, 0.5), 2),
+        micWord: pin(ptext(scene, 0, 0, "", C.ink, "sm"), 2),
         logBg: pin(scene.add.graphics()),
         log: [],
       };
+    if (!this.chat.mic.input) {
+      // the mic switch lives right on the bar
+      this.chat.mic.setInteractive({ useHandCursor: true }).on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        if (!micSupported) return;
+        toggleMic();
+        sfx.blip();
+      });
+    }
     const c = this.chat;
     const PAD = 8;
     const barW = Math.min(W - 32, 460);
@@ -392,25 +369,44 @@ export class NearTalk {
 
     // the bar
     c.box.clear();
-    c.box.setVisible(this.typing);
-    c.line.setVisible(this.typing);
-    c.hint.setVisible(this.typing);
-    if (this.typing) {
-      // (the key hints sit on a dark strip that joins the log above)
+    for (const o of [c.box, c.line, c.hint, c.mic, c.micWord]) o.setVisible(this.chatting);
+    if (this.chatting) {
+      // (the hints sit on a dark strip that joins the log above)
       c.box.fillStyle(panel, 0.8).fillRect(x0, barY - hintH, barW, hintH);
       woodFrame(c.box, x0, barY, barW, barH, C.paperLight);
+      // the mic switch, at the right end of the bar
+      const on = isMicOn();
+      c.mic.setTexture(on ? "icon_mic_on_0" : "icon_mic_0").setAlpha(micSupported ? 1 : 0.4);
+      c.micWord.setText(on ? "MIC ON" : "MIC OFF").setTint(on ? 0x2f8a3a : C.inkSoft);
+      const micW = c.mic.width + 3 + measure(c.micWord).w;
+      const micX = x0 + barW - PAD - micW;
+      c.mic.setPosition(micX, barY + barH / 2);
+      c.micWord.setPosition(micX + c.mic.width + 3, barY + Math.round((barH - measure(c.micWord).h) / 2));
+      c.box.fillStyle(C.paperDark, 1).fillRect(micX - 6, barY + 4, 1, barH - 8);
+
+      // what's in the bar: your words (typed or heard), or what's going on
       const cursor = Math.floor(performance.now() / 500) % 2 ? "_" : " ";
       const prefix = `to ${who}:  `;
       const typed = input.value;
-      c.line.setTint(typed ? C.ink : C.inkSoft);
+      const status =
+        this.them === "thinking" ? `${who} is thinking...` :
+        this.them === "talking" ? `${who} is talking...` :
+        on ? `listening... just talk, or type` :
+        `type here  (${this.placeholder()})`;
+      const words = typed || this.heard;
+      c.line.setTint(words ? C.ink : C.inkSoft);
+      const room = micX - 10 - x0 - PAD;
       // keep the end of a long line in view
-      let shown = typed || this.placeholder();
-      c.line.setText(prefix + shown + (typed ? cursor : ""));
-      while (typed && measure(c.line).w > barW - PAD * 2 && shown.length > 1) {
+      let shown = words || status;
+      const tail = typed ? cursor : "";
+      c.line.setText(prefix + shown + tail);
+      while (measure(c.line).w > room && shown.length > 1) {
         shown = shown.slice(1);
-        c.line.setText(`${prefix}...${shown}${cursor}`);
+        c.line.setText(`${prefix}...${shown}${tail}`);
       }
       c.line.setPosition(x0 + PAD, barY + Math.round((barH - measure(c.line).h) / 2));
+      c.hint.setText(this.note || (on ? "just talk, or type + ENTER  /  ESC leave  /  click the mic to mute" : "type + ENTER to send  /  ESC leave  /  click the mic to talk out loud"));
+      c.hint.setTint(this.note ? 0xffb38a : 0xb9aed0);
       c.hint.setPosition(x0 + barW - measure(c.hint).w - PAD, barY - hintH + 4);
     }
 
@@ -420,9 +416,9 @@ export class NearTalk {
     c.log = [];
     c.logBg.clear();
     const lines = this.with ? (this.history.get(this.with)?.lines ?? []) : [];
-    const showLog = lines.length > 0 && (this.typing || Date.now() < this.logUntil);
+    const showLog = lines.length > 0 && (this.chatting || Date.now() < this.logUntil);
     if (!showLog) return;
-    const bottom = this.typing ? barY - hintH : barY + barH;
+    const bottom = this.chatting ? barY - hintH : barY + barH;
     // (it stops short of your feet: the camera lifts you into the top third while the chat is up)
     const maxH = Math.min(170, bottom - Math.round(H * LIFT_TO) - 20);
     const names = [...new Set(lines.map((l) => (l.you ? "You" : VILLAGER_SHORT[this.with!])))];
@@ -495,31 +491,29 @@ export class NearTalk {
     this.mine?.place(Math.round(p.x), Math.round(p.y) - 30);
   }
 
-  /** Every frame: keep your bubble over you, end the conversation when you walk off, run the open mic. */
+  /** Every frame: keep your bubble over you, end the conversation once you've left and walked off, run the mic. */
   update() {
     this.place();
     // Lift the view while the chat is up (the camera eases there on its own).
     const cam = this.host.scene.cameras.main;
-    const chatUp = this.typing || !!this.chat?.log.length;
+    const chatUp = this.chatting || !!this.chat?.log.length;
     cam.followOffset.y = chatUp ? -Math.round(cam.height * (0.5 - LIFT_TO)) : 0;
-    if (this.typing) this.renderChat(true); // (the cursor blinks)
+    if (this.chatting) this.renderChat(true); // (the cursor blinks)
     else if (this.chat?.log.length && Date.now() > this.logUntil) this.renderChat(); // (the log tucks away)
-    if (this.with) {
+    if (this.with && !this.chatting) {
       const a = this.host.actor(this.with);
       const p = this.host.player();
       const away = !a || Math.hypot(a.x - p.x, a.y - p.y) > LEAVE_PX;
-      if (away || (!this.typing && !this.listening && Date.now() - this.lastAt > STAY_MS)) {
-        if (this.typing) this.cancelTyping();
-        this.listening?.cancel();
-        this.listening = null;
+      if (away || Date.now() - this.lastAt > STAY_MS) {
         this.with = null;
         this.replySeq++;
         voice.stopSpeaking();
         this.quietUntil = 0;
+        this.them = null;
         this.host.release();
       }
     }
-    this.syncOpenMic();
+    this.syncMic();
   }
 
   /** Name for the prompt ("[E] talk to Hoot"). */

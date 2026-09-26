@@ -246,18 +246,17 @@ what they actually fetched for you (no extra API calls).
 
 ## Talking to villagers
 
-Talking happens right where you stand. Walk up to a villager and press **E** (or **Enter**) to
-text-chat: a chat bar opens above the toolbar with the conversation so far, **Enter** sends (the bar
-stays open for your next line), and **ESC** or an empty **Enter** closes it. They stop, turn to you, think ("..."), and answer out loud in bubbles over their own head, a
-sentence or two at a time. They greet you once; come back within five minutes and they skip the
-hello. Walk away and the conversation ends. (Letters to approve and account connections still open
-their own windows.)
+Talking happens right where you stand, and there's one way in: walk up to a villager and press **E**.
+The chat bar opens with your conversation so far, and the **mic comes on by itself**: just speak, or
+type and press **Enter**. **ESC** leaves. They stop, turn to you, think ("..."), and answer out loud
+in bubbles over their head, a sentence or two at a time. The mic waits while you type and while they
+think and talk, so it never hears them or sends twice. They greet you once; come back within five
+minutes and they skip the hello, and the conversation so far is still there. (Letters to approve and
+account connections still open their own windows.)
 
-- **Speak instead of typing**: tap or hold **TAB** next to a villager.
-- **Open mic** (the **mic** button on the toolbar): press **E** next to someone and just talk, no keys
-  (Enter still opens the chat bar). It only listens in a conversation you started, never because you
-  walked past someone; it turns off when you walk away or after 30 seconds of quiet, and pauses while
-  they answer so it never hears itself.
+- **The mic button** (on the chat bar, and on the toolbar) turns voice off, and it stays off until you
+  turn it back on. With it off you just type. The mic only ever listens while a chat is open, never
+  because you walked past someone.
 - **Sounds are spatial**: hammering, bells, meteors, finished jobs and villagers' voices are louder
   close up, fade with distance, and pan left or right toward where they happen.
 
@@ -302,7 +301,7 @@ already placed in the world) says who loves it and, in the world, whose yard it'
 
 **The gold ★** always marks your current goal: over the villager's head when they're on screen, an arrow at the screen edge (named) when they're not. It points to the plot to build, then the door to call from, then the villager. New players get a one-time hint at the top of the screen for walking, then for following the ★.
 
-**E or SPACE interacts with whatever is closest** (talk, call, build, read a letter, pop, grab, switch a light; hold to sweep): the two keys are interchangeable everywhere, including the Office. Next to a villager, Enter types to them and TAB speaks. Other keys: B (Supply Pod), M (music), ESC (close any window / put down / leave edit mode). While a window is open (dialog, MoonPad, shop), keys go to it, not to walking.
+**E or SPACE interacts with whatever is closest** (talk, call, build, read a letter, pop, grab, switch a light; hold to sweep): the two keys are interchangeable everywhere, including the Office. Next to a villager, E opens the chat. Other keys: B (Supply Pod), M (music), ESC (close any window / put down / leave edit mode). While a window is open (dialog, MoonPad, shop), keys go to it, not to walking.
 
 ## Texting the colony (Photon Spectrum, iMessage)
 
@@ -332,5 +331,5 @@ server/src/agents.ts      villager tool-use loops (Claude or Groq), approvals
 server/src/voice.ts       ElevenLabs voices for the talk dialog, cached on disk
 client/                   Phaser 3 + Vite; all art generated from code
 client/src/panel.ts       dialogs: letters, connections, the Office boards
-client/src/neartalk.ts    talking in place: speech bubbles, TAB, the open mic
+client/src/neartalk.ts    talking in place: the chat bar, the mic, speech bubbles
 ```

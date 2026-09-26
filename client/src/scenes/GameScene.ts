@@ -1412,11 +1412,11 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen && !this.near.typing) this.game.events.emit("toggle-shop");
+      if (!this.panelOpen && !this.near.chatting) this.game.events.emit("toggle-shop");
     });
 
-    // Talking happens right where you stand: E or Enter next to a neighbor to type,
-    // TAB to speak, or the OPEN MIC to just talk. Their answers are bubbles overhead.
+    // Talking happens right where you stand: E next to a neighbor opens the chat,
+    // and you speak (the mic comes on) or type. Their answers are bubbles overhead.
     this.near = new NearTalk({
       scene: this,
       player: () => this.player,
@@ -1424,16 +1424,12 @@ export class GameScene extends Phaser.Scene {
       nearest: () => this.talkable(),
       hold: (v) => this.holdForTalk(v),
       release: () => this.releaseTalk(),
-      blocked: () => this.windowOpen() || this.arranging || isMoonPadOpen(),
+      blocked: () => this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || this.arranging || isMoonPadOpen(),
       greeting: (v) => this.greeting(v),
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.near.destroy(), clearListener()));
     this.events.on(Phaser.Scenes.Events.SLEEP, () => clearListener());
-    kb.on("keydown-ENTER", () => {
-      if (this.near.typing || this.near.justSent || this.windowOpen() || this.arranging || isMoonPadOpen()) return;
-      const v = this.talkable();
-      if (v) this.near.startTyping(v);
-    });
+
     kb.on("keydown-ESC", () => {
       if (this.held) this.cancelHeld();
       else if (this.editMode) this.setEditMode(false);
@@ -1561,7 +1557,7 @@ export class GameScene extends Phaser.Scene {
       if (letter) add({ verb: "READ LETTER", label: "[E] read letter", x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openLetter(letter)) }, 36);
       // Just moved in and their account isn't connected yet: that comes first.
       else if (this.needsConnect(v)) add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => openConnect(v) }, 34);
-      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => this.near.talk(v) }, 34);
+      else add({ verb: "TALK", label: `[E] talk to ${VILLAGER_SHORT[v]}`, x: a.x, y: a.y + 27, d, villager: v, act: () => this.near.start(v) }, 34);
     }
     for (const v of VILLAGERS) {
       const home = VILLAGER_HOME[v];
@@ -2166,7 +2162,7 @@ export class GameScene extends Phaser.Scene {
     setListener(this.player.x, this.player.y); // (sounds in the colony are heard from where you stand)
     this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
 
-    this.target = this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();
+    this.target = this.panelOpen || this.arranging || this.near.chatting ? null : this.findTarget();
     if (this.panelOpen || this.arranging) this.doorCall = null;
     this.callBtn.setVisible(!!this.doorCall);
     if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
@@ -2186,8 +2182,8 @@ export class GameScene extends Phaser.Scene {
 
     this.near.update();
     // While you type, keys go to your words (not to walking or the toolbar).
-    if (this.near.typing !== this.typingCapture) {
-      this.typingCapture = this.near.typing;
+    if (this.near.chatting !== this.typingCapture) {
+      this.typingCapture = this.near.chatting;
       if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
       else if (!this.panelOpen) this.input.keyboard!.enableGlobalCapture();
     }
@@ -2219,7 +2215,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A dialog, the MoonPad or the shop is up: keys belong to it. */
   private windowOpen() {
-    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.typing;
+    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.chatting;
   }
 
   private updatePlayer(dt: number) {
