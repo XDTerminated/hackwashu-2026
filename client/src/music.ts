@@ -1,6 +1,7 @@
-// The colony's theme, played live as 8-bit swing with WebAudio (no audio
-// files): a pulse-wave lead, a walking triangle bass, off-beat chord stabs,
-// and swung brushes. The tune itself lives in tune.ts as plain text, so it's
+// The colony's theme, played live as soft chiptune swing with WebAudio (no
+// audio files): a rounded lead (a triangle with a little square-wave bite),
+// a walking triangle bass, off-beat chord stabs, and swung brushes, all
+// through a gentle low-pass and a touch of echo so it sits under the game. The tune itself lives in tune.ts as plain text, so it's
 // easy to change; the head alternates with an improvised chorus over the same
 // changes, so it never loops stale. Music is on unless you turn it off; starts
 // on your first key press (browsers only allow sound after the player acts).
@@ -188,7 +189,7 @@ function roll(n: number) {
 function solo(i: number, chorus: number): [number, number, number][] {
   const { root, tones } = CHORDS[i % CHORDS.length];
   const notes: [number, number, number][] = [];
-  const base = root + 24 + (root < 46 ? 12 : 0);
+  const base = root + 12 + (root < 46 ? 12 : 0);
   let beat = roll(i * 5 + chorus) < 0.5 ? 0 : 0.5;
   let idx = Math.floor(roll(i * 3 + chorus * 7) * tones.length);
   while (beat < 4) {
@@ -199,7 +200,7 @@ function solo(i: number, chorus: number): [number, number, number][] {
     const len = roll(i + beat * 3 + chorus) > 0.8 ? 1 : 0.5;
     const step = ((idx % tones.length) + tones.length) % tones.length;
     const pitch = base + tones[step] + (idx >= tones.length ? 12 : 0);
-    notes.push([beat, Math.min(pitch, 88), Math.min(len, 4 - beat)]);
+    notes.push([beat, Math.min(pitch, 77), Math.min(len, 4 - beat)]);
     idx += roll(i * 17 + beat + chorus) > 0.35 ? 1 : -1;
     if (idx < 0) idx = 1;
     if (idx > tones.length + 1) idx = tones.length - 1;
@@ -221,17 +222,21 @@ function scheduleBar(at: number, i: number) {
   walk.forEach((m, k) => tone(m, t(k), BEAT * 0.85, 0.11, { type: "triangle", attack: 0.005 }));
 
   // comping: short chord stabs on the "and" of 2 and on 4, like a swing piano
-  for (const beat of [1.5, 3]) for (const c of chord.tones) tone(chord.root + 12 + c, t(beat), BEAT * 0.35, 0.012, { duty: 0.25, attack: 0.004 });
+  for (const beat of [1.5, 3]) for (const c of chord.tones) tone(chord.root + 12 + c, t(beat), BEAT * 0.4, 0.014, { type: "triangle", attack: 0.01 });
 
   // drums: soft kick on 1 and 3, the swung ride ("ding, ding-da, ding, ding-da"), a closed hat on 2 and 4
-  kick(t(0), 0.16);
-  kick(t(2), 0.1);
-  for (const beat of [0, 1, 1.5, 2, 3, 3.5]) hat(t(beat), beat % 1 ? 0.018 : 0.03, 0.09, 9000);
-  for (const beat of [1, 3]) hat(t(beat), 0.05, 0.04, 5500);
+  kick(t(0), 0.1);
+  kick(t(2), 0.06);
+  for (const beat of [0, 1, 1.5, 2, 3, 3.5]) hat(t(beat), beat % 1 ? 0.009 : 0.015, 0.08, 7000);
+  for (const beat of [1, 3]) hat(t(beat), 0.022, 0.05, 4000);
 
   // the lead: the tune on even choruses, a solo over the changes on odd ones
   const lead = chorus % 2 === 0 ? HEAD[i % HEAD.length] : solo(i, chorus);
-  for (const [beat, midi, len] of lead) tone(midi, t(beat), len * BEAT * 0.95, chorus % 2 === 0 ? 0.05 : 0.04, { duty: 0.25, vibrato: true });
+  const vol = chorus % 2 === 0 ? 1 : 0.8;
+  for (const [beat, midi, len] of lead) {
+    tone(midi, t(beat), len * BEAT * 0.95, 0.075 * vol, { type: "triangle", attack: 0.02, vibrato: true });
+    tone(midi, t(beat), len * BEAT * 0.95, 0.014 * vol, { duty: 0.5, attack: 0.02, vibrato: true });
+  }
   // a soft sparkle at the top of each chorus
   if (i % CHORDS.length === 0) tone(96, at, 1.2, 0.015, { type: "sine" });
 }
@@ -256,7 +261,23 @@ export function startMusic() {
   started = true;
   master = ctx.createGain();
   master.gain.value = muted ? 0 : 0.8;
-  master.connect(ctx.destination);
+  // Take the fizz off the top, and add a soft slapback echo for warmth.
+  const soften = ctx.createBiquadFilter();
+  soften.type = "lowpass";
+  soften.frequency.value = 2600;
+  soften.Q.value = 0.5;
+  master.connect(soften).connect(ctx.destination);
+  const echo = ctx.createDelay(1);
+  echo.delayTime.value = BEAT * SWING;
+  const feedback = ctx.createGain();
+  feedback.gain.value = 0.22;
+  const wet = ctx.createGain();
+  wet.gain.value = 0.16;
+  const dull = ctx.createBiquadFilter();
+  dull.type = "lowpass";
+  dull.frequency.value = 1500;
+  soften.connect(echo).connect(dull).connect(feedback).connect(echo);
+  dull.connect(wet).connect(ctx.destination);
   nextBar = ctx.currentTime + 0.3;
   tick();
   timer = window.setInterval(tick, 500);
