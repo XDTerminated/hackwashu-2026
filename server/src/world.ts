@@ -31,7 +31,8 @@ const SAVE_VERSION = 2;
 
 /** What a villager remembers about the player, across texts and visits. */
 export interface VillagerMemory {
-  log: { who: "player" | "me"; text: string; via: "text" | "visit"; at: number }[];
+  /** `notes`: what they found but didn't say yet, so "tell me more" doesn't need another lookup. */
+  log: { who: "player" | "me"; text: string; via: "text" | "visit"; at: number; notes?: string }[];
   facts: string[];
   points: number;
   day?: string;

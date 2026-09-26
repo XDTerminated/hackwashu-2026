@@ -15,8 +15,9 @@ import { decorById } from "../../shared/decor";
 import { drawMailbox, drawPlot } from "./buildings";
 import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawLaunchComplex, drawManor } from "./estate";
 import { SPOTS, TILE, buildingTiles } from "./layout";
-import type { BuildingId } from "../../shared/game";
+import type { BuildingId, VillagerId } from "../../shared/game";
 import { type Ctx, INK, box, disc, hash, rect } from "./pix";
+import { PORTRAIT, drawPortrait, drawPortraitSky, type PortraitFrame } from "./portraits";
 
 const CORAL = "#d97757";
 const CORAL_DARK = "#b85c3e";
@@ -495,6 +496,11 @@ export function buildTextures(scene: Phaser.Scene) {
   registerSprite(scene, "stargazer", stargazer);
   registerSprite(scene, "scholar", scholar);
   registerSprite(scene, "rocket", rocket);
+  // Talk-dialog portraits: portrait_<villager>_<0 rest | 1 talk | 2 blink>.
+  const portraitOf: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+  for (const v of portraitOf)
+    for (const f of [0, 1, 2] as PortraitFrame[]) canvasTex(scene, `portrait_${v}_${f}`, PORTRAIT, PORTRAIT, (ctx) => drawPortrait(ctx, v, f));
+  canvasTex(scene, "portrait_sky", PORTRAIT + 8, PORTRAIT + 8, (ctx) => drawPortraitSky(ctx, PORTRAIT + 8));
   for (const [name, sprite] of Object.entries(ICON_SPRITES)) registerSprite(scene, `icon_${name}`, sprite);
   for (const [v, sprite] of Object.entries(VILLAGER_ICONS)) registerSprite(scene, `vicon_${v}`, sprite);
   canvasTex(scene, "task_lantern", 16, 26, drawStoneLantern);

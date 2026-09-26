@@ -107,6 +107,32 @@ function splitNotes(raw: string): { reply: string; facts: string[] } {
   return { reply: clean(kept.join("\n")), facts };
 }
 
+/** Longer than this and an in-person answer sounds like a report read aloud. */
+const TALK_MAX = 260;
+
+export function tooLongToSay(text: string) {
+  return text.length > TALK_MAX;
+}
+
+/**
+ * Retell a long in-person answer (a web search, an inbox rundown) as something
+ * you'd actually say: the highlight, then an offer of more. Small models don't
+ * always keep it short on their own, so this is the safety net.
+ */
+export async function retell(v: VillagerId, asked: string, answer: string): Promise<string> {
+  const system = `${personaFor(v)}
+
+The player is standing in front of you and just asked you something. You've already done the work;
+below is everything you found. Now SAY it to them out loud, the way you'd tell a friend: 1-3 short
+sentences, under 45 words. Lead with what they most want to know. If there's more worth telling,
+end by offering it ("Want to hear about the comets too?"). No lists, links, markdown or citations.
+Keep every fact exactly as you found it: leave details out, but never change or add one (times,
+dates, names and numbers stay word for word). Reply with only the words you say.`;
+  const messages = [{ role: "user" as const, content: `They asked: "${asked}"\n\nWhat you found:\n${answer}` }];
+  const raw = BRAIN === "claude" ? await askClaude(system, messages) : await chatGroq(v, system, messages);
+  return clean(raw);
+}
+
 const queues = new Map<VillagerId, Promise<unknown>>();
 
 /** A text to a villager. Resolves with their reply (also emitted as a "text" event). */

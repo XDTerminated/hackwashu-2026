@@ -6,7 +6,7 @@ import Groq from "groq-sdk";
 import type { Clod, VillagerId } from "../../shared/game.js";
 import { runDelegate, runLeafTool, toolsFor, missingBuildingsNote } from "./agents.js";
 import { memoryNote } from "./memory.js";
-import { personaFor } from "./villagers.js";
+import { audienceNote, personaFor, type Audience } from "./villagers.js";
 import { emit, newId, putClod, setVillager } from "./world.js";
 
 const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
@@ -95,10 +95,10 @@ function surfaceSearches(v: VillagerId, taskId: string, executed: unknown) {
   }
 }
 
-export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string): Promise<string> {
+export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
   const tools = groqTools(v);
   const messages: Msg[] = [
-    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) },
+    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience) },
     { role: "user", content: taskText },
   ];
   let finalText = "";

@@ -121,11 +121,138 @@ const G: Record<string, string> = {
   "\u{E002}": "..#..|.###.|.#.#.|.###.|##.##|#.#.#|.....", // rocket
 };
 
+// "sm": a compact face for the talk dialog. Capitals are 5 rows, lowercase 4,
+// with 2 descender rows; most glyphs are 3 wide.
+const S: Record<string, string> = {
+  A: ".#.|#.#|###|#.#|#.#",
+  B: "##.|#.#|##.|#.#|##.",
+  C: ".##|#..|#..|#..|.##",
+  D: "##.|#.#|#.#|#.#|##.",
+  E: "###|#..|##.|#..|###",
+  F: "###|#..|##.|#..|#..",
+  G: ".##|#..|#.#|#.#|.##",
+  H: "#.#|#.#|###|#.#|#.#",
+  I: "###|.#.|.#.|.#.|###",
+  J: "..#|..#|..#|#.#|.#.",
+  K: "#.#|#.#|##.|#.#|#.#",
+  L: "#..|#..|#..|#..|###",
+  M: "#...#|##.##|#.#.#|#...#|#...#",
+  N: "#..#|##.#|#.##|#..#|#..#",
+  O: ".#.|#.#|#.#|#.#|.#.",
+  P: "##.|#.#|##.|#..|#..",
+  Q: ".#..|#.#.|#.#.|#.#.|.#.#",
+  R: "##.|#.#|##.|#.#|#.#",
+  S: ".##|#..|.#.|..#|##.",
+  T: "###|.#.|.#.|.#.|.#.",
+  U: "#.#|#.#|#.#|#.#|###",
+  V: "#.#|#.#|#.#|.#.|.#.",
+  W: "#...#|#...#|#.#.#|#.#.#|.#.#.",
+  X: "#.#|#.#|.#.|#.#|#.#",
+  Y: "#.#|#.#|.#.|.#.|.#.",
+  Z: "###|..#|.#.|#..|###",
+
+  a: "...|.##|#.#|#.#|.##",
+  b: "#..|##.|#.#|#.#|##.",
+  c: "...|.##|#..|#..|.##",
+  d: "..#|.##|#.#|#.#|.##",
+  e: "...|.#.|###|#..|.##",
+  f: ".##|#..|##.|#..|#..",
+  g: "...|.##|#.#|#.#|.##|..#|##.",
+  h: "#..|##.|#.#|#.#|#.#",
+  i: "#|.|#|#|#",
+  j: ".#|..|.#|.#|.#|.#|#.",
+  k: "#..|#.#|##.|##.|#.#",
+  l: "#.|#.|#.|#.|.#",
+  m: ".....|####.|#.#.#|#.#.#|#.#.#",
+  n: "...|##.|#.#|#.#|#.#",
+  o: "...|.#.|#.#|#.#|.#.",
+  p: "...|##.|#.#|#.#|##.|#..|#..",
+  q: "...|.##|#.#|#.#|.##|..#|..#",
+  r: "...|#.#|##.|#..|#..",
+  s: "...|.##|##.|..#|##.",
+  t: ".#.|###|.#.|.#.|..#",
+  u: "...|#.#|#.#|#.#|.##",
+  v: "...|#.#|#.#|.#.|.#.",
+  w: ".....|#...#|#.#.#|#.#.#|.#.#.",
+  x: "...|#.#|.#.|.#.|#.#",
+  y: "...|#.#|#.#|#.#|.##|..#|##.",
+  z: "...|###|.#.|#..|###",
+
+  "0": "###|#.#|#.#|#.#|###",
+  "1": ".#.|##.|.#.|.#.|###",
+  "2": "##.|..#|.#.|#..|###",
+  "3": "##.|..#|.#.|..#|##.",
+  "4": "#.#|#.#|###|..#|..#",
+  "5": "###|#..|##.|..#|##.",
+  "6": ".##|#..|###|#.#|###",
+  "7": "###|..#|.#.|.#.|.#.",
+  "8": ".#.|#.#|.#.|#.#|.#.",
+  "9": "###|#.#|###|..#|##.",
+
+  "!": "#|#|#|.|#",
+  '"': "#.#|#.#",
+  "#": ".#.#.|#####|.#.#.|#####|.#.#.",
+  $: ".##|##.|.#.|.##|##.",
+  "%": "#.#|..#|.#.|#..|#.#",
+  "&": ".#.|#.#|.#.|#.#|.##",
+  "'": "#|#",
+  "(": ".#|#.|#.|#.|.#",
+  ")": "#.|.#|.#|.#|#.",
+  "*": "...|#.#|.#.|#.#",
+  "+": "...|.#.|###|.#.",
+  ",": ".|.|.|.|#|#",
+  "-": "...|...|###",
+  ".": ".|.|.|.|#",
+  "/": "..#|..#|.#.|#..|#..",
+  ":": ".|#|.|.|#",
+  ";": ".|#|.|.|#|#",
+  "<": "..#|.#.|#..|.#.|..#",
+  "=": "...|###|...|###",
+  ">": "#..|.#.|..#|.#.|#..",
+  "?": "##.|..#|.#.|...|.#.",
+  "@": ".##.|#..#|#.##|#...|.###",
+  "[": "##|#.|#.|#.|##",
+  "\\": "#..|#..|.#.|..#|..#",
+  "]": "##|.#|.#|.#|##",
+  "^": ".#.|#.#",
+  _: "...|...|...|...|...|###",
+  "`": "#.|.#",
+  "{": ".##|.#.|#..|.#.|.##",
+  "|": "#|#|#|#|#|#",
+  "}": "##.|.#.|..#|.#.|##.",
+  "~": "....|.#.#|#.#.",
+
+  "¢": ".#.|.##|#..|.##|.#.",
+  "…": ".....|.....|.....|.....|#.#.#",
+  "•": "...|.#.|###|.#.",
+  "·": ".|.|#",
+  "★": "..#..|#####|.###.|.#.#.",
+  "●": ".###.|#####|#####|.###.",
+  "○": ".###.|#...#|#...#|.###.",
+  "✉": "#####|##.##|#.#.#|#...#|#####",
+  "→": "....|..#.|####|..#.",
+  "←": "....|.#..|####|.#..",
+  "✕": "...|#.#|.#.|#.#",
+  "✓": "....|...#|..#.|#.#.|.#..",
+  "♥": "##.##|#####|.###.|..#..",
+  "☾": ".##|#..|#..|#..|.##",
+  "\u{E001}": "###|#.#|#.#|###|###", // phone
+  "\u{E002}": ".#.|###|###|###|#.#", // rocket
+};
+
 export const PHONE = "\u{E001}";
 export const ROCKET = "\u{E002}";
 
 const ROWS = 9;
 export const LINE_HEIGHT = 11;
+const SMALL_ROWS = 7;
+
+/** Per font: pixels between lines, and the drawn height of one line (for layout). */
+export const FONT_METRICS: Record<string, { line: number; height: number }> = {
+  px: { line: LINE_HEIGHT, height: 8 },
+  pxb: { line: LINE_HEIGHT, height: 8 },
+  sm: { line: 8, height: 6 },
+};
 
 /** Map anything the font can't draw onto something it can. */
 export function sanitize(text: string): string {
@@ -151,9 +278,9 @@ export function sanitize(text: string): string {
     .replace(/ {2,}/g, " ");
 }
 
-function parse(rows: string): string[] {
+function parse(rows: string, height = ROWS): string[] {
   const r = rows.split("|");
-  while (r.length < ROWS) r.push(".".repeat(r[0].length));
+  while (r.length < height) r.push(".".repeat(r[0].length));
   return r;
 }
 
@@ -165,10 +292,10 @@ function bolden(rows: string[]): string[] {
   });
 }
 
-function register(scene: Phaser.Scene, key: string, glyphs: Record<string, string[]>) {
+function register(scene: Phaser.Scene, key: string, glyphs: Record<string, string[]>, height = ROWS, space = 3) {
   const entries = Object.entries(glyphs);
   const texW = entries.reduce((w, [, rows]) => w + rows[0].length + 1, 1);
-  const tex = scene.textures.createCanvas(key, texW, ROWS)!;
+  const tex = scene.textures.createCanvas(key, texW, height)!;
   const ctx = tex.getContext();
   ctx.fillStyle = "#ffffff";
 
@@ -176,14 +303,14 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
   let x = 1;
   for (const [ch, rows] of entries) {
     const w = rows[0].length;
-    for (let y = 0; y < ROWS; y++) for (let i = 0; i < w; i++) if (rows[y][i] === "#") ctx.fillRect(x + i, y, 1, 1);
+    for (let y = 0; y < height; y++) for (let i = 0; i < w; i++) if (rows[y][i] === "#") ctx.fillRect(x + i, y, 1, 1);
     chars[ch.codePointAt(0)!] = {
       x,
       y: 0,
       width: w,
-      height: ROWS,
+      height,
       centerX: Math.floor(w / 2),
-      centerY: Math.floor(ROWS / 2),
+      centerY: Math.floor(height / 2),
       xOffset: 0,
       yOffset: 0,
       xAdvance: w + 1,
@@ -197,7 +324,7 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
     x += w + 1;
   }
   // space
-  chars[32] = { x: 0, y: 0, width: 0, height: 0, centerX: 0, centerY: 0, xOffset: 0, yOffset: 0, xAdvance: 3, data: {}, kerning: {}, u0: 0, v0: 0, u1: 0, v1: 0 };
+  chars[32] = { x: 0, y: 0, width: 0, height: 0, centerX: 0, centerY: 0, xOffset: 0, yOffset: 0, xAdvance: space, data: {}, kerning: {}, u0: 0, v0: 0, u1: 0, v1: 0 };
   tex.refresh();
 
   const frame = tex.get();
@@ -207,23 +334,26 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
     f?.setUVs(c.width, c.height, c.u0, c.v0, c.u1, c.v1);
   }
   scene.cache.bitmapFont.add(key, {
-    data: { font: key, size: ROWS, lineHeight: LINE_HEIGHT, chars },
+    data: { font: key, size: height, lineHeight: FONT_METRICS[key].line, chars },
     texture: key,
     frame: null,
   });
 }
 
-/** Registers "px" (regular) and "pxb" (bold). */
+/** Registers "px" (regular), "pxb" (bold) and "sm" (compact, for the talk dialog). */
 export function buildFonts(scene: Phaser.Scene) {
   if (scene.cache.bitmapFont.exists("px")) return;
   const regular: Record<string, string[]> = {};
   const bold: Record<string, string[]> = {};
+  const small: Record<string, string[]> = {};
   for (const [ch, rows] of Object.entries(G)) {
     regular[ch] = parse(rows);
     bold[ch] = bolden(regular[ch]);
   }
+  for (const [ch, rows] of Object.entries(S)) small[ch] = parse(rows, SMALL_ROWS);
   register(scene, "px", regular);
   register(scene, "pxb", bold);
+  register(scene, "sm", small, SMALL_ROWS, 2);
 }
 
 /**

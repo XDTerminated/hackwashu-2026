@@ -65,6 +65,25 @@ what they actually fetched for you (no extra API calls).
 | Building smokes | A tool failed ("the post office is closed") |
 | Lantern rises | Task done; the lantern ring at the plaza is your history |
 
+## Talking to villagers
+
+Walk up to a villager and press **E**. Their portrait sits on the left of the dialog, Stardew-style,
+and they talk back out loud: replies come a bubble at a time, typing out while the villager says
+them, mouth moving in time with the voice.
+
+- **Voices**: every villager has their own ElevenLabs voice (set `ELEVENLABS_API_KEY`; the free plan
+  works). Each reply's first couple of sentences are spoken, the rest types out, and every line is
+  cached in `server/data/voice/`, so repeats cost no credits. No key, out of credits, or offline?
+  The browser's built-in voices take over. `BROWSER_VOICES=1` keeps ElevenLabs off while you
+  develop. The speaker icon in the dialog mutes voices.
+- **Talk back**: hold **TAB** (or the mic button) and speak; your words appear as you talk and
+  send when you let go. Uses the browser's speech recognition: Chrome, Edge or Safari, online, on
+  localhost or https. Talking (or typing) over a villager cuts them off.
+- **Click the conversation** to skip to the end of the current line.
+- **Conversation, not reports**: in person, villagers answer in a sentence or three and offer more.
+  If a lookup comes back long (a web search, an inbox rundown), they retell the highlight and keep
+  the rest in mind, so "tell me more" picks up without searching again.
+
 ## Safety
 
 - Sending email and creating calendar events always need your approval. Reading never changes anything, and Canvas is read-only.
@@ -112,5 +131,7 @@ shared/game.ts            contract: buildings, villagers, quests, events, snapsh
 server/src/connectors/    real Gmail + Calendar (Google OAuth) and Canvas
 server/src/services.ts    live-or-sample routing, residents, quest chain
 server/src/agents.ts      villager tool-use loops (Claude or Groq), approvals
+server/src/voice.ts       ElevenLabs voices for the talk dialog, cached on disk
 client/                   Phaser 3 + Vite; all art generated from code
+client/src/panel.ts       the talk dialog: portraits, spoken bubbles, push-to-talk
 ```
