@@ -34,6 +34,8 @@ const STAY_MS = 30_000;
 const LEAVE_PX = 96;
 /** While the chat is up, the camera keeps you this far down the screen (so the log never covers you). */
 const LIFT_TO = 0.3;
+/** Speech sends after this much quiet; talk again before then and it keeps adding on. */
+const SILENCE_MS = 2200;
 /** Come back within this long and they don't introduce themselves again. */
 const GREET_AGAIN_MS = 5 * 60_000;
 
@@ -104,6 +106,10 @@ export class NearTalk {
   private open: { stop(): void } | null = null;
   /** What the mic is hearing right now (before you finish the sentence). */
   private heard = "";
+  /** Everything you've said so far that hasn't been sent (it waits for you to pause). */
+  private spoken = "";
+  private sendAt = 0;
+  private sendTimer: number | null = null;
   /** The mic waits while they think and talk (so it never hears them, or sends twice). */
   private quietUntil = 0;
   private them: "thinking" | "talking" | null = null;
@@ -127,7 +133,15 @@ export class NearTalk {
     log: Phaser.GameObjects.BitmapText[];
   } | null = null;
   private owner: InputOwner = {
-    render: () => this.renderChat(),
+    render: () => {
+      // Started typing mid-sentence? What you'd said moves into the box so you can finish it by hand.
+      const said = `${this.spoken} ${this.heard}`.trim();
+      if (said && input.value) {
+        input.value = `${said} ${input.value}`;
+        this.clearSpeech();
+      }
+      this.renderChat();
+    },
     submit: () => this.submitTyped(),
     active: () => this.chatting,
   };
@@ -153,6 +167,7 @@ export class NearTalk {
     this.offs.forEach((f) => f());
     this.stopMic();
     this.leave();
+    this.clearSpeech();
     this.mine?.destroy();
     this.destroyChat();
   }
@@ -206,19 +221,46 @@ export class NearTalk {
   leave() {
     if (!this.chatting) return;
     this.chatting = false;
-    this.heard = "";
+    this.clearSpeech();
     releaseInput(this.owner);
     this.hideMine();
     this.stopMic();
     this.renderChat();
   }
 
-  /** Enter sends what you typed. (An empty Enter does nothing; ESC leaves.) */
+  /** Enter sends what you typed, or what you've said so far (without waiting for the pause). */
   private submitTyped() {
+    if (!input.value.trim() && (this.spoken || this.heard)) return this.flushSpeech(true);
     const text = input.value.trim();
     if (!text || !this.with) return;
     input.value = "";
     this.say(text);
+  }
+
+  // ---------------------------------------------------------------- speech waits for you to pause
+
+  private armSend() {
+    if (this.sendTimer !== null) clearTimeout(this.sendTimer);
+    this.sendAt = Date.now() + SILENCE_MS;
+    this.sendTimer = window.setTimeout(() => this.flushSpeech(false), SILENCE_MS);
+  }
+
+  private clearSpeech() {
+    if (this.sendTimer !== null) clearTimeout(this.sendTimer);
+    this.sendTimer = null;
+    this.sendAt = 0;
+    this.spoken = "";
+    this.heard = "";
+  }
+
+  /** You've paused long enough (or pressed Enter): send everything you said as one message. */
+  private flushSpeech(now: boolean) {
+    // (still mid-word? give it a moment longer)
+    if (!now && this.heard) return this.armSend();
+    const text = `${this.spoken} ${now ? this.heard : ""}`.trim();
+    this.clearSpeech();
+    if (text && this.with && this.chatting) this.say(text);
+    else this.renderChat();
   }
 
   /**
@@ -231,13 +273,20 @@ export class NearTalk {
       this.open = listenOpen(
         (phrase) => {
           if (!this.chatting || !this.with || Date.now() < this.quietUntil || input.value) return;
+          // A pause in your sentence isn't the end of it: keep adding until you've been quiet a moment.
+          this.spoken = `${this.spoken} ${phrase}`.trim();
           this.heard = "";
-          this.say(phrase);
+          this.armSend();
+          this.showMine(this.spoken, true);
+          this.renderChat(true);
         },
         (partial) => {
           if (!this.chatting || Date.now() < this.quietUntil) return;
           this.heard = partial;
-          if (partial) this.showMine(partial, true);
+          if (partial) {
+            this.armSend(); // (still talking: push the send back)
+            this.showMine(`${this.spoken} ${partial}`.trim(), true);
+          }
           this.renderChat(true);
         },
         (problem) => {
@@ -393,7 +442,7 @@ export class NearTalk {
         this.them === "talking" ? `${who} is talking...` :
         on ? `listening... just talk, or type` :
         `type here  (${this.placeholder()})`;
-      const words = typed || this.heard;
+      const words = typed || `${this.spoken} ${this.heard}`.trim();
       c.line.setTint(words ? C.ink : C.inkSoft);
       const room = micX - 10 - x0 - PAD;
       // keep the end of a long line in view
@@ -405,7 +454,14 @@ export class NearTalk {
         c.line.setText(`${prefix}...${shown}${tail}`);
       }
       c.line.setPosition(x0 + PAD, barY + Math.round((barH - measure(c.line).h) / 2));
-      c.hint.setText(this.note || (on ? "just talk, or type + ENTER  /  ESC leave  /  click the mic to mute" : "type + ENTER to send  /  ESC leave  /  click the mic to talk out loud"));
+      // (speech waiting to send: a bar along the bottom fills as the pause runs out)
+      if (!typed && this.sendAt) {
+        const left = Math.max(0, this.sendAt - Date.now()) / SILENCE_MS;
+        const w = Math.round((barW - 4) * (1 - left));
+        c.box.fillStyle(0x7cd08a, 1).fillRect(x0 + 2, barY + barH - 3, w, 1);
+      }
+      const pending = !typed && !!this.sendAt;
+      c.hint.setText(this.note || (pending ? "keep talking, or ENTER to send now  /  ESC leave" : on ? "just talk, or type + ENTER  /  ESC leave  /  click the mic to mute" : "type + ENTER to send  /  ESC leave  /  click the mic to talk out loud"));
       c.hint.setTint(this.note ? 0xffb38a : 0xb9aed0);
       c.hint.setPosition(x0 + barW - measure(c.hint).w - PAD, barY - hintH + 4);
     }
@@ -498,7 +554,7 @@ export class NearTalk {
     const cam = this.host.scene.cameras.main;
     const chatUp = this.chatting || !!this.chat?.log.length;
     cam.followOffset.y = chatUp ? -Math.round(cam.height * (0.5 - LIFT_TO)) : 0;
-    if (this.chatting) this.renderChat(true); // (the cursor blinks)
+    if (this.chatting) this.renderChat(true); // (the cursor blinks, the send bar fills)
     else if (this.chat?.log.length && Date.now() > this.logUntil) this.renderChat(); // (the log tucks away)
     if (this.with && !this.chatting) {
       const a = this.host.actor(this.with);

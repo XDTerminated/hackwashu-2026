@@ -249,8 +249,10 @@ what they actually fetched for you (no extra API calls).
 Talking happens right where you stand, and there's one way in: walk up to a villager and press **E**.
 The chat bar opens with your conversation so far, and the **mic comes on by itself**: just speak, or
 type and press **Enter**. **ESC** leaves. They stop, turn to you, think ("..."), and answer out loud
-in bubbles over their head, a sentence or two at a time. The mic waits while you type and while they
-think and talk, so it never hears them or sends twice. They greet you once; come back within five
+in bubbles over their head, a sentence or two at a time. Pausing mid-sentence doesn't cut you off: what you
+say builds up and sends after about two seconds of quiet (a thin bar under the chat fills as it's
+about to go), or right away when you press Enter. The mic waits while you type and while they think
+and talk, so it never hears them or sends twice. They greet you once; come back within five
 minutes and they skip the hello, and the conversation so far is still there. (Letters to approve and
 account connections still open their own windows.)
 
