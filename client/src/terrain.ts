@@ -122,10 +122,10 @@ const STONES: [number, string, string, string][] = [
 ];
 
 /**
- * A flagstone path on packed regolith, no two alike: the band wanders a little
- * in width, the stones come in mixed sizes and tones, set in two staggered
- * rows (now and then one big stone across the middle), with the odd cracked,
- * sunken or missing one, and gravel in between.
+ * A flagstone path on packed regolith, no two alike: each path has its own
+ * width (a two-row walk up to a broad three-row way), which swells and
+ * narrows as it goes. Stones come in mixed
+ * sizes and tones, with the odd cracked, sunken or missing one, and gravel.
  */
 function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number) {
   const len = Math.hypot(bx - ax, by - ay);
@@ -136,9 +136,12 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number)
   // every path gets its own pattern, from where it starts
   const seed = Math.floor(hash(Math.round(ax), Math.round(ay), 11) * 9973);
   const r = (i: number, k: number) => hash(seed + i, k, 5);
-  // the packed band, a little wider or narrower as it goes, with gravel
+  // its width: a walk, a broad walk or a wide way, then swelling and narrowing along the way
+  const base = [6, 7, 8, 9, 11][Math.floor(r(0, 30) * 5)];
+  const halfAt = (t: number) => Math.max(5, base + Math.round((noise(t / 22 + seed, seed * 0.37) - 0.5) * 6));
+  // the packed band, with gravel
   for (let t = 0; t <= len; t += 1) {
-    const half = 5 + Math.round(noise(t / 16 + seed, seed * 0.37) * 3) - 1;
+    const half = halfAt(t);
     const x = ax + ux * t;
     const y = ay + uy * t;
     for (let w = -half; w <= half; w++) {
@@ -152,22 +155,24 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number)
       rect(ctx, "#8e848a", Math.round(x + px * side * (half + 2)), Math.round(y + py * side * (half + 2)), 1, 1);
     }
   }
-  // the stones
+  // the stones: rows to suit the width right here
   let i = 0;
   for (let t = 1; t <= len - 2; i++) {
-    const big = r(i, 1) > 0.9;
-    const rows = big ? [0] : [-3, 3];
-    for (const side of rows) {
-      const k = i * 3 + side;
-      if (r(k, 2) < 0.07) continue; // missing
+    const half = halfAt(t);
+    const big = half >= 5 && r(i, 1) > 0.9;
+    const rows = big ? [0] : half <= 7 ? [-half / 2, half / 2] : [-half * 0.6, 0, half * 0.6];
+    rows.forEach((side, n) => {
+      const k = i * 5 + n;
+      if (r(k, 2) < 0.07) return; // missing
       const w = big ? 7 + Math.floor(r(k, 3) * 3) : 4 + Math.floor(r(k, 3) * 3);
       const h = big ? 5 : 3 + Math.floor(r(k, 4) * 2);
-      const along = t + (side > 0 ? 3 : 0) + (r(k, 5) - 0.5) * 2;
+      // staggered rows, a little off true
+      const along = t + (n % 2 ? 3 : 0) + (r(k, 5) - 0.5) * 2;
       const across = side + (r(k, 6) - 0.5) * 2;
       const x = Math.round(ax + ux * along + px * across - w / 2);
       const y = Math.round(ay + uy * along + py * across - h / 2);
       stone(ctx, x, y, w, h, r(k, 7), r(k, 8));
-    }
+    });
     t += big ? 9 : 6 + Math.floor(r(i, 9) * 3);
   }
 }
