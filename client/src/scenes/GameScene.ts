@@ -1,0 +1,1438 @@
+import Phaser from "phaser";
+import {
+  BUILDINGS,
+  QUESTS,
+  VILLAGER_HOME,
+  VILLAGER_NAMES,
+  type BuildingId,
+  type SeqEvent,
+  type VillagerId,
+} from "../../../shared/game";
+import { ClodActor, VillagerActor, puff } from "../actors";
+import { conversation, mutter } from "../chatter";
+import { ChoreView } from "../choreviews";
+import { decorFootprint, sellPrice } from "../../../shared/decor";
+import type { Deco } from "../../../shared/game";
+import { itemById, type ShopItem } from "../items";
+import { shadowKey } from "../textures";
+import { Button, C, Label } from "../widgets";
+import { LANDING, SPOTS, TILE, WORLD_H, WORLD_W, besideDoor, buildingFootprint, buildingTiles, canOccupy, footprint, inIsland, inIslandXY, lanternSpot, snapToTiles, type Rect } from "../layout";
+import * as net from "../net";
+import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter, openTalk } from "../panel";
+import { closeMoonPad } from "../tablet";
+import { sfx } from "../sfx";
+import { PLAZA, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
+import { pendingApprovalFor, store } from "../store";
+
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
+
+const GREETINGS: Record<VillagerId, string> = {
+  jade_rabbit: "Ah, my favorite exile! Tell me what you need done on Earth and I'll get the neighbors on it.",
+  postmaster: "Hoo! Postmaster here. Letters in, letters out — what shall we do with your mail?",
+  timekeeper: "Tick, tock. The Clock Tower keeps your days. Need a slot found or something booked?",
+  scholar: "Ahem! The Library has your courses on file. Deadlines, announcements, grades — ask away.",
+  stargazer: "The Observatory's dish is pointed at Earth's web. What should I look up?",
+};
+
+/** Something you can do where you're standing. Drives the world prompt and the action button. */
+interface Interactable {
+  /** Short word for the on-screen action button: TALK, BUILD, POP... */
+  verb: string;
+  /** Prompt shown in the world, with the keyboard shortcut. */
+  label: string;
+  /** Where the prompt floats. */
+  x: number;
+  y: number;
+  /** Distance from the player to the thing itself (not the prompt) — nearest wins. */
+  d: number;
+  act: () => void;
+  /** Hold-to-do actions (sweeping) instead of a single press. */
+  hold?: boolean;
+  /** Calling a villager: a CALL button at their door (and on the toolbar), or E. */
+  atDoor?: boolean;
+  /** The villager this is about (talking or reading their letter). */
+  villager?: VillagerId;
+}
+
+/** Something picked up to be set down elsewhere: a new purchase, a placed decoration, or a building. */
+type Held = { kind: "new"; item: ShopItem } | { kind: "deco"; id: string; item: ShopItem } | { kind: "building"; b: BuildingId };
+
+type Deferred = { promise: Promise<void>; resolve: () => void };
+function deferred(): Deferred {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+export class GameScene extends Phaser.Scene {
+  player!: Phaser.GameObjects.Sprite;
+  private playerShadow!: Phaser.GameObjects.Image;
+  villagers = new Map<VillagerId, VillagerActor>();
+  clods = new Map<string, ClodActor>();
+  private facing: "down" | "up" | "side" = "down";
+  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private panelOpen = false;
+  private buildingObjs = new Map<BuildingId, Phaser.GameObjects.GameObject[]>();
+  private solids: Phaser.Geom.Rectangle[] = [];
+  private prompt!: Label;
+  private promptText = "";
+  private callBtn!: Button;
+  private lastCall = false;
+  private doorCall: Interactable | null = null;
+  /** The on-screen action button is being held (for hold-to-sweep). */
+  private uiHold = false;
+  private lastAction = "";
+  private target: Interactable | null = null;
+  private ghost: Phaser.GameObjects.Image | null = null;
+  private handshakes = new Map<string, Deferred[]>();
+  private unsubs: Array<() => void> = [];
+
+  constructor() {
+    super("Game");
+  }
+
+  create() {
+    this.villagers.clear();
+    this.clods.clear();
+    this.lamps = [];
+    this.bells.clear();
+    this.choreViews.clear();
+    this.idleCooldown.clear();
+    this.chatting.clear();
+    this.buildingObjs.clear();
+    this.decoViews.clear();
+    this.solids = [];
+
+    this.bakeGround();
+
+    // Earth hangs in the black off the island's northwest rim.
+    const earth = this.add.image(120, 100, "earth_s").setDepth(-5);
+    this.tweens.add({ targets: earth, y: earth.y - 5, duration: 4000, yoyo: true, repeat: -1, ease: "sine.inout" });
+
+    this.add.image(LANDING.x, LANDING.y - 1, shadowKey(this, 34)).setDepth(-8);
+    this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
+    this.solids.push(new Phaser.Geom.Rectangle(LANDING.x - 14, LANDING.y - 10, 28, 10));
+
+    for (const b of BUILDING_IDS) this.placeBuilding(b, false);
+    store.decos.forEach((d) => this.spawnDeco(d));
+    store.lanterns.forEach((_, i) => this.plantLantern(i, false));
+
+    // Villagers who've moved in stand at home.
+    for (const v of VILLAGERS) if (store.residents.includes(v)) this.spawnVillager(v, false);
+
+    // Clods still waiting to be collected (work finished while you were away).
+    for (const c of store.clods) {
+      const spot = this.clodSpot(c.building);
+      const a = new ClodActor(this, c, spot, spot, true);
+      if (c.result) a.setLabel(c.status === "failed" ? `✗ ${c.result}` : c.result);
+      this.clods.set(c.id, a);
+    }
+
+    // Letters still waiting on you: those villagers are standing at your door.
+    for (const a of store.approvals) {
+      const actor = this.villagers.get(a.villager);
+      if (!actor) continue;
+      const door = this.houseDoorFor(a.villager);
+      actor.sprite.setPosition(door.x, door.y);
+      actor.carryLetter(true);
+      actor.setAlert("bang");
+    }
+
+    // A restart (moved building, reconnect) keeps you where you were standing.
+    const start = this.resumeAt ?? { x: LANDING.x + 34, y: LANDING.y + 26 };
+    this.resumeAt = null;
+    this.player = this.add.sprite(start.x, start.y, "astro_0").setOrigin(0.5, 1);
+    this.playerShadow = this.add.image(this.player.x, this.player.y, shadowKey(this, 16)).setDepth(-8);
+
+    this.prompt = new Label(this, 0, 0, "", { bg: C.wood, border: C.woodDark, color: C.paperLight, font: "pxb" }).setDepth(99999).setVisible(false);
+    this.callBtn = new Button(this, 0, 0, "CALL", C.greenBtn, () => this.doorCall?.act(), 36).setDepth(99998).setVisible(false);
+
+    for (const c of store.chores) this.choreViews.set(c.id, new ChoreView(this, c, (x, y, r) => this.distTo(x, y) < r));
+    this.sweepBar = this.add.graphics().setDepth(99999);
+
+    this.setupInput();
+
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, WORLD_W, WORLD_H);
+    cam.centerOn(this.player.x, this.player.y);
+    cam.startFollow(this.player, true, 0.12, 0.12);
+
+    this.held = null;
+    this.ghost = null;
+    this.gridKey = "";
+    this.gridG = this.add.graphics().setDepth(-7).setVisible(false);
+    this.footG = this.add.graphics().setDepth(99997);
+    this.emitArrange();
+    cam.setRoundPixels(true);
+
+    this.unsubs.push(net.onEvent((e) => this.direct(e)));
+    this.unsubs.push(net.onSnapshot(() => this.restartInPlace()));
+    const buy = (itemId: string) => {
+      const item = itemById(itemId);
+      if (item) this.pickUp({ kind: "new", item });
+    };
+    const toggleEdit = () => this.setEditMode(!this.editMode);
+    const cancel = () => this.cancelHeld();
+    const sell = () => {
+      if (this.held?.kind !== "deco") return;
+      net.send({ type: "sell_deco", id: this.held.id });
+      this.cancelHeld();
+    };
+    this.game.events.on("begin-place", buy);
+    this.game.events.on("edit-toggle", toggleEdit);
+    this.game.events.on("arrange-cancel", cancel);
+    this.game.events.on("arrange-sell", sell);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubs.forEach((u) => u());
+      this.unsubs = [];
+      this.game.events.off("begin-place", buy);
+      this.game.events.off("edit-toggle", toggleEdit);
+      this.game.events.off("arrange-cancel", cancel);
+      this.game.events.off("arrange-sell", sell);
+    });
+    // The UI's action button mirrors whatever you could do right here.
+    const press = () => {
+      if (!this.panelOpen && !this.arranging) this.target?.act();
+    };
+    const hold = (on: boolean) => (this.uiHold = on);
+    const call = () => {
+      if (!this.panelOpen && !this.arranging) this.doorCall?.act();
+    };
+    this.game.events.on("action-press", press);
+    this.game.events.on("action-hold", hold);
+    this.game.events.on("call-press", call);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off("action-press", press);
+      this.game.events.off("action-hold", hold);
+      this.game.events.off("call-press", call);
+    });
+
+    const rabbit = this.villagers.get("jade_rabbit");
+    if (rabbit && store.connected) {
+      const ready = store.clods.filter((c) => c.status === "ready").length;
+      this.time.delayedCall(900, () =>
+        rabbit.say(
+          ready
+            ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away — pop the glowing clods to collect!`
+            : "Welcome to Moon Village! Walk over and press TALK - I'll show you around.",
+          5000,
+        ),
+      );
+    }
+  }
+
+  // ================================================================ world
+
+  private bakeGround() {
+    bakeTerrain(this);
+    this.add.image(0, 0, "ground").setOrigin(0).setDepth(-10);
+
+    // Building paths live on their own layer so they can appear as the colony grows.
+    const paths = this.textures.exists("paths") ? (this.textures.get("paths") as Phaser.Textures.CanvasTexture) : this.textures.createCanvas("paths", WORLD_W, WORLD_H)!;
+    this.pathTex = paths;
+    const ctx = paths.getContext();
+    ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+    for (const b of BUILDING_IDS) if (store.buildings[b] && b !== "mailbox") drawBuildingPath(ctx, b);
+    paths.refresh();
+    this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
+
+    // A coral Claude-spark mosaic set into the plaza stones.
+    this.add.image(PLAZA.x, PLAZA.y, "spark_plaza").setDepth(-9).setAlpha(0.9);
+    for (const p of lampSpots((b) => !!store.buildings[b])) this.addLamp(p.x, p.y);
+  }
+
+  private lamps: { x: number; y: number; glow: Phaser.GameObjects.Image }[] = [];
+  private bells = new Map<VillagerId, { x: number; y: number; img: Phaser.GameObjects.Image }>();
+  private choreViews = new Map<string, ChoreView>();
+  private sweepT = 0;
+  private sweepSfxT = 0;
+  private sweepBar!: Phaser.GameObjects.Graphics;
+  private pathTex!: Phaser.Textures.CanvasTexture;
+
+  private addLamp(x: number, y: number) {
+    this.add.image(x, y, shadowKey(this, 8)).setDepth(-8);
+    this.add.image(x, y, "lamp").setOrigin(0.5, 1).setDepth(y);
+    const glow = this.add.image(x, y - 15, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setAlpha(0.35).setDepth(y + 1);
+    this.lamps.push({ x, y, glow });
+  }
+
+  /** Lay a building's path (after it's built) and light its doorway lamp. */
+  private layPath(b: BuildingId) {
+    if (b === "mailbox") return;
+    drawBuildingPath(this.pathTex.getContext(), b);
+    this.pathTex.refresh();
+    const lamp = lampSpots((x) => x === b).find((p) => p.building === b);
+    if (lamp) this.addLamp(lamp.x, lamp.y);
+  }
+
+  private placeBuilding(b: BuildingId, animate: boolean) {
+    this.buildingObjs.get(b)?.forEach((o) => o.destroy());
+    const s = SPOTS[b];
+    const def = BUILDINGS[b];
+    const objs: Phaser.GameObjects.GameObject[] = [];
+
+    if (store.buildings[b]) {
+      objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.6)).setDepth(-8));
+      const img = this.add.image(s.x, s.y, s.texture).setOrigin(0.5, 1).setDepth(s.y);
+      objs.push(img);
+      if (b === "rocket_pad") {
+        objs.push(this.add.image(s.x - 4, s.y - 6, "ship").setOrigin(0.5, 1).setDepth(s.y + 0.5));
+      }
+      // Signs hang above the roofline so villagers at the door never cover them.
+      const top = s.y - (b === "rocket_pad" ? 63 : img.height) - 2;
+      const tag = new Label(this, s.x, top, def.name, { bg: C.wood, border: C.woodDark, color: C.paperLight, padX: 2 }).setDepth(s.y + 1);
+      objs.push(tag);
+      this.solids.push(new Phaser.Geom.Rectangle(s.x - s.fw, s.y - s.fh, s.fw * 2, s.fh));
+      const resident = def.resident;
+      if (resident) {
+        const p = besideDoor(b, 1);
+        const bell = this.add.image(p.x, p.y, "bell_0").setOrigin(0.5, 1).setDepth(p.y);
+        objs.push(this.add.image(p.x, p.y, shadowKey(this, 8)).setDepth(-8), bell);
+        this.bells.set(resident, { x: p.x, y: p.y, img: bell });
+      }
+      if (animate) this.construct(b, img, [tag, ...objs.filter((o) => o !== img && o !== tag)]);
+    } else if (store.progress.revealed.includes(b) && b !== "mailbox") {
+      const plot = this.add.image(s.x, s.y, "b_plot").setOrigin(0.5, 1).setDepth(s.y - 20);
+      const sign = new Label(this, s.x, s.y + 2, `${def.name}\n${def.price ? `${def.price}¢ - ` : ""}E to build`, { bg: C.paperLight, border: C.woodDark, originY: 0 }).setDepth(s.y + 1);
+      objs.push(plot, sign);
+      if (animate) {
+        plot.setAlpha(0);
+        sign.setAlpha(0);
+        this.tweens.add({ targets: [plot, sign], alpha: 1, duration: 600 });
+        for (let i = 0; i < 8; i++) this.time.delayedCall(i * 60, () => puff(this, s.x + Phaser.Math.Between(-18, 18), s.y - 6));
+      }
+    }
+    this.buildingObjs.set(b, objs);
+  }
+
+  /**
+   * Construction site: foundation, scaffolding and hammering baby clods, with the
+   * building revealed bottom-up in stages (cropped, never scaled). ~5 seconds.
+   */
+  private constructing = new Map<BuildingId, Array<() => void>>();
+
+  private construct(b: BuildingId, img: Phaser.GameObjects.Image, extras: Phaser.GameObjects.GameObject[], onDone?: () => void) {
+    this.constructing.set(b, []);
+    const s = SPOTS[b];
+    const w = img.width;
+    const h = img.height;
+    const left = Math.round(s.x - w / 2);
+    const top = s.y - h;
+    const hidden = extras as unknown as Phaser.GameObjects.Components.Visible[];
+    hidden.forEach((o) => o.setVisible(false));
+    img.setCrop(0, h, w, 0);
+
+    const dust = (n: number) => {
+      for (let i = 0; i < n; i++) this.time.delayedCall(i * 50, () => puff(this, s.x + Phaser.Math.Between(-w / 2, w / 2), s.y - Phaser.Math.Between(0, 6)));
+    };
+    dust(8);
+
+    // Builder clods hop along the site, hammering.
+    const crew = [0, 1, 2].map((i) => {
+      const c = this.add.sprite(left + Math.round(((i + 1) * w) / 4), s.y + 2, "clod_0").setOrigin(0.5, 1).play("clod-twinkle").setDepth(s.y + 2);
+      return c;
+    });
+    const hammer = this.time.addEvent({
+      delay: 160,
+      loop: true,
+      callback: () => {
+        const c = Phaser.Utils.Array.GetRandom(crew);
+        c.y = s.y + 2 - (c.y === s.y + 2 ? 3 : 0);
+        c.x = Phaser.Math.Clamp(c.x + Phaser.Math.Between(-3, 3), left + 4, left + w - 4);
+        if (Math.random() < 0.5) sfx.hammer();
+      },
+    });
+
+    const scaffold = this.add.graphics().setDepth(s.y + 1).setVisible(false);
+    const drawScaffold = (upTo: number) => {
+      scaffold.clear();
+      const y0 = Math.max(top - 2, s.y - upTo - 4);
+      for (const x of [left - 2, left + Math.round(w / 2) - 1, left + w]) {
+        scaffold.fillStyle(0x4a2f27, 1).fillRect(x, y0, 3, s.y - y0);
+        scaffold.fillStyle(0xc98f5a, 1).fillRect(x + 1, y0, 1, s.y - y0);
+      }
+      for (let y = s.y - 10; y >= y0; y -= 12) {
+        scaffold.fillStyle(0x4a2f27, 1).fillRect(left - 3, y, w + 6, 3);
+        scaffold.fillStyle(0xe2ad76, 1).fillRect(left - 2, y + 1, w + 4, 1);
+      }
+    };
+
+    // Stage reveals: foundation, walls, upper floor, roof.
+    const stages = [0.18, 0.45, 0.72, 1];
+    stages.forEach((frac, i) => {
+      this.time.delayedCall(700 + i * 950, () => {
+        const shown = Math.round(h * frac);
+        img.setCrop(0, h - shown, w, shown);
+        if (i === 1) scaffold.setVisible(true);
+        drawScaffold(shown);
+        dust(4);
+      });
+    });
+
+    this.time.delayedCall(700 + stages.length * 950 + 300, () => {
+      hammer.remove();
+      crew.forEach((c) => c.destroy());
+      scaffold.destroy();
+      img.setCrop();
+      hidden.forEach((o) => o.setVisible(true));
+      const burst = this.add.particles(s.x, s.y - h / 2, "spark", { speed: { min: 30, max: 90 }, lifespan: 600, quantity: 20, alpha: { start: 1, end: 0 }, emitting: false }).setDepth(99985);
+      burst.explode(20);
+      this.time.delayedCall(700, () => burst.destroy());
+      sfx.buy();
+      this.layPath(b);
+      onDone?.();
+      const waiting = this.constructing.get(b) ?? [];
+      this.constructing.delete(b);
+      waiting.forEach((fn) => fn());
+    });
+  }
+
+  private spawnVillager(v: VillagerId, walkIn: boolean) {
+    if (this.villagers.has(v)) return;
+    const home = this.homeSpot(v);
+    const start = walkIn ? { x: LANDING.x, y: LANDING.y + 14 } : home;
+    const a = new VillagerActor(this, v, start.x, start.y, (actor) =>
+      openInfo(`${VILLAGER_NAMES[actor.id].toUpperCase()} IS THINKING...`, [actor.lastThought || "(nothing yet)"]),
+    );
+    const st = store.villagers[v];
+    if (st?.thought) a.lastThought = st.thought;
+    if (st?.status === "error") a.setAlert("smoke");
+    this.villagers.set(v, a);
+    if (walkIn) {
+      a.enqueue(async () => {
+        a.say("I'm moving in!", 1800);
+        await a.walkTo(home.x, home.y);
+      });
+    }
+  }
+
+  private decoViews = new Map<string, { item: ShopItem; x: number; y: number; objs: Phaser.GameObjects.Components.Alpha[]; solid: Phaser.Geom.Rectangle | null }>();
+
+  private spawnDeco(d: Deco) {
+    const item = itemById(d.item);
+    if (!item) return;
+    const objs: Phaser.GameObjects.Components.Alpha[] = [];
+    const depth = item.flat ? -6 : d.y;
+    if (!item.flat) objs.push(this.add.image(d.x, d.y - 1, shadowKey(this, Math.max(10, Math.round(item.w * 0.7)))).setDepth(-8));
+    const spr = this.add.sprite(d.x, d.y, item.texture).setOrigin(0.5, 1).setDepth(depth);
+    if (item.anim) spr.play({ key: item.anim, startFrame: Phaser.Math.Between(0, 1) });
+    objs.push(spr);
+    if (item.glow) {
+      const g = item.glow;
+      objs.push(this.add.image(d.x + g.dx, d.y + g.dy, "glow").setBlendMode(Phaser.BlendModes.ADD).setAlpha(g.alpha).setTint(g.color).setDepth(depth - 1));
+    }
+    let solid: Phaser.Geom.Rectangle | null = null;
+    if (!item.flat) {
+      const r = decorFootprint(item, d.x, d.y);
+      this.solids.push((solid = new Phaser.Geom.Rectangle(r.x, r.y, r.w, r.h)));
+    }
+    this.decoViews.set(d.id, { item, x: d.x, y: d.y, objs, solid });
+  }
+
+  private removeDecoView(id: string) {
+    const v = this.decoViews.get(id);
+    if (!v) return;
+    v.objs.forEach((o) => (o as unknown as Phaser.GameObjects.GameObject).destroy());
+    this.solids = this.solids.filter((r) => r !== v.solid);
+    this.decoViews.delete(id);
+  }
+
+  private plantLantern(i: number, animate: boolean) {
+    const p = lanternSpot(i);
+    const img = this.add.image(p.x, p.y, "deco_lantern_0").setOrigin(0.5, 1).setDepth(p.y);
+    const glow = this.add.image(p.x + 3, p.y - 15, "glow").setBlendMode(Phaser.BlendModes.ADD).setTint(0xf5c542).setAlpha(0.45).setDepth(p.y - 1);
+    if (animate) {
+      img.setAlpha(0);
+      glow.setAlpha(0);
+      this.tweens.add({ targets: img, alpha: 1, duration: 400 });
+      this.tweens.add({ targets: glow, alpha: 0.45, duration: 600 });
+    }
+  }
+
+  private riseLantern(x: number, y: number) {
+    const l = this.add.image(x, y - 20, "sky_lantern").setDepth(99995);
+    const g = this.add.image(x, y - 24, "glow").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa060).setAlpha(0.7).setDepth(99994);
+    this.tweens.add({
+      targets: [l, g],
+      y: `-=${260}`,
+      x: `+=${Phaser.Math.Between(-30, 30)}`,
+      alpha: 0,
+      duration: 4200,
+      ease: "sine.in",
+      onComplete: () => {
+        l.destroy();
+        g.destroy();
+      },
+    });
+  }
+
+  private flyItem(from: { x: number; y: number }, to: { x: number; y: number }, tex = "letter") {
+    const img = this.add.image(from.x, from.y - 14, tex).setDepth(99990);
+    this.tweens.add({
+      targets: img,
+      x: to.x,
+      y: to.y - 14,
+      duration: 450,
+      ease: "quad.inout",
+      onComplete: () => img.destroy(),
+    });
+  }
+
+  // ================================================================ spots
+
+  private doorOf(b: BuildingId) {
+    const s = SPOTS[b];
+    return { x: s.x + s.door.dx, y: s.y + s.door.dy };
+  }
+
+  private homeSpot(v: VillagerId) {
+    const d = this.doorOf(VILLAGER_HOME[v]);
+    return { x: d.x + 16, y: d.y + 2 };
+  }
+
+  private houseDoorFor(v: VillagerId) {
+    const d = this.doorOf("player_house");
+    const i = VILLAGERS.indexOf(v);
+    return { x: d.x - 30 + i * 20, y: d.y + 8 + (i % 2) * 6 };
+  }
+
+  private clodSpot(b: BuildingId) {
+    const d = this.doorOf(b);
+    return { x: d.x + Phaser.Math.Between(-34, 34), y: d.y + Phaser.Math.Between(10, 30) };
+  }
+
+  // ================================================================ director
+  // Server events → queued villager actions. The server never waits on us.
+
+  private handshake(key: string): Deferred {
+    const list = this.handshakes.get(key) ?? [];
+    this.handshakes.set(key, list);
+    const d = deferred();
+    list.push(d);
+    return d;
+  }
+
+  private takeHandshake(key: string): Deferred {
+    const list = this.handshakes.get(key) ?? [];
+    this.handshakes.set(key, list);
+    return list.shift() ?? this.handshake(key);
+  }
+
+  private withTimeout(p: Promise<void>, ms: number) {
+    return Promise.race([p, new Promise<void>((r) => this.time.delayedCall(ms, r))]);
+  }
+
+  private direct(e: SeqEvent) {
+    const actor = (v: VillagerId) => this.villagers.get(v);
+
+    switch (e.type) {
+      case "task_start": {
+        const a = actor(e.villager);
+        a?.enqueue(async () => {
+          a.say(e.from === "phone" ? "📱 A text from Earth! On it." : e.from === "chore" ? "Doing my rounds..." : "On it!", 1500);
+          await a.wait(500);
+        });
+        break;
+      }
+
+      case "think": {
+        const a = actor(e.villager);
+        a?.enqueue(async () => {
+          a.showThought(e.text);
+          await a.wait(700);
+        });
+        break;
+      }
+
+      case "say": {
+        const a = actor(e.villager);
+        a?.enqueue(async () => {
+          a.hideThought();
+          a.say(e.text, 4000);
+          await a.wait(1400);
+        });
+        break;
+      }
+
+      case "handoff": {
+        const from = actor(e.from);
+        const to = actor(e.to);
+        if (!from || !to) break;
+        const key = `${e.from}>${e.to}`;
+        const shake = this.handshake(key);
+        if (e.to !== "jade_rabbit") {
+          // Rabbit walks over and hands the neighbor a task.
+          from.enqueue(async () => {
+            from.hideThought();
+            await from.walkTo(to.x - 18, to.y + 4);
+            this.flyItem(from, to);
+            from.say(`${VILLAGER_NAMES[e.to]}, could you take this?`, 1600);
+            shake.resolve();
+            await from.wait(700);
+          });
+          to.enqueue(async () => {
+            await this.withTimeout(this.takeHandshake(key).promise, 9000);
+            to.say("Leave it to me!", 1300);
+            await to.wait(500);
+          });
+        } else {
+          // Neighbor sends their report back to the Rabbit.
+          from.enqueue(async () => {
+            this.flyItem(from, to);
+            from.say("Report's on its way!", 1300);
+            shake.resolve();
+            await from.wait(500);
+            const home = this.homeSpot(e.from);
+            await from.walkTo(home.x, home.y);
+          });
+          to.enqueue(async () => {
+            await this.withTimeout(this.takeHandshake(key).promise, 9000);
+            await to.wait(300);
+          });
+        }
+        break;
+      }
+
+      case "tool_start": {
+        const a = actor(e.villager);
+        if (!a) break;
+        const b = e.clod.building;
+        a.enqueue(async () => {
+          a.hideThought();
+          const d = this.doorOf(b);
+          await a.walkTo(d.x + (e.villager === "postmaster" ? -8 : 8), d.y + 4);
+          const c = new ClodActor(this, e.clod, { x: a.x, y: a.y - 6 }, this.clodSpot(b));
+          this.clods.set(e.clod.id, c);
+          sfx.blip();
+          await a.wait(650);
+        });
+        break;
+      }
+
+      case "tool_end": {
+        const a = actor(e.villager);
+        const run = async () => {
+          const c = this.clods.get(e.clodId);
+          if (c) {
+            c.setStatus(e.ok ? "ready" : "failed");
+            c.setLabel(e.ok ? e.result : `✗ ${e.result}`);
+          }
+          if (e.ok) sfx.coin();
+          await a?.wait(350);
+        };
+        a ? a.enqueue(run) : void run();
+        break;
+      }
+
+      case "approval_needed": {
+        const a = actor(e.villager);
+        a?.enqueue(async () => {
+          this.clods.get(e.approval.clodId)?.setStatus("stuck");
+          a.carryLetter(true);
+          a.setAlert("bang");
+          sfx.message();
+          a.say("I need your OK on this one!", 2200);
+          const door = this.houseDoorFor(e.villager);
+          await a.walkTo(door.x, door.y);
+          a.say("Knock knock! A letter for you ✉", 3000);
+        }, { urgent: true });
+        break;
+      }
+
+      case "approval_resolved": {
+        const a = actor(e.villager);
+        a?.enqueue(async () => {
+          a.setAlert("none");
+          a.carryLetter(false);
+          if (e.approved) this.flyItem(a, this.doorOf("player_house"));
+          a.say(e.via === "phone" ? (e.approved ? "📱 You said yes from Earth!" : "📱 Holding it, per your text.") : e.approved ? "Thank you!" : "Understood — I'll hold it.", 2200);
+          this.clods.get(e.clodId)?.setStatus("working");
+          await a.wait(700);
+          const c = this.clods.get(e.clodId);
+          if (c) {
+            const d = this.doorOf(c.clod.building);
+            await a.walkTo(d.x - 10, d.y + 4);
+          }
+        });
+        break;
+      }
+
+      case "building_error": {
+        const a = actor(e.villager);
+        const run = async () => {
+          const s = SPOTS[e.building];
+          for (let i = 0; i < 14; i++) this.time.delayedCall(i * 300, () => puff(this, s.x + Phaser.Math.Between(-12, 12), s.y - 30));
+          a?.setAlert("smoke");
+          a?.say(`The ${BUILDINGS[e.building].name} is closed! ${e.message.slice(0, 80)}`, 3500);
+          sfx.deny();
+          await a?.wait(900);
+        };
+        a ? a.enqueue(run) : void run();
+        break;
+      }
+
+      case "task_done": {
+        const a = actor(e.villager);
+        const index = store.lanterns.findIndex((l) => l.id === e.lantern.id);
+        a?.enqueue(async () => {
+          this.riseLantern(a.x, a.y);
+          sfx.buy();
+          this.plantLantern(index >= 0 ? index : store.lanterns.length - 1, true);
+          await a.wait(900);
+          const home = this.homeSpot(e.villager);
+          await a.walkTo(home.x, home.y);
+        });
+        break;
+      }
+
+      case "clod_popped": {
+        const c = this.clods.get(e.clodId);
+        if (c) {
+          this.clods.delete(e.clodId);
+          c.pop();
+        }
+        break;
+      }
+
+      case "building_built": {
+        if (e.building === "post_office") this.placeBuilding("mailbox", true);
+        this.placeBuilding(e.building, true);
+        // A new house stands empty until its villager's line home is connected.
+        const resident = BUILDINGS[e.building].resident;
+        if (resident) this.time.delayedCall(5200, () => !store.residents.includes(resident) && openConnect(resident));
+        break;
+      }
+
+      case "villager_arrived": {
+        if (this.villagers.has(e.villager)) break;
+        // Nobody moves into a house that's still under scaffolding.
+        const pending = this.constructing.get(VILLAGER_HOME[e.villager]);
+        if (pending) {
+          pending.push(() => this.direct(e));
+          break;
+        }
+        this.spawnVillager(e.villager, true);
+        sfx.buy();
+        const rabbit = actor("jade_rabbit");
+        if (e.rabbitTeamwork && e.villager !== "jade_rabbit" && e.residents.filter((r) => r !== "jade_rabbit").length === 2) {
+          rabbit?.enqueue(async () => {
+            rabbit.say("Two neighbors! Now I can coordinate - give me jobs that need a team.", 5000);
+            await rabbit.wait(800);
+          });
+        }
+        break;
+      }
+
+      case "plot_revealed":
+        this.placeBuilding(e.building, true);
+        break;
+
+      case "chore_spawned": {
+        this.choreViews.set(e.chore.id, new ChoreView(this, e.chore, (x, y, r) => this.distTo(x, y) < r));
+        const star = actor("stargazer");
+        if (e.chore.kind === "meteor" && star?.isFree && Math.random() < 0.35) star.say("Incoming meteor! Watch the sky!", 2500);
+        break;
+      }
+
+      case "chore_cleared":
+        this.choreViews.get(e.id)?.destroy("collect");
+        this.choreViews.delete(e.id);
+        break;
+
+      case "chore_gone":
+        this.choreViews.get(e.id)?.destroy("fade");
+        this.choreViews.delete(e.id);
+        break;
+
+      case "quest": {
+        if (!e.completed) break;
+        const q = QUESTS.find((x) => x.id === e.completed);
+        const teller = actor(q?.villager ?? "jade_rabbit") ?? actor("jade_rabbit");
+        teller?.enqueue(async () => {
+          teller.say(e.story ?? "Quest complete!", 7000);
+          sfx.buy();
+          this.floatText(this.player.x, this.player.y - 36, `Quest complete! +${e.bonus ?? 0}¢`, 0xf5c542, 2400);
+          if (e.completed === "team") for (let i = 0; i < 6; i++) this.time.delayedCall(i * 350, () => this.riseLantern(this.player.x + Phaser.Math.Between(-60, 60), this.player.y));
+          await teller.wait(1500);
+        });
+        break;
+      }
+
+      case "deco_placed":
+        this.spawnDeco(e.deco);
+        break;
+      case "building_moved":
+        this.restartInPlace();
+        break;
+      case "deco_moved": {
+        const v = this.decoViews.get(e.id);
+        if (!v) break;
+        this.removeDecoView(e.id);
+        this.spawnDeco({ id: e.id, item: v.item.id, x: e.x, y: e.y });
+        break;
+      }
+      case "deco_sold": {
+        const v = this.decoViews.get(e.id);
+        if (!v) break;
+        this.removeDecoView(e.id);
+        puff(this, v.x, v.y - 4);
+        this.floatText(v.x, v.y - 20, `+${e.refund}¢`, 0xf5c542);
+        break;
+      }
+    }
+  }
+
+  // ================================================================ input
+
+  private setupInput() {
+    const kb = this.input.keyboard!;
+    this.cursors = kb.createCursorKeys();
+    this.keys = kb.addKeys("W,A,S,D,E,B,SPACE") as Record<string, Phaser.Input.Keyboard.Key>;
+
+    kb.on("keydown-SPACE", () => {
+      if (!this.panelOpen && !this.arranging && !this.tryPop()) this.tryGrabMeteor();
+    });
+    kb.on("keydown-E", () => {
+      if (this.panelOpen || this.arranging) return;
+      this.eTarget()?.act();
+    });
+    kb.on("keydown-B", () => {
+      if (!this.panelOpen) this.game.events.emit("toggle-shop");
+    });
+    kb.on("keydown-ESC", () => {
+      if (this.held) this.cancelHeld();
+      else if (this.editMode) this.setEditMode(false);
+    });
+
+    onPanelToggle((open) => {
+      this.panelOpen = open;
+      if (!open) this.releaseTalk();
+      if (open) kb.disableGlobalCapture();
+      else kb.enableGlobalCapture();
+    });
+
+    this.input.mouse?.disableContextMenu();
+    this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      if (!this.arranging || this.panelOpen) return;
+      // Clicks on the toolbar or banner aren't clicks on the island.
+      if (this.scene.get("UI").input.hitTestPointer(p).length) return;
+      if (p.rightButtonDown()) return this.cancelHeld();
+      if (this.held) return this.dropHeld();
+      const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+      const m = this.movableAt(wp.x, wp.y);
+      if (m) this.pickUp(m.held, { x: m.base.x - wp.x, y: m.base.y - wp.y });
+    });
+  }
+
+  private nearestChore(kind: "dust" | "meteor", r: number): ChoreView | null {
+    let best: ChoreView | null = null;
+    let bestD = r;
+    for (const c of this.choreViews.values()) {
+      if (c.chore.kind !== kind || (kind === "meteor" && !c.grabbable)) continue;
+      const d = this.distTo(c.x, c.y);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  private tryGrabMeteor() {
+    const m = this.nearestChore("meteor", 24);
+    if (!m || !net.send({ type: "clear_chore", id: m.chore.id })) return;
+    this.choreViews.delete(m.chore.id);
+    m.destroy("collect");
+    sfx.coin();
+    this.floatText(m.x, m.y - 14, `+${m.chore.reward}¢ moon-rock`, 0xf5c542);
+  }
+
+  /** Hold SPACE by a drift to sweep it; a little bar fills up. */
+  private updateSweep(dt: number) {
+    this.sweepBar.clear();
+    const d = this.panelOpen || this.arranging ? null : this.nearestChore("dust", 22);
+    if (!d || !(this.keys.SPACE.isDown || this.uiHold)) {
+      this.sweepT = 0;
+      return;
+    }
+    this.sweepT += dt;
+    this.sweepSfxT -= dt;
+    if (this.sweepSfxT <= 0) {
+      this.sweepSfxT = 0.14;
+      sfx.sweep();
+      puff(this, d.x + Phaser.Math.Between(-6, 6), d.y);
+    }
+    const frac = Math.min(1, this.sweepT / 0.8);
+    const bx = Math.round(this.player.x - 10);
+    const by = Math.round(this.player.y + 3);
+    this.sweepBar.fillStyle(0x3b2a3a, 1).fillRect(bx, by, 20, 4);
+    this.sweepBar.fillStyle(0x6fe3e1, 1).fillRect(bx + 1, by + 1, Math.round(18 * frac), 2);
+    if (frac < 1) return;
+    this.sweepT = 0;
+    if (!net.send({ type: "clear_chore", id: d.chore.id })) return;
+    this.choreViews.delete(d.chore.id);
+    d.destroy("sweep");
+    sfx.coin();
+    this.floatText(d.x, d.y - 14, `+${d.chore.reward}¢`, 0xf5c542);
+  }
+
+  private nearestPoppable(): ClodActor | null {
+    let best: ClodActor | null = null;
+    let bestD = 30;
+    for (const c of this.clods.values()) {
+      if (c.status !== "ready" && c.status !== "failed") continue;
+      const d = this.distTo(c.x, c.y - 6);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  private tryPop(): boolean {
+    const best = this.nearestPoppable();
+    if (!best) return false;
+    if (!net.send({ type: "pop", clodId: best.clod.id })) return false;
+    const c = best;
+    this.clods.delete(c.clod.id);
+    sfx.catch();
+    const reward = c.status === "ready" ? c.clod.reward : 1;
+    this.floatText(c.x, c.y - 16, `+${reward}¢`, 0xf5c542);
+    if (c.clod.result) this.floatText(c.x, c.y - 28, c.clod.result.slice(0, 40), 0xffd9c8, 1800);
+    c.pop();
+    return true;
+  }
+
+  private findTarget(): Interactable | null {
+    const dist = (x: number, y: number) => this.distTo(x, y);
+    const options: Interactable[] = [];
+    const add = (o: Interactable, r: number) => o.d < r && options.push(o);
+
+    for (const [v, a] of this.villagers) {
+      const letter = pendingApprovalFor(v);
+      const d = dist(a.x, a.y - 8);
+      if (letter) add({ verb: "READ LETTER", label: "[E] read letter", x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openLetter(letter)) }, 36);
+      else add({ verb: "TALK", label: "[E] talk", x: a.x, y: a.y + 27, d, villager: v, act: () => (this.holdForTalk(v), openTalk(v, this.greeting(v))) }, 34);
+    }
+    for (const v of VILLAGERS) {
+      const home = VILLAGER_HOME[v];
+      if (!store.buildings[home]) continue;
+      if (!store.residents.includes(v)) {
+        // A built house whose villager hasn't arrived: call them by connecting their account.
+        const door = this.doorOf(home);
+        add({ verb: "CALL", label: `[E] call ${VILLAGER_NAMES[v]}`, x: door.x, y: door.y + 18, d: dist(door.x, door.y), act: () => openConnect(v), atDoor: true }, 44);
+        continue;
+      }
+      // Not home? Ring the doorbell and they'll walk back.
+      const bell = this.bells.get(v);
+      const a = this.villagers.get(v);
+      if (!bell || !a) continue;
+      const home_ = this.homeSpot(v);
+      if (Phaser.Math.Distance.Between(a.x, a.y, home_.x, home_.y) < 48) continue;
+      const door = this.doorOf(home);
+      add({ verb: "CALL", label: `[E] call ${VILLAGER_NAMES[v]}`, x: door.x, y: door.y + 18, d: Math.min(dist(door.x, door.y), dist(bell.x, bell.y - 6)), act: () => this.ringBell(v), atDoor: true }, 44);
+    }
+    const houseDoor = this.doorOf("player_house");
+    if (store.approvals.length) {
+      add({ verb: "READ LETTER", label: `[E] ${store.approvals.length} letter(s)`, x: houseDoor.x, y: houseDoor.y - 50, d: dist(houseDoor.x, houseDoor.y), act: () => openLetter(store.approvals[0]) }, 40);
+    }
+    for (const b of BUILDING_IDS) {
+      if (store.buildings[b] || !store.progress.revealed.includes(b) || b === "mailbox") continue;
+      const s = SPOTS[b];
+      const def = BUILDINGS[b];
+      add(
+        {
+          verb: "BUILD",
+          label: "[E] build",
+          x: s.x,
+          y: s.y - 36,
+          d: dist(s.x, s.y),
+          act: () =>
+            openInfo(`BUILD: ${def.name.toUpperCase()}`, [`Unlocks: ${def.unlocks}.`, def.price ? `Cost: ${def.price}¢ (you have ${store.coins}¢).` : "Free - a gift from the colony for finishing the quest."], [
+              {
+                label: store.coins >= def.price ? (def.price ? `BUILD (${def.price}¢)` : "BUILD") : "NOT ENOUGH COINS",
+                kind: store.coins >= def.price ? "ok" : "",
+                onClick: () => {
+                  if (store.coins >= def.price) net.send({ type: "build", building: b });
+                  else sfx.deny();
+                  closePanel();
+                },
+              },
+            ]),
+        },
+        46,
+      );
+    }
+    // Placed decorations: move or sell. Slightly less eager than everything else nearby.
+    for (const [id, v] of this.decoViews) {
+      const r = Math.max(16, v.item.w / 2 + 4);
+      add({ verb: "ARRANGE", label: `[E] ${v.item.name}`, x: v.x, y: v.y - v.item.h - 2, d: dist(v.x, v.y - 4) + 6, act: () => this.editDeco(id) }, r + 6);
+    }
+    // Things you stand on: prompts float above the player's head.
+    const head = this.player.y - 30;
+    const clod = this.nearestPoppable();
+    if (clod) add({ verb: "POP", label: "[SPACE] pop clod", x: clod.x, y: head, d: dist(clod.x, clod.y - 6), act: () => this.tryPop() }, 30);
+    const rock = this.nearestChore("meteor", 24);
+    if (rock) add({ verb: "GRAB", label: "[SPACE] grab moon-rock", x: rock.x, y: head, d: dist(rock.x, rock.y), act: () => this.tryGrabMeteor() }, 24);
+    const drift = this.nearestChore("dust", 22);
+    if (drift) add({ verb: "SWEEP", label: "[hold SPACE] sweep", x: drift.x, y: head, d: dist(drift.x, drift.y), act: () => {}, hold: true }, 22);
+    options.sort((a, b) => a.d - b.d);
+    this.doorCall = options.find((o) => o.atDoor) ?? null;
+    return options.find((o) => !o.atDoor) ?? null;
+  }
+
+  private talkingWith: VillagerId | null = null;
+
+  /** The villager you're talking to stands still, faces you, and holds any work until you're done. */
+  private holdForTalk(v: VillagerId) {
+    this.releaseTalk();
+    const a = this.villagers.get(v);
+    if (!a) return;
+    this.talkingWith = v;
+    a.hold(true);
+    a.face(this.player.x);
+    const dx = a.x - this.player.x;
+    const dy = a.y - this.player.y;
+    this.facing = Math.abs(dx) > Math.abs(dy) ? "side" : dy < 0 ? "up" : "down";
+    this.player.setFlipX(this.facing === "side" && dx < 0);
+    this.player.anims.stop();
+    this.player.setTexture({ down: "astro_0", up: "astro_3", side: "astro_6" }[this.facing]);
+  }
+
+  private releaseTalk() {
+    if (this.talkingWith) this.villagers.get(this.talkingWith)?.hold(false);
+    this.talkingWith = null;
+  }
+
+  /** E does whichever is closer: the regular action or a door CALL. */
+  private eTarget(): Interactable | null {
+    return this.target && (!this.doorCall || this.target.d <= this.doorCall.d) ? this.target : this.doorCall;
+  }
+
+  /** Ring a villager's doorbell: if they're just out and about, they walk home and wait. */
+  private ringBell(v: VillagerId) {
+    const bell = this.bells.get(v);
+    const a = this.villagers.get(v);
+    if (!bell || !a) return;
+    sfx.bell();
+    for (let i = 0; i < 6; i++) this.time.delayedCall(i * 110, () => bell.img.setTexture(`bell_${(i + 1) % 2}`));
+    if (a.working) {
+      const doing = store.villagers[v]?.activity ?? "working";
+      this.floatText(bell.x, bell.y - 24, `The ${VILLAGER_NAMES[v]} is busy: ${doing}`, 0xffd9c8, 2400);
+      return;
+    }
+    const home = this.homeSpot(v);
+    this.idleCooldown.set(v, 25);
+    a.enqueue(async () => {
+      a.say("Coming!", 1400);
+      await a.walkTo(home.x, home.y);
+      a.face(this.player.x);
+      a.say("You rang?", 2200);
+    });
+  }
+
+
+
+  /** The Rabbit doubles as the quest guide until she can coordinate. */
+  private greeting(v: VillagerId): string {
+    if (v !== "jade_rabbit") return GREETINGS[v];
+    const q = QUESTS[store.progress.quest];
+    if (!q) return GREETINGS.jade_rabbit;
+    const goal = `Your goal: ${q.title}${q.goal > 1 ? ` (${store.progress.count}/${q.goal})` : ""}. ${q.hint}`;
+    return store.rabbitTeamwork ? `${GREETINGS.jade_rabbit} ${goal}` : `Welcome, exile! I'm the guide around here. ${goal}`;
+  }
+
+  // ================================================================ arranging
+  // The pencil (edit mode) lets you pick up any building, plot or decoration and
+  // set it down somewhere else on the tile grid. Buying from the Supply Pod and
+  // MOVE on a decoration use the same pick-up / set-down flow.
+
+  private editMode = false;
+  private held: Held | null = null;
+  private grabOffset = { x: 0, y: 8 };
+  private gridG!: Phaser.GameObjects.Graphics;
+  private footG!: Phaser.GameObjects.Graphics;
+  private gridKey = "";
+  private resumeAt: { x: number; y: number } | null = null;
+
+  private get arranging() {
+    return this.editMode || this.held !== null;
+  }
+
+  private restartInPlace() {
+    if (this.player?.active) this.resumeAt = { x: this.player.x, y: this.player.y };
+    this.scene.restart();
+  }
+
+  private setEditMode(on: boolean) {
+    if (on === this.editMode) return;
+    this.editMode = on;
+    if (on) {
+      closePanel();
+      closeMoonPad();
+    } else this.cancelHeld();
+    sfx.blip();
+    this.emitArrange();
+  }
+
+  private emitArrange() {
+    const h = this.held;
+    this.game.events.emit("arrange", {
+      edit: this.editMode,
+      holding: h ? { name: this.heldName(h), isNew: h.kind === "new", refund: h.kind === "deco" ? sellPrice(h.item) : null } : null,
+    });
+  }
+
+  private heldName(h: Held) {
+    return h.kind === "building" ? BUILDINGS[h.b].name : h.item.name;
+  }
+
+  private heldTiles(h: Held): { w: number; h: number; apron: number } {
+    if (h.kind === "building") return { ...buildingTiles(h.b), apron: h.b === "mailbox" ? 0 : 1 };
+    return { w: h.item.tiles[0], h: h.item.tiles[1], apron: 0 };
+  }
+
+  /** Buildings you can see: built ones, and plots waiting to be built. */
+  private isShown(b: BuildingId) {
+    return !!store.buildings[b] || (store.progress.revealed.includes(b) && b !== "mailbox");
+  }
+
+  /** Footprints of everything placed, except what you're holding. */
+  private occupied(h: Held | null): Rect[] {
+    const out: Rect[] = [];
+    for (const b of BUILDING_IDS) if (this.isShown(b) && !(h?.kind === "building" && h.b === b)) out.push(buildingFootprint(b));
+    for (const [id, v] of this.decoViews) if (!(h?.kind === "deco" && h.id === id)) out.push(decorFootprint(v.item, v.x, v.y));
+    return out;
+  }
+
+  private dropSpot(h: Held) {
+    const p = this.input.activePointer;
+    const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+    return snapToTiles(wp.x + this.grabOffset.x, wp.y + this.grabOffset.y, this.heldTiles(h).w);
+  }
+
+  /** Its tiles are free and on the island, and it wouldn't land on top of you. */
+  private canDrop(h: Held, x: number, y: number) {
+    const t = this.heldTiles(h);
+    if (!canOccupy(footprint(x, y, t.w, t.h, t.apron), this.occupied(h))) return false;
+    const solid =
+      h.kind === "building" ? { x: x - SPOTS[h.b].fw, y: y - SPOTS[h.b].fh, w: SPOTS[h.b].fw * 2, h: SPOTS[h.b].fh } : h.item.flat ? null : footprint(x, y, t.w, t.h);
+    const px = this.player.x;
+    const py = this.player.y;
+    return !solid || !(px > solid.x && px < solid.x + solid.w && py > solid.y && py < solid.y + solid.h);
+  }
+
+  /** The front-most building, plot or decoration under a world point. */
+  private movableAt(wx: number, wy: number): { held: Held; base: { x: number; y: number } } | null {
+    let best: { held: Held; base: { x: number; y: number } } | null = null;
+    let bestY = -Infinity;
+    const hit = (x: number, y: number, w: number, h: number) => wx >= x - w / 2 && wx < x + w / 2 && wy >= y - h && wy < y + 4;
+    for (const b of BUILDING_IDS) {
+      if (!this.isShown(b) || this.constructing.has(b)) continue;
+      const s = SPOTS[b];
+      const tex = this.textures.get(store.buildings[b] ? s.texture : "b_plot").getSourceImage();
+      const h = b === "rocket_pad" && store.buildings[b] ? 63 : tex.height;
+      if (hit(s.x, s.y, tex.width, h) && s.y > bestY) {
+        bestY = s.y;
+        best = { held: { kind: "building", b }, base: { x: s.x, y: s.y } };
+      }
+    }
+    for (const [id, v] of this.decoViews) {
+      if (hit(v.x, v.y, v.item.w, v.item.h) && v.y >= bestY) {
+        bestY = v.y;
+        best = { held: { kind: "deco", id, item: v.item }, base: { x: v.x, y: v.y } };
+      }
+    }
+    return best;
+  }
+
+  private fadeOriginal(h: Held, alpha: number) {
+    if (h.kind === "building") this.buildingObjs.get(h.b)?.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(alpha));
+    else if (h.kind === "deco") this.decoViews.get(h.id)?.objs.forEach((o) => o.setAlpha(alpha));
+  }
+
+  private pickUp(h: Held, grab = { x: 0, y: 8 }) {
+    this.cancelHeld();
+    this.held = h;
+    this.grabOffset = grab;
+    this.fadeOriginal(h, 0.35);
+    const key = h.kind === "building" ? (store.buildings[h.b] ? SPOTS[h.b].texture : "b_plot") : h.item.texture;
+    this.ghost = this.add.image(this.player.x, this.player.y, key).setOrigin(0.5, 1).setAlpha(0.8).setDepth(99998);
+    sfx.blip();
+    this.emitArrange();
+  }
+
+  private cancelHeld() {
+    if (this.held) this.fadeOriginal(this.held, 1);
+    this.held = null;
+    this.ghost?.destroy();
+    this.ghost = null;
+    this.footG?.clear();
+    this.emitArrange();
+  }
+
+  private dropHeld() {
+    const h = this.held;
+    if (!h) return;
+    const { x, y } = this.dropSpot(h);
+    if (!this.canDrop(h, x, y)) {
+      sfx.deny();
+      return;
+    }
+    const sent =
+      h.kind === "new"
+        ? net.send({ type: "place_deco", item: h.item.id, x, y })
+        : h.kind === "deco"
+          ? net.send({ type: "move_deco", id: h.id, x, y })
+          : net.send({ type: "move_building", building: h.b, x, y });
+    if (!sent) {
+      sfx.deny();
+      return;
+    }
+    sfx.place();
+    if (h.kind === "new") this.floatText(x, y - 20, `-${h.item.price}¢`, 0xff9a7a);
+    this.cancelHeld();
+  }
+
+  private drawFoot(r: Rect, color: number) {
+    const g = this.footG;
+    const x = Math.round(r.x);
+    const y = Math.round(r.y);
+    g.fillStyle(color, 0.3).fillRect(x, y, r.w, r.h);
+    g.fillStyle(color, 0.9).fillRect(x, y, r.w, 1).fillRect(x, y + r.h - 1, r.w, 1).fillRect(x, y, 1, r.h).fillRect(x + r.w - 1, y, 1, r.h);
+    for (let tx = x + TILE; tx < x + r.w; tx += TILE) g.fillStyle(color, 0.45).fillRect(tx, y + 1, 1, r.h - 2);
+    for (let ty = y + TILE; ty < y + r.h; ty += TILE) g.fillStyle(color, 0.45).fillRect(x + 1, ty, r.w - 2, 1);
+  }
+
+  /** Faint tile lines over the island while arranging (only the part on screen). */
+  private drawGrid() {
+    const v = this.cameras.main.worldView;
+    const key = `${Math.floor(v.x / TILE)},${Math.floor(v.y / TILE)},${Math.ceil(v.width / TILE)},${Math.ceil(v.height / TILE)}`;
+    if (key === this.gridKey) return;
+    this.gridKey = key;
+    const g = this.gridG.clear();
+    g.fillStyle(0xffffff, 0.13);
+    for (let ty = Math.floor(v.y / TILE); ty <= Math.ceil((v.y + v.height) / TILE); ty++) {
+      for (let tx = Math.floor(v.x / TILE); tx <= Math.ceil((v.x + v.width) / TILE); tx++) {
+        if (!inIsland(tx + 0.5, ty + 0.5)) continue;
+        g.fillRect(tx * TILE, ty * TILE, TILE, 1).fillRect(tx * TILE, ty * TILE, 1, TILE);
+      }
+    }
+  }
+
+  private updateArrange() {
+    const on = this.arranging && !this.panelOpen;
+    this.gridG.setVisible(on);
+    this.footG.clear();
+    this.input.setDefaultCursor(on ? (this.held ? "grabbing" : "grab") : "default");
+    if (!on) return;
+    this.drawGrid();
+    if (this.held && this.ghost) {
+      const h = this.held;
+      const { x, y } = this.dropSpot(h);
+      const ok = this.canDrop(h, x, y);
+      const t = this.heldTiles(h);
+      this.drawFoot(footprint(x, y, t.w, t.h, t.apron), ok ? 0x7cf08c : 0xff5a5a);
+      this.ghost.setPosition(x, y).setTint(ok ? 0xffffff : 0xff9a9a);
+      return;
+    }
+    // Edit mode, empty-handed: outline whatever's under the cursor.
+    const p = this.input.activePointer;
+    const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+    const m = this.movableAt(wp.x, wp.y);
+    if (!m) return;
+    const r = m.held.kind === "building" ? buildingFootprint(m.held.b) : decorFootprint(m.held.item, m.base.x, m.base.y);
+    this.drawFoot(r, 0xf5c542);
+    this.prompt.setVisible(true);
+    const label = `${this.heldName(m.held)} - click to move`;
+    if (label !== this.promptText) this.prompt.setText((this.promptText = label));
+    this.prompt.place(m.base.x, Math.round(r.y) - 2);
+  }
+
+  private editDeco(id: string) {
+    const v = this.decoViews.get(id);
+    if (!v) return;
+    const refund = sellPrice(v.item);
+    openInfo(v.item.name.toUpperCase(), [v.item.blurb, `Move it anywhere for free, or sell it back to the Supply Pod for ${refund}¢.`], [
+      { label: "MOVE", kind: "ok", onClick: () => (closePanel(), this.pickUp({ kind: "deco", id, item: v.item })) },
+      { label: `SELL +${refund}¢`, onClick: () => (closePanel(), net.send({ type: "sell_deco", id })) },
+    ]);
+  }
+
+  // ================================================================ helpers
+
+  private blocked(x: number, y: number) {
+    return this.solids.some((r) => r.contains(x, y));
+  }
+
+  private distTo(x: number, y: number) {
+    return Phaser.Math.Distance.Between(this.player.x, this.player.y - 8, x, y);
+  }
+
+  private floatText(x: number, y: number, str: string, color: number, ms = 900) {
+    const t = new Label(this, x, y, str, { bg: C.outline, border: null, color, font: "pxb", originY: 0.5, padX: 2 }).setDepth(99999);
+    this.tweens.add({ targets: t, y: y - 22, alpha: 0, duration: ms, ease: "sine.out", onComplete: () => t.destroy() });
+  }
+
+  /** For the minimap. */
+  minimapDots() {
+    return {
+      player: { x: this.player.x, y: this.player.y },
+      villagers: [...this.villagers.values()].map((a) => ({ id: a.id, x: a.x, y: a.y })),
+      clods: [...this.clods.values()].map((c) => ({ x: c.x, y: c.y, status: c.status })),
+    };
+  }
+
+  // ================================================================ idle life
+  // Villagers with nothing to do stroll, visit and gossip. Purely client-side;
+  // any real work cancels it instantly.
+
+  private idleCooldown = new Map<VillagerId, number>();
+  private chatting = new Set<VillagerId>();
+
+  private ambient(dt: number) {
+    for (const [v, a] of this.villagers) {
+      // Walk up to someone and they stop to say hi instead of wandering off.
+      if (this.target?.villager === v && !a.working) {
+        a.stopStrolling();
+        continue;
+      }
+      if (!a.isFree || this.chatting.has(v)) continue;
+      if (this.distTo(a.x, a.y - 8) < 48) continue;
+      const cd = (this.idleCooldown.get(v) ?? Phaser.Math.FloatBetween(1, 4)) - dt;
+      this.idleCooldown.set(v, cd);
+      if (cd > 0) continue;
+      this.idleCooldown.set(v, Phaser.Math.FloatBetween(5, 11));
+      const partners = [...this.villagers.values()].filter((b) => b.id !== v && b.isFree && !this.chatting.has(b.id));
+      const roll = Math.random();
+      if (roll < 0.35 && partners.length) void this.visit(a, Phaser.Utils.Array.GetRandom(partners));
+      else if (roll < 0.5) void this.strollTo(a, PLAZA.x + Phaser.Math.Between(-34, 34), PLAZA.y + Phaser.Math.Between(-26, 26));
+      else {
+        const home = this.homeSpot(v);
+        void this.strollTo(a, home.x + Phaser.Math.Between(-44, 44), home.y + Phaser.Math.Between(2, 34)).then((ok) => {
+          if (ok && Math.random() < 0.25) a.say(mutter(v), 2400);
+        });
+      }
+    }
+  }
+
+  private strollTo(a: VillagerActor, x: number, y: number): Promise<boolean> {
+    if (!inIslandXY(x, y) || this.blocked(x, y) || this.blocked(x, y - 6)) return Promise.resolve(false);
+    return a.stroll(x, y);
+  }
+
+  private async visit(a: VillagerActor, b: VillagerActor) {
+    this.chatting.add(a.id);
+    this.chatting.add(b.id);
+    try {
+      const side = b.x > a.x ? -18 : 18;
+      const arrived = await this.strollTo(a, b.x + side, b.y + 2);
+      if (!arrived || !a.isFree || !b.isFree) return;
+      a.face(b.x);
+      b.face(a.x);
+      for (const [who, line] of conversation(a.id, b.id)) {
+        if (!a.isFree || !b.isFree) return;
+        (who === a.id ? a : b).say(line, 2600);
+        await new Promise((r) => this.time.delayedCall(2700, r));
+      }
+    } finally {
+      this.chatting.delete(a.id);
+      this.chatting.delete(b.id);
+    }
+  }
+
+  // ================================================================ loop
+
+  update(time: number, delta: number) {
+    const dt = delta / 1000;
+    this.updatePlayer(dt);
+    this.ambient(dt);
+    const now = Date.now();
+    for (const c of this.choreViews.values()) c.update(now);
+    this.updateSweep(dt);
+    // Moondust dims the solar lamps it settles near.
+    for (const l of this.lamps) {
+      const dusty = [...this.choreViews.values()].some((c) => c.chore.kind === "dust" && Math.hypot(c.x - l.x, c.y - l.y) < 40);
+      l.glow.setAlpha(dusty ? 0.08 : 0.3 + 0.06 * Math.sin(time / 700 + l.x));
+    }
+    for (const a of this.villagers.values()) a.update(time);
+    // Only the clod you're standing nearest shows its label — no pile-ups.
+    let nearest: ClodActor | null = null;
+    let nearestD = 60;
+    for (const c of this.clods.values()) {
+      c.update(time, dt);
+      c.showLabel(false);
+      const d = this.distTo(c.x, c.y);
+      if (d < nearestD) {
+        nearestD = d;
+        nearest = c;
+      }
+    }
+    nearest?.showLabel(true);
+    this.player.setDepth(this.player.y);
+    this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
+
+    this.target = this.panelOpen || this.arranging ? null : this.findTarget();
+    if (this.panelOpen || this.arranging) this.doorCall = null;
+    this.callBtn.setVisible(!!this.doorCall);
+    if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
+    const action = this.target ? `${this.target.verb}|${this.target.hold ? 1 : 0}` : "";
+    if (action !== this.lastAction) {
+      this.lastAction = action;
+      this.game.events.emit("action", this.target ? { verb: this.target.verb, hold: !!this.target.hold } : null);
+    }
+    const calling = !!this.doorCall;
+    if (calling !== this.lastCall) {
+      this.lastCall = calling;
+      this.game.events.emit("call", calling);
+    }
+    const e = this.eTarget();
+    this.prompt.setVisible(!!e);
+    if (e) {
+      if (e.label !== this.promptText) this.prompt.setText((this.promptText = e.label));
+      // A door CALL's prompt sits just above its button.
+      this.prompt.place(e.x, e.atDoor ? e.y - 1 : e.y);
+    }
+
+    this.updateArrange();
+  }
+
+  private updatePlayer(dt: number) {
+    if (this.panelOpen || isPanelOpen()) {
+      this.player.anims.stop();
+      return;
+    }
+    const left = this.cursors.left.isDown || this.keys.A.isDown;
+    const right = this.cursors.right.isDown || this.keys.D.isDown;
+    const up = this.cursors.up.isDown || this.keys.W.isDown;
+    const down = this.cursors.down.isDown || this.keys.S.isDown;
+
+    let dx = (right ? 1 : 0) - (left ? 1 : 0);
+    let dy = (down ? 1 : 0) - (up ? 1 : 0);
+    if (dx === 0 && dy === 0) {
+      this.player.anims.stop();
+      this.player.setTexture({ down: "astro_0", up: "astro_3", side: "astro_6" }[this.facing]);
+      return;
+    }
+    const len = Math.hypot(dx, dy);
+    dx /= len;
+    dy /= len;
+    const speed = 130;
+    const nx = this.player.x + dx * speed * dt;
+    const ny = this.player.y + dy * speed * dt;
+    if (inIslandXY(nx, this.player.y) && !this.blocked(nx, this.player.y)) this.player.x = nx;
+    if (inIslandXY(this.player.x, ny) && !this.blocked(this.player.x, ny)) this.player.y = ny;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      this.facing = "side";
+      this.player.setFlipX(dx < 0);
+    } else {
+      this.facing = dy < 0 ? "up" : "down";
+      this.player.setFlipX(false);
+    }
+    this.player.anims.play(`walk-${this.facing}`, true);
+  }
+}

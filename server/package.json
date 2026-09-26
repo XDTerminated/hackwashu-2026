@@ -1,0 +1,26 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@googleapis/calendar": "^20.0.1",
+    "@googleapis/gmail": "^22.0.1",
+    "dotenv": "^18.0.4",
+    "google-auth-library": "^11.1.0",
+    "groq-sdk": "^1.6.0",
+    "spectrum-ts": "^12.10.1",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

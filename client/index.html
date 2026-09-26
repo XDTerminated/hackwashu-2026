@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moon Village</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #0b0a1a; overflow: hidden; }
+    #game { position: fixed; inset: 0; }
+    canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+    /* Off-screen text field: the in-game dialogue box mirrors what's typed here. */
+    #type-input { position: fixed; left: -10000px; top: 0; width: 200px; opacity: 0; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <input id="type-input" autocomplete="off" />
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
