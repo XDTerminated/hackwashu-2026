@@ -2,7 +2,7 @@
 // integer coordinates — no scaling, no rounded vector shapes, no hi-res text.
 
 import Phaser from "phaser";
-import { LINE_HEIGHT, sanitize } from "./font";
+import { FONT_METRICS, sanitize } from "./font";
 
 export const C = {
   ink: 0x4a2e19,
@@ -24,7 +24,7 @@ export const C = {
   blue: 0x2f5f9a,
 };
 
-export type Font = "px" | "pxb";
+export type Font = "px" | "pxb" | "sm";
 
 export function ptext(scene: Phaser.Scene, x: number, y: number, text: string, color: number = C.ink, font: Font = "px") {
   return scene.add.bitmapText(Math.round(x), Math.round(y), font, sanitize(text)).setTint(color);
@@ -34,7 +34,8 @@ export function ptext(scene: Phaser.Scene, x: number, y: number, text: string, c
 export function measure(t: Phaser.GameObjects.BitmapText) {
   const b = t.getTextBounds(false);
   const lines = Math.max(1, b.lines.lengths.length);
-  return { w: Math.ceil(b.local.width), h: (lines - 1) * LINE_HEIGHT + 8 };
+  const m = FONT_METRICS[t.font] ?? FONT_METRICS.px;
+  return { w: Math.ceil(b.local.width), h: (lines - 1) * m.line + m.height };
 }
 
 /** Clip a string (with "..") so it fits a pixel width in the given font. */
@@ -91,6 +92,8 @@ export class Label extends Phaser.GameObjects.Container {
   readonly opts: Required<LabelOpts>;
   boxW = 0;
   boxH = 0;
+  /** The text as laid out (line breaks included), for typewriter reveals. */
+  private laidOut = "";
 
   constructor(scene: Phaser.Scene, x: number, y: number, text: string, opts: LabelOpts = {}) {
     super(scene, Math.round(x), Math.round(y));
@@ -121,6 +124,7 @@ export class Label extends Phaser.GameObjects.Container {
     if (o.align === "center") this.t.setCenterAlign();
     else this.t.setLeftAlign();
     const { w, h } = measure(this.t);
+    this.laidOut = this.t.getTextBounds(false).wrappedText || this.t.text;
     const b = o.border !== null ? 1 : 0;
     const W = w + o.padX * 2 + b * 2;
     const H = h + 3 + b * 2;
@@ -147,6 +151,22 @@ export class Label extends Phaser.GameObjects.Container {
 
   setColor(color: number) {
     this.t.setTint(color);
+    return this;
+  }
+
+  /** Characters in the laid-out text. */
+  get textLength() {
+    return this.laidOut.length;
+  }
+
+  /** How many lines the first `n` characters take up. */
+  linesUpTo(n: number) {
+    return this.laidOut.slice(0, Math.max(0, n)).split("\n").length;
+  }
+
+  /** Typewriter: the box stays sized for the whole text; only the first `n` characters show. */
+  reveal(n: number) {
+    this.t.setText(n >= this.laidOut.length ? this.laidOut : this.laidOut.slice(0, Math.max(0, n)));
     return this;
   }
 

@@ -10,6 +10,7 @@ import { connectCanvas, disconnectCanvas, initCanvas } from "./connectors/canvas
 import { disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle } from "./connectors/google.js";
 import { onPhoneLinked, phoneLinked, photonReady, sendOpeningText, startLink, startPhoton, unlink } from "./photon.js";
 import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
+import { handleVoice, voiceStatus, voiceSummary } from "./voice.js";
 import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
@@ -29,6 +30,9 @@ function page(res: ServerResponse, status: number, title: string, body: string) 
 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+
+  // A villager line to speak aloud in the talk dialog.
+  if (url.pathname === "/voice") return handleVoice(req, res);
 
   // Google sign-in: the game opens this in a new tab.
   if (url.pathname === "/connect/google") {
@@ -53,7 +57,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ok: true, service: "moon-village", brain: BRAIN, photon: photonReady(), connections: services.connections(), seq: world.seq }));
+  res.end(JSON.stringify({ ok: true, service: "moon-village", brain: BRAIN, voice: voiceStatus(), photon: photonReady(), connections: services.connections(), seq: world.seq }));
 });
 
 const wss = new WebSocketServer({ server: httpServer });
@@ -231,6 +235,7 @@ httpServer.listen(PORT, () => {
   console.log(`[server] Moon Village agents on http://localhost:${PORT}`);
   const brains = { claude: "Claude (claude-opus-5)", groq: `Groq (${process.env.GROQ_MODEL ?? "openai/gpt-oss-120b"})`, mock: "⚠ MOCK — scripted villagers, real tools & approvals, no model" };
   console.log(`[server] villager brains: ${brains[BRAIN]}`);
+  console.log(`[server] villager voices: ${voiceSummary()}`);
   const c = services.connections();
   console.log(`[server] accounts: google=${c.google.connected ? c.google.account : c.google.configured ? "not signed in" : "not configured"} · canvas=${c.canvas.connected ? c.canvas.account : "not connected"}`);
   console.log(`[server] built: ${Object.keys(world.buildings).map((b) => BUILDINGS[b as keyof typeof BUILDINGS].name).join(", ")} · coins ${world.coins} · residents ${services.residents().join(", ")}`);

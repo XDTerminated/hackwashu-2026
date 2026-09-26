@@ -14,10 +14,13 @@ export function memoryOf(v: VillagerId): VillagerMemory {
   return (world.memory[v] ??= { log: [], facts: [], points: 0 });
 }
 
-export function remember(v: VillagerId, player: string, reply: string, via: "text" | "visit") {
+export function remember(v: VillagerId, player: string, reply: string, via: "text" | "visit", notes?: string) {
   const m = memoryOf(v);
   const at = Date.now();
-  m.log.push({ who: "player", text: player.slice(0, 600), via, at }, { who: "me", text: reply.slice(0, 600), via, at });
+  m.log.push(
+    { who: "player", text: player.slice(0, 600), via, at },
+    { who: "me", text: reply.slice(0, 600), via, at, ...(notes ? { notes: notes.slice(0, 1200) } : {}) },
+  );
   if (m.log.length > LOG_MAX) m.log.splice(0, m.log.length - LOG_MAX);
   savePersist();
 }
@@ -86,7 +89,13 @@ export function memoryNote(v: VillagerId, transcript: boolean): string {
   if (last) parts.push(`You last talked ${ago(Date.now() - last.at)} (${last.via === "text" ? "by text" : "in person"}).`);
   else parts.push("This is the first time you've talked.");
   if (transcript && m.log.length) {
-    const lines = m.log.slice(-8).map((l) => `${l.who === "player" ? "Player" : "You"} (${l.via === "text" ? "text" : "in person"}): ${l.text}`);
+    const recent = m.log.slice(-8);
+    const lines = recent.map((l, i) => {
+      const said = `${l.who === "player" ? "Player" : "You"} (${l.via === "text" ? "text" : "in person"}): ${l.text}`;
+      // Only the latest lookup's leftovers matter: that's what "tell me more" is about.
+      const last = i === recent.length - 1;
+      return l.notes && last ? `${said}\n  (the rest of what you found, not said yet: ${l.notes})` : said;
+    });
     parts.push(`Your most recent conversation:\n${lines.join("\n")}`);
   }
   return parts.join("\n");

@@ -18,7 +18,8 @@ import { MOCK, mockVillager } from "./mock.js";
 import { Groq, runVillagerGroq } from "./groq.js";
 import * as services from "./services.js";
 import { befriend, memoryNote, remember } from "./memory.js";
-import { personaFor, nameOf } from "./villagers.js";
+import { retell, tooLongToSay } from "./chat.js";
+import { audienceNote, personaFor, nameOf, type Audience } from "./villagers.js";
 import { addLantern, emit, newId, owns, putApproval, putClod, setVillager, world } from "./world.js";
 
 const client = new Anthropic();
@@ -356,7 +357,7 @@ export async function runDelegate(from: VillagerId, taskId: string, block: ToolU
   }
   emit({ type: "handoff", from, to, text: task });
   delegations.get(taskId)?.add(to);
-  const report = await runVillager(to, task, taskId);
+  const report = await runVillager(to, task, taskId, "report");
   emit({ type: "handoff", from: to, to: from, text: report });
   setVillager(to, { status: "idle", activity: "relaxing" });
   return { type: "tool_result", tool_use_id: block.id, content: report || "(no report)" };
@@ -383,10 +384,10 @@ function surfaceServerTools(v: VillagerId, taskId: string, content: Anthropic.Be
   }
 }
 
-async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string): Promise<string> {
+async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: taskText }];
   const tools = toolsFor(v);
-  const system = personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true);
+  const system = personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience);
   let finalText = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -454,8 +455,8 @@ export const BRAIN: "claude" | "groq" | "mock" = MOCK
       ? "groq"
       : "mock";
 
-function runVillager(v: VillagerId, taskText: string, taskId: string): Promise<string> {
-  return BRAIN === "groq" ? runVillagerGroq(v, taskText, taskId) : runVillagerClaude(v, taskText, taskId);
+function runVillager(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
+  return BRAIN === "groq" ? runVillagerGroq(v, taskText, taskId, audience) : runVillagerClaude(v, taskText, taskId, audience);
 }
 
 // ------------------------------------------------------------------ entry
@@ -503,7 +504,16 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
   emit({ type: "task_start", taskId, villager: v, text, from });
 
   try {
-    const reply = (BRAIN === "mock" ? await mockVillager(v, text, taskId) : await runVillager(v, text, taskId)) || "Done!";
+    const audience: Audience = from === "chore" ? "chore" : "talk";
+    const answer = (BRAIN === "mock" ? await mockVillager(v, text, taskId) : await runVillager(v, text, taskId, audience)) || "Done!";
+    // Face to face, a long answer becomes a short spoken one; the rest is kept for "tell me more".
+    let reply = answer;
+    let notes: string | undefined;
+    if (audience === "talk" && BRAIN !== "mock" && tooLongToSay(answer)) {
+      setVillager(v, { status: "thinking", activity: "finding the words…" });
+      reply = (await retell(v, text, answer).catch((err) => (console.warn(`[agents] ${v} retell failed:`, err), ""))) || answer;
+      if (reply !== answer) notes = answer;
+    }
     emit({ type: "say", villager: v, text: reply });
 
     const madeClods = Object.values(world.clods).some((c) => c.taskId === taskId);
@@ -514,7 +524,7 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     }
     if (from !== "chore") services.onTaskDone(v, delegations.get(taskId) ?? new Set());
     if (from === "game") {
-      remember(v, text, reply, "visit");
+      remember(v, text, reply, "visit", notes);
       befriend(v, "visit");
     }
     return reply;
