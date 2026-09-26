@@ -699,7 +699,7 @@ export class UIScene extends Phaser.Scene {
     const groups: [string, string, string, () => void][][] = [
       [
         ["icon_moonpad_0", "phone", "MoonPad - texts and connections", click(() => openMoonPad())],
-        ["icon_shop_0", "shop", "Supply Pod - decorations (B)", click(() => this.toggleShop())],
+        ["icon_shop_0", "shop", "Shop - decorations (B)", click(() => this.toggleShop())],
         ["icon_quests_0", "quests", "Quests", click(() => this.showQuests())],
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
@@ -870,8 +870,8 @@ export class UIScene extends Phaser.Scene {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot here. Clear its rubble, repair the foundation with materials, build the house with coins, and put something they love in the yard: then they move in. Materials: moonstone (clear boulders, rubble and fallen meteor rocks), stardust (sweep moondust), moon shards (glinting in the wilds). Once they're home, connect your account so they can help with your real stuff, or try them on sample data.",
-      "The toolbar icons (hover for names): MoonPad, Supply Pod (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
-      "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Supply Pod): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Supply Pod says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
+      "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
+      "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
@@ -985,7 +985,7 @@ export class UIScene extends Phaser.Scene {
     this.shop.add(blocker);
     const g = this.add.graphics();
     woodFrame(g, x0, y0, pw, ph);
-    const title = ptext(this, 0, y0 + 8, "★ SUPPLY POD ★", C.coral, "pxb");
+    const title = ptext(this, 0, y0 + 8, "★ SHOP ★", C.coral, "pxb");
     title.setX(x0 + Math.round((pw - measure(title).w) / 2));
     const sub = ptext(this, 0, y0 + 19, `decorations for your colony - you have ${store.coins}¢`, C.inkSoft);
     sub.setX(x0 + Math.round((pw - measure(sub).w) / 2));

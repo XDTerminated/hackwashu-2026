@@ -1,4 +1,4 @@
-// The Supply Pod catalog. Shared so the server charges the real price
+// The Shop catalog. Shared so the server charges the real price
 // (the client only says which item and where).
 
 import { VILLAGER_HOME, type Deco, type VillagerId } from "./game.js";

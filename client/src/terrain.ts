@@ -1,9 +1,11 @@
 // Bakes the island ground once into a single texture: Stardew-style tiles,
-// cliff faces on the rim, dark basalt maria (the moon's "seas") pocked with
-// little craters, and flagstone paths so you can follow an agent's route.
+// dark basalt maria (the moon's "seas") pocked with little craters, and
+// flagstone paths so you can follow an agent's route. The colony sits on the
+// floor of a great crater: bakeOuter paints the crater wall rising all round,
+// the grey plains beyond it, and the Moon itself curving away into space.
 
 import Phaser from "phaser";
-import { LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
+import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
 export { PLAZA, lampSpots } from "./layout";
 import type { BuildingId } from "../../shared/game";
 import { type Ctx, hash, rect } from "./pix";
@@ -17,9 +19,6 @@ const MARE = "#8b85a3";
 const MARE_DARK = "#6f6a88";
 const MARE_LIGHT = "#a29db8";
 const MARE_SHADOW = "#77728f";
-const CLIFF = "#8a7fa0";
-const CLIFF_DARK = "#6f6588";
-const CLIFF_LIGHT = "#a69cbc";
 
 export const MINIMAP_W = 76;
 export const MINIMAP_H = 58;
@@ -181,30 +180,6 @@ function plaza(ctx: Ctx) {
   }
 }
 
-function cliffs(ctx: Ctx) {
-  for (let ty = 0; ty < MAP_H; ty++) {
-    for (let tx = 0; tx < MAP_W; tx++) {
-      const here = inIsland(tx + 0.5, ty + 0.5);
-      if (!here) continue;
-      const x0 = tx * TILE;
-      const y0 = ty * TILE;
-      // Cliff face drops below any south-facing edge.
-      if (!inIsland(tx + 0.5, ty + 1.5)) {
-        const y = y0 + TILE;
-        rect(ctx, CLIFF, x0, y, TILE, 18);
-        rect(ctx, CLIFF_LIGHT, x0, y, TILE, 2);
-        for (let sx = x0 + (tx % 2 ? 2 : 6); sx < x0 + TILE; sx += 7) rect(ctx, CLIFF_DARK, sx, y + 3, 1, 12);
-        rect(ctx, CLIFF_DARK, x0, y + 9, TILE, 1);
-        rect(ctx, "#5a5170", x0, y + 16, TILE, 2);
-      }
-      // Darker rim on every other edge.
-      if (!inIsland(tx + 0.5, ty - 0.5)) rect(ctx, CLIFF_LIGHT, x0, y0, TILE, 2);
-      if (!inIsland(tx - 0.5, ty + 0.5)) rect(ctx, CLIFF_DARK, x0, y0, 2, TILE);
-      if (!inIsland(tx + 1.5, ty + 0.5)) rect(ctx, CLIFF_DARK, x0 + TILE - 2, y0, 2, TILE);
-    }
-  }
-}
-
 function craters(ctx: Ctx, rnd: Phaser.Math.RandomDataGenerator, mare: Uint8Array) {
   for (let i = 0; i < 26; i++) {
     const cx = rnd.between(120, WORLD_W - 120);
@@ -230,26 +205,20 @@ export function bakeTerrain(scene: Phaser.Scene) {
   const ctx = tex.getContext();
   const rnd = new Phaser.Math.RandomDataGenerator(["luna"]);
 
-  // Deep space.
-  rect(ctx, "#0b0a1a", 0, 0, WORLD_W, WORLD_H);
-  for (let i = 0; i < 2000; i++) {
-    const x = rnd.between(0, WORLD_W - 1);
-    const y = rnd.between(0, WORLD_H - 1);
-    if (inIsland(x / TILE, y / TILE)) continue;
-    ctx.globalAlpha = rnd.realInRange(0.3, 1);
-    rect(ctx, rnd.pick(["#ffffff", "#c8d2f0", "#9aa8cc", "#f5d7a8"]), x, y, 1, 1);
-  }
-  ctx.globalAlpha = 1;
-
+  // The crater floor. (Everything outside it stays clear: the crater wall
+  // and the world beyond live on the "outer" texture underneath.)
   for (let ty = 0; ty < MAP_H; ty++) {
     for (let tx = 0; tx < MAP_W; tx++) {
-      if (!inIsland(tx + 0.5, ty + 0.5)) continue;
-      regolithTile(ctx, tx, ty);
+      const touches = [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1]].some(([ox, oy]) => inIsland(tx + ox, ty + oy));
+      if (touches) regolithTile(ctx, tx, ty);
     }
   }
   const mare = maria(ctx, rnd);
-  cliffs(ctx);
   craters(ctx, rnd, mare);
+  // Trim to the crater floor's true (curved) edge, pixel by pixel.
+  const img = ctx.getImageData(0, 0, WORLD_W, WORLD_H);
+  for (let y = 0; y < WORLD_H; y++) for (let x = 0; x < WORLD_W; x++) if (!inIsland((x + 0.5) / TILE, (y + 0.5) / TILE)) img.data[(y * WORLD_W + x) * 4 + 3] = 0;
+  ctx.putImageData(img, 0, 0);
 
   // Only the landing path exists at first; each building lays its own path when built.
   flagstonePath(ctx, PLAZA.x, PLAZA.y, LANDING.x, LANDING.y + 12);
@@ -274,4 +243,134 @@ export function bakeTerrain(scene: Phaser.Scene) {
 export function drawBuildingPath(ctx: Ctx, b: BuildingId) {
   const pts = pathPoints(b);
   for (let i = 0; i < pts.length - 1; i++) flagstonePath(ctx, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+}
+
+// ---------------------------------------------------------------- the crater and beyond
+
+/** How far past the world's edge the view can go (the crater wall, the plains, the curve). */
+export const OUTER = 320;
+
+// The Moon's surface outside the crater, darkest to lightest (the middle one matches the floor).
+const RAMP = ["#4f4a63", "#665f7d", "#817a98", "#9c95b2", "#b3abc2", "#c9c3d8", "#ddd8e8"].map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+const FLAT = 4;
+const SPACE = [11, 10, 26];
+
+/**
+ * Where a point sits relative to the crater's edge: its distance outside the
+ * floor in pixels (negative inside), and its angle around the crater.
+ */
+function outside(px: number, py: number) {
+  const dx = (px / TILE - ISLAND_CX) / 46;
+  const dy = (py / TILE - ISLAND_CY) / 34;
+  const ang = Math.atan2(dy, dx);
+  const edge = 0.97 + 0.06 * Math.sin(ang * 3 + 1.7) + 0.04 * Math.sin(ang * 7 + 0.5);
+  const pxPerUnit = TILE * Math.hypot(46 * Math.cos(ang), 34 * Math.sin(ang));
+  return { d: (Math.hypot(dx, dy) - edge) * pxPerUnit, ang };
+}
+
+/**
+ * The land around the colony: the crater wall rising from the floor's edge (lit
+ * on the slopes that face the light, in shadow on the rest), the grey plains
+ * beyond with their own craters and boulders, and then the Moon curving away
+ * into starry space. Drawn once; it sits under the ground texture, OUTER
+ * pixels past the world on every side, and nothing out here is walkable.
+ */
+export function bakeOuter(scene: Phaser.Scene) {
+  if (scene.textures.exists("outer")) return;
+  const W = WORLD_W + OUTER * 2;
+  const H = WORLD_H + OUTER * 2;
+  const tex = scene.textures.createCanvas("outer", W, H)!;
+  const ctx = tex.getContext();
+  const img = ctx.createImageData(W, H);
+  const p = img.data;
+  const cx = ISLAND_CX * TILE + OUTER;
+  const cy = ISLAND_CY * TILE + OUTER;
+  // The Moon's limb: a big ellipse around the crater, well inside the view's reach.
+  const LX = 46 * TILE + 250;
+  const LY = 34 * TILE + 205;
+
+  // Height of the land: the wall climbs fast from the floor to an uneven crest,
+  // then falls away slowly across the plains.
+  const height = new Float32Array(W * H);
+  const CREST = 30;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const { d, ang } = outside(x - OUTER + 0.5, y - OUTER + 0.5);
+      if (d <= 0) continue;
+      const amp = 1 + 0.35 * Math.sin(ang * 5 + 0.6) + 0.2 * Math.sin(ang * 13 + 2.1) + 0.25 * (noise((x + 7) / 23, (y + 3) / 23) - 0.5);
+      const t = Math.min(1, d / CREST);
+      const rise = t * t * (3 - 2 * t);
+      const fall = d > CREST ? Math.exp(-(d - CREST) / 75) : 1;
+      // (plus a slow roll to the plains, never busy)
+      height[y * W + x] = 26 * amp * rise * fall + 6 * noise(x / 46, y / 46);
+    }
+
+  // Light from the upper left, a little from above.
+  const L = [-0.55, -0.62, 0.56];
+  const flatLight = L[2];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const ex = (x - cx) / LX;
+      const ey = (y - cy) / LY;
+      const e = Math.hypot(ex, ey);
+      if (e > 1) {
+        // space, with stars
+        const star = hash(x, y, 31);
+        const c = star > 0.9985 ? [255, 255, 255] : star > 0.997 ? [154, 168, 204] : SPACE;
+        [p[i], p[i + 1], p[i + 2], p[i + 3]] = [c[0], c[1], c[2], 255];
+        continue;
+      }
+      const h = (xx: number, yy: number) => height[Math.min(H - 1, Math.max(0, yy)) * W + Math.min(W - 1, Math.max(0, xx))];
+      const gx = (h(x + 1, y) - h(x - 1, y)) / 2;
+      const gy = (h(x, y + 1) - h(x, y - 1)) / 2;
+      const nl = Math.hypot(gx, gy, 1);
+      const lit = (-gx * L[0] - gy * L[1] + L[2]) / nl;
+      // quantize, with a light ordered dither between steps
+      const dither = ((x & 1) * 2 + (y & 1) * 3) % 4 / 4 - 0.375;
+      let step = FLAT + Math.round((lit - flatLight) * 6 + dither * 0.3);
+      // the far plains fade a touch darker, and the ground darkens toward the Moon's edge
+      const { d } = outside(x - OUTER + 0.5, y - OUTER + 0.5);
+      if (d > 110) step -= 1;
+      if (e > 0.94) step -= Math.round(((e - 0.94) / 0.06) * 3);
+      step = Math.max(0, Math.min(RAMP.length - 1, step));
+      let c = RAMP[step];
+      // grit, like the floor's
+      const g = hash(x, y, 17);
+      if (g > 0.985) c = RAMP[Math.max(0, step - 1)];
+      else if (g < 0.008) c = RAMP[Math.min(RAMP.length - 1, step + 1)];
+      // the Moon's rim: a bright sunlit edge on the upper left, a dark one elsewhere
+      if (e > 0.992) c = ex + ey < -0.4 ? RAMP[RAMP.length - 1] : RAMP[0];
+      [p[i], p[i + 1], p[i + 2], p[i + 3]] = [c[0], c[1], c[2], 255];
+    }
+  ctx.putImageData(img, 0, 0);
+
+  // Craters out on the plains, and boulders scattered along the crest.
+  const rnd = new Phaser.Math.RandomDataGenerator(["rim"]);
+  for (let n = 0; n < 90; n++) {
+    const x = rnd.between(0, W - 1);
+    const y = rnd.between(0, H - 1);
+    const { d } = outside(x - OUTER, y - OUTER);
+    if (Math.hypot((x - cx) / LX, (y - cy) / LY) > 0.9 || d < 70) continue;
+    const r = rnd.between(4, 13);
+    for (let yy = -r; yy <= r; yy++)
+      for (let xx = -r; xx <= r; xx++) {
+        const q = (xx / r) ** 2 + (yy / (r * 0.7)) ** 2;
+        if (q > 1) continue;
+        const rim = q > 0.7;
+        const col = rim ? (yy < 0 ? "#665f7d" : "#c9c3d8") : yy < 0 ? "#817a98" : "#9c95b2";
+        rect(ctx, col, x + xx, y + yy, 1, 1);
+      }
+  }
+  for (let n = 0; n < 260; n++) {
+    const x = rnd.between(0, W - 1);
+    const y = rnd.between(0, H - 1);
+    const { d } = outside(x - OUTER, y - OUTER);
+    if (d < 14 || d > 60 || Math.hypot((x - cx) / LX, (y - cy) / LY) > 0.95) continue;
+    const w = rnd.between(2, 4);
+    rect(ctx, "#4f4a63", x, y + 1, w + 1, 2);
+    rect(ctx, "#9c95b2", x, y, w, 2);
+    rect(ctx, "#ddd8e8", x, y, Math.max(1, w - 1), 1);
+  }
+  tex.refresh();
 }

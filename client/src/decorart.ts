@@ -1,4 +1,4 @@
-// Supply Pod decorations, drawn at native size in the same Stardew style as
+// Shop decorations, drawn at native size in the same Stardew style as
 // the buildings (warm ink outlines, 3-tone shading). Never scaled in-game.
 
 import { type Ctx, INK as O, WOOD_INK, disc, hash, rect } from "./pix";

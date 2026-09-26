@@ -1,4 +1,4 @@
-// How each Supply Pod decoration looks and sits in the world. Names and
+// How each Shop decoration looks and sits in the world. Names and
 // prices live in shared/decor.ts so the server can charge the real price.
 
 import { DECOR, type DecorDef } from "../../shared/decor";

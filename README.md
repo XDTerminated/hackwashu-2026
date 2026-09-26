@@ -109,7 +109,7 @@ and the gold ★ always points at the next step):
 1. **Clear the rubble** off the lot (press E on each pile; each gives a moonstone).
 2. **Repair the foundation** with materials you collect around the island.
 3. **Build the house** with coins.
-4. **Decorate:** put something they love in the yard (hover a decoration, or check the Supply Pod, to see who loves it).
+4. **Decorate:** put something they love in the yard (hover a decoration, or check the Shop, to see who loves it).
 
 Then they move in (with a hello and a housewarming gift), the next lot opens, and a new chapter starts.
 **Connecting your real account comes after they move in**: the first time you talk to them they ask for
@@ -284,7 +284,7 @@ account connections still open their own windows.)
 Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at the bottom (hover an icon for its name):
 
 - **MoonPad** (tablet): text any villager who's moved in to get to know them. Texts are just conversation: villagers remember what you tell them (saved on the server with the colony) and friendship grows, shown as hearts. Ask for real work over text and they'll invite you to their house; tasks only run when you ask in person, and those visits count double toward friendship. A red badge means new replies.
-- **Supply Pod** (crate): 34 decorations in four tabs (Garden, Cozy, Sci-Fi, Party), from a 20¢ shrub to a 150¢ Star Portal (prices are checked on the server). Each tile shows who loves it.
+- **Shop** (crate): 34 decorations in four tabs (Garden, Cozy, Sci-Fi, Party), from a 20¢ shrub to a 150¢ Star Portal (prices are checked on the server). Each tile shows who loves it.
 - **Quests** (scroll) · **Help** (?)
 - **Music** (note) and **Sound effects** (speaker): separate mutes, remembered per browser.
 - **Edit layout** (pencil): drag any building, plot, decoration or task lantern (the stone lanterns planted when villagers finish real work) anywhere on the island, or click a decoration to sell it. Task lanterns can be moved but not sold. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
@@ -293,17 +293,17 @@ Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at t
 **Decorations are part of the daily requests.** Every day one neighbor who lives here makes a **wish**
 for a decoration they love that isn't in their yard yet ("Hoot: I'd love an Owl Birdbath by my home!").
 Put it in their yard and the wish pays out (20¢ + half the item's price) on top of the happiness. There's
-also a "place 3 new decorations" request in the mix. In the Supply Pod every tile shows the little heads of
+also a "place 3 new decorations" request in the mix. In the Shop every tile shows the little heads of
 the villagers who love it, a gold ★ marks today's wished-for item, and hovering a tile (or any decoration
 already placed in the world) says who loves it and, in the world, whose yard it's brightening.
 
-**Decorations make villagers happy.** Each villager has favorite items (the Supply Pod lists who loves what). A decoration in a villager's yard (3 tiles around their house) adds happiness: +3 for a favorite, +1 for anything else, each kind counted once, up to 12. Happiness adds to friendship hearts, the villager reacts when you place something, and they mention their decorated home in conversation. While carrying a decoration, yards are outlined and a label previews whose happiness it would change.
+**Decorations make villagers happy.** Each villager has favorite items (the Shop lists who loves what). A decoration in a villager's yard (3 tiles around their house) adds happiness: +3 for a favorite, +1 for anything else, each kind counted once, up to 12. Happiness adds to friendship hearts, the villager reacts when you place something, and they mention their decorated home in conversation. While carrying a decoration, yards are outlined and a label previews whose happiness it would change.
 
 **Meteors** show on the minimap (red and blinking while falling, orange once landed), and when one is off-screen a marker on the screen edge points to it. Villagers show on the minimap as little head icons, the same ones as in the top-left list.
 
 **The gold ★** always marks your current goal: over the villager's head when they're on screen, an arrow at the screen edge (named) when they're not. It points to the plot to build, then the door to call from, then the villager. New players get a one-time hint at the top of the screen for walking, then for following the ★.
 
-**E or SPACE interacts with whatever is closest** (talk, call, build, read a letter, pop, grab, switch a light; hold to sweep): the two keys are interchangeable everywhere, including the Office. Next to a villager, E opens the chat. Other keys: B (Supply Pod), M (music), ESC (close any window / put down / leave edit mode). While a window is open (dialog, MoonPad, shop), keys go to it, not to walking.
+**E or SPACE interacts with whatever is closest** (talk, call, build, read a letter, pop, grab, switch a light; hold to sweep): the two keys are interchangeable everywhere, including the Office. Next to a villager, E opens the chat. Other keys: B (Shop), M (music), ESC (close any window / put down / leave edit mode). While a window is open (dialog, MoonPad, shop), keys go to it, not to walking.
 
 ## Texting the colony (Photon Spectrum, iMessage)
 

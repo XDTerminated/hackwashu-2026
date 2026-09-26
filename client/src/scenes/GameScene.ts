@@ -34,7 +34,7 @@ import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLett
 import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { clearListener, setListener, sfx, sfxAt } from "../sfx";
-import { PLAZA, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
+import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
 import { pendingApprovalFor, store } from "../store";
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
@@ -163,10 +163,6 @@ export class GameScene extends Phaser.Scene {
 
     this.bakeGround();
 
-    // Earth hangs in the black off the island's northwest rim.
-    const earth = this.add.image(120, 100, "earth_s").setDepth(-5);
-    this.tweens.add({ targets: earth, y: earth.y - 5, duration: 4000, yoyo: true, repeat: -1, ease: "sine.inout" });
-
     this.add.image(LANDING.x, LANDING.y - 1, shadowKey(this, 34)).setDepth(-8);
     this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
     this.solids.push(new Phaser.Geom.Rectangle(LANDING.x - 14, LANDING.y - 10, 28, 10));
@@ -211,7 +207,8 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, WORLD_W, WORLD_H);
+    // (the view reaches past the world's edge, so you can see over the crater wall)
+    cam.setBounds(-OUTER, -OUTER, WORLD_W + OUTER * 2, WORLD_H + OUTER * 2);
     cam.centerOn(this.player.x, this.player.y);
     cam.startFollow(this.player, true, 0.12, 0.12);
 
@@ -403,7 +400,7 @@ export class GameScene extends Phaser.Scene {
     return !live && !store.progress.sandbox[service];
   }
 
-  /** A neighbor's checklist, with what they love (for the yard) and a way to the Supply Pod. */
+  /** A neighbor's checklist, with what they love (for the yard) and a way to the Shop. */
   private showNeeds(def: MoveInDef) {
     const who = VILLAGER_SHORT[def.villager];
     const steps = checklist(def, this.moveState());
@@ -414,7 +411,7 @@ export class GameScene extends Phaser.Scene {
     openInfo(`${who.toUpperCase()} WANTS TO MOVE IN`, [
       ...steps.map((st) => `${st.done ? "✓" : "○"} ${st.text}`),
       `${who} loves: ${loves.join(", ")}... (hover any decoration to see who loves it). Put them in the yard around the ${BUILDINGS[def.home].name}.`,
-    ], [{ label: "SUPPLY POD", kind: "ok", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]);
+    ], [{ label: "SHOP", kind: "ok", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]);
   }
 
   /** The foundation: what it takes, what you have, and where to find more. */
@@ -473,6 +470,9 @@ export class GameScene extends Phaser.Scene {
 
   private bakeGround() {
     bakeTerrain(this);
+    // The crater wall, the plains beyond and the Moon's curve, under the crater floor.
+    bakeOuter(this);
+    this.add.image(-OUTER, -OUTER, "outer").setOrigin(0).setDepth(-11);
     this.add.image(0, 0, "ground").setOrigin(0).setDepth(-10);
 
     // Building paths live on their own layer so they can appear as the colony grows.
@@ -1232,7 +1232,7 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(4200, () => {
             if (store.progress.movedIn.includes(move.villager)) return;
             const who = VILLAGER_SHORT[move.villager];
-            this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${BUILDINGS[e.building].name} is up! Last step: put ${move.loves} thing${move.loves === 1 ? "" : "s"} ${who} loves in the yard (the Supply Pod shows who loves what). Then ${who} moves in.` });
+            this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${BUILDINGS[e.building].name} is up! Last step: put ${move.loves} thing${move.loves === 1 ? "" : "s"} ${who} loves in the yard (the Shop shows who loves what). Then ${who} moves in.` });
           });
         break;
       }
@@ -1737,7 +1737,7 @@ export class GameScene extends Phaser.Scene {
 
   // ================================================================ arranging
   // The pencil (edit mode) lets you pick up any building, plot or decoration and
-  // set it down somewhere else on the tile grid. Buying from the Supply Pod and
+  // set it down somewhere else on the tile grid. Buying from the Shop and
   // MOVE on a decoration use the same pick-up / set-down flow.
 
   private editMode = false;
