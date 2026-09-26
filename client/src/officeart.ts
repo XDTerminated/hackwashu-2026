@@ -5,6 +5,7 @@
 // Native size, like everything else.
 
 import { type Ctx, INK as O, disc, hash, rect } from "./pix";
+import { drawMascot } from "./mascot";
 
 export const ROOM_W = 448;
 export const ROOM_H = 322;
@@ -17,9 +18,6 @@ export const BOARD = { x: 224, y: 60, w: 176, h: 50 };
 export const ELEVATOR = { x: 224, y: ROOM_H - 2 };
 export const WORKER_LOOKS = 6;
 
-// The mascot's orange, in a few close shades so a room of them isn't identical.
-const BODY = ["#d97757", "#de8262", "#d26f51", "#e08b68", "#cc6a4d", "#da7c5c"];
-const SHADE = ["#b85c3e", "#bd6547", "#b0553a", "#be6d4e", "#a95237", "#b9603f"];
 
 // ---------------------------------------------------------------- the room
 
@@ -138,48 +136,25 @@ export function drawDesk(ctx: Ctx, screen: DeskScreen) {
   rect(ctx, "#b8b0c4", 5, 22, 6, 1);
 }
 
-/**
- * The Claude Code mascot, one mascot-pixel = 2 of ours: a wide body, a nub on
- * each side, square eyes, four legs. (bx, by) is the body's top-left corner.
- * Every part gets an ink outline first, then its fill, so it reads on the floor.
- */
-function mascot(ctx: Ctx, look: number, bx: number, by: number, opts: { eyes: boolean; legs: boolean; nubs: [number, number] }) {
-  const body = BODY[look % BODY.length];
-  const shade = SHADE[look % SHADE.length];
-  const parts: [number, number, number, number, string][] = [
-    [bx, by, 22, 12, body],
-    [bx - 4, by + 6 + opts.nubs[0], 4, 3, body],
-    [bx + 22, by + 6 + opts.nubs[1], 4, 3, body],
-  ];
-  if (opts.legs) for (const lx of [4, 8, 14, 18]) parts.push([bx + lx, by + 12, 2, 4, shade]);
-  for (const [x, y, w, h] of parts) rect(ctx, O, x - 1, y - 1, w + 2, h + 2);
-  for (const [x, y, w, h, c] of parts) rect(ctx, c, x, y, w, h);
-  rect(ctx, shade, bx, by + 10, 22, 2); // a little weight at the bottom
-  if (opts.eyes) {
-    rect(ctx, O, bx + 4, by + 4, 2, 4);
-    rect(ctx, O, bx + 16, by + 4, 2, 4);
-  }
-}
-
-/** An agent at their desk, seen from behind in an office chair; `f` taps their nubs (typing). 32 x 20. */
+/** An agent at their desk, seen from behind in an office chair; `f` taps their nubs (typing). 34 x 20. */
 export function drawWorkerBack(ctx: Ctx, look: number, f: number) {
   // the chair back peeks out below
-  rect(ctx, O, 10, 12, 12, 8);
-  rect(ctx, "#3b3a4a", 11, 13, 10, 6);
-  rect(ctx, "#5b5a6e", 11, 13, 10, 1);
-  mascot(ctx, look, 5, 2, { eyes: false, legs: false, nubs: f ? [-1, 1] : [1, -1] });
+  rect(ctx, O, 11, 12, 12, 8);
+  rect(ctx, "#3b3a4a", 12, 13, 10, 6);
+  rect(ctx, "#5b5a6e", 12, 13, 10, 1);
+  drawMascot(ctx, 0, 1, 2, { shade: look, eyes: false, legs: false, nubs: f ? [-1, 1] : [1, -1] });
 }
 
-/** An agent standing, facing you (walking in and out). 32 x 20; the lead (with a crown) is 32 x 24. */
+/** An agent standing, facing you (walking in and out). 34 x 18; the lead (with a crown) is 34 x 24. */
 export function drawWorkerFront(ctx: Ctx, look: number, crown = false) {
-  const by = crown ? 7 : 3;
-  mascot(ctx, look, 5, by, { eyes: true, legs: true, nubs: [0, 0] });
+  const by = crown ? 6 : 0;
+  drawMascot(ctx, 0, by, 2, { shade: look });
   if (crown) {
-    rect(ctx, O, 10, by - 6, 12, 6);
-    rect(ctx, "#f5c542", 11, by - 3, 10, 2);
-    for (const cx of [11, 15, 19]) rect(ctx, "#f5c542", cx, by - 5, 2, 2);
-    rect(ctx, "#fff0a8", 11, by - 3, 10, 1);
-    rect(ctx, "#e05a5a", 15, by - 2, 2, 1);
+    rect(ctx, O, 11, 0, 12, 7);
+    rect(ctx, "#f5c542", 12, 3, 10, 3);
+    for (const cx of [12, 16, 20]) rect(ctx, "#f5c542", cx, 1, 2, 2);
+    rect(ctx, "#fff0a8", 12, 3, 10, 1);
+    rect(ctx, "#e05a5a", 16, 4, 2, 1);
   }
 }
 

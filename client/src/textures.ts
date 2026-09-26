@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { drawMascot, drawMascotIcon, mascotSize } from "./mascot";
 import type { PixelSprite } from "./art";
 import {
   astronaut,
@@ -700,10 +701,12 @@ export function buildTextures(scene: Phaser.Scene) {
     if (decorById(id)?.light) canvasTex(scene, `deco_${id}_off`, a.w, a.h, (ctx) => a.draw(ctx, 0, false));
   }
 
-  // Baby clods — the Claude sunburst. Two rotations for a twinkle.
-  canvasTex(scene, "clod_0", 15, 15, (c) => drawSpark(c, 15, 0, true));
-  canvasTex(scene, "clod_1", 15, 15, (c) => drawSpark(c, 15, Math.PI / 8, true));
-  canvasTex(scene, "spark_logo", 24, 24, (c) => drawSpark(c, 24, 0, false));
+  // Baby clods (and the little builders): the Claude Code mascot, two steps of a walk.
+  const one = mascotSize(1);
+  canvasTex(scene, "clod_0", one.w, one.h, (c) => drawMascot(c, 0, 0, 1, { step: 1 }));
+  canvasTex(scene, "clod_1", one.w, one.h, (c) => drawMascot(c, 0, 0, 1, { step: 2 }));
+  const two = mascotSize(2);
+  canvasTex(scene, "spark_logo", two.w, two.h, (c) => drawMascot(c, 0, 0, 2));
 
   canvasTex(scene, "b_player_house", 112, 108, drawManor);
   canvasTex(scene, "b_rabbit_burrow", 112, 96, drawHollow);
@@ -718,10 +721,10 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
   for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
   for (let look = 0; look < WORKER_LOOKS; look++) {
-    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 32, 20, (ctx) => drawWorkerBack(ctx, look, f));
-    canvasTex(scene, `worker_front_${look}`, 32, 20, (ctx) => drawWorkerFront(ctx, look));
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 34, 20, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 34, 18, (ctx) => drawWorkerFront(ctx, look));
   }
-  canvasTex(scene, "office_lead", 32, 24, (ctx) => drawWorkerFront(ctx, 0, true));
+  canvasTex(scene, "office_lead", 34, 24, (ctx) => drawWorkerFront(ctx, 0, true));
   canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
   canvasTex(scene, "office_plant", 18, 26, drawPlant);
   canvasTex(scene, "office_couch", 52, 26, drawCouch);
@@ -753,7 +756,7 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "earth_s", 28, 28, (ctx) => drawEarth(ctx, 28));
   canvasTex(scene, "earth_l", 56, 56, (ctx) => drawEarth(ctx, 56));
   canvasTex(scene, "spark_plaza", 33, 33, (c) => drawSpark(c, 33, 0, false));
-  canvasTex(scene, "clod_icon", 9, 9, (c) => drawSpark(c, 9, 0, false));
+  canvasTex(scene, "clod_icon", 13, 7, (c) => drawMascotIcon(c, 0, 0));
   canvasTex(scene, "dot", 5, 5, (ctx) => disc(ctx, "#ffffff", 2.5, 2.5, 2.5));
   canvasTex(scene, "bang_s", 7, 10, (ctx) => {
     box(ctx, "#f5c542", 0, 0, 7, 10);

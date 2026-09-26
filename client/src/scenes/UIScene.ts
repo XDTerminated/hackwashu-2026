@@ -277,7 +277,7 @@ export class UIScene extends Phaser.Scene {
     const working = store.clods.filter((c) => c.status === "working" || c.status === "stuck").length;
     const clods = ready ? `${ready} ready to pop` : working ? `${working} on the way` : "";
     this.clodIcon.setVisible(!!clods).setX(mx + 2);
-    this.clodCount.setText(clods).setX(this.clodIcon.x + 12);
+    this.clodCount.setText(clods).setX(this.clodIcon.x + this.clodIcon.width + 3);
 
     // The neighbours: a row of heads. Only someone doing something gets a line.
     let x = 11;
