@@ -158,11 +158,14 @@ function hedge(ctx: Ctx, x: number, y: number, w: number, seed: number) {
   }
 }
 
+/** A little brass-and-glass wall lamp by a door. */
 function hangingLantern(ctx: Ctx, x: number, y: number) {
-  rect(ctx, O, x + 1, y, 1, 3);
+  rect(ctx, O, x + 1, y, 1, 2);
+  rect(ctx, O, x - 1, y + 2, 5, 1);
   rect(ctx, O, x - 1, y + 3, 5, 6);
-  rect(ctx, "#f5a05a", x, y + 4, 3, 4);
-  rect(ctx, GOLD_LIGHT, x + 1, y + 5, 1, 2);
+  rect(ctx, "#fff2b0", x, y + 4, 3, 4);
+  rect(ctx, GOLD_LIGHT, x + 1, y + 4, 1, 4);
+  rect(ctx, O, x, y + 9, 3, 1);
 }
 
 function balustrade(ctx: Ctx, x: number, y: number, w: number) {
@@ -259,7 +262,7 @@ export function drawManor(ctx: Ctx) {
   hedge(ctx, 73, 104, 36, 2);
 }
 
-/** The Jade Rabbit's Hollow: a great mossy hill under a blossoming osmanthus. 112 x 96. */
+/** The Jade Rabbit's Hollow: a great mossy hill under a blossoming tree. 112 x 96. */
 export function drawHollow(ctx: Ctx) {
   // the tree grows up behind the hill
   rect(ctx, O, 73, 16, 9, 42);
@@ -324,14 +327,11 @@ export function drawHollow(ctx: Ctx) {
   disc(ctx, GLASS, 56, 80, 2.5);
   rect(ctx, GOLD, 62, 84, 2, 2);
   rect(ctx, STONE.light, 42, 94, 28, 2);
-  // a string of little lanterns from the chimney to the tree
+  // warm fairy lights from the chimney to the tree
   for (let x = 28; x <= 73; x++) {
     const y = Math.round(40 + 7 * Math.sin(((x - 28) / 45) * Math.PI));
     rect(ctx, O, x, y, 1, 1);
-    if ((x - 28) % 7 === 4) {
-      rect(ctx, O, x - 1, y + 1, 3, 4);
-      rect(ctx, (x - 28) % 14 === 4 ? "#d9503f" : GOLD, x, y + 2, 1, 2);
-    }
+    if ((x - 28) % 5 === 2) rect(ctx, (x - 28) % 10 === 2 ? "#fff2b0" : GOLD_LIGHT, x, y + 1, 1, 1);
   }
   // herb garden, mortar and pestle, carrots, mushrooms
   rect(ctx, O, 2, 88, 18, 7);

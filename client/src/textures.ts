@@ -10,14 +10,15 @@ import {
   rocket,
 } from "./art";
 import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
-import { ICON_SPRITES, VILLAGER_ICONS } from "./icons";
+import { ICON_SPRITES, MATERIAL_ICONS, VILLAGER_ICONS } from "./icons";
 import { decorById } from "../../shared/decor";
-import { drawMailbox, drawPlot } from "./buildings";
+import { drawMailbox, drawPlot, drawRuins, drawFoundation, drawRubble } from "./buildings";
 import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawLaunchComplex, drawManor } from "./estate";
 import { SPOTS, TILE, buildingTiles } from "./layout";
 import type { BuildingId, VillagerId } from "../../shared/game";
 import { type Ctx, INK, box, disc, hash, rect } from "./pix";
 import { PORTRAIT, drawPortrait, drawPortraitSky, type PortraitFrame } from "./portraits";
+import { ROOM_H, ROOM_W, WORKER_LOOKS, drawCoffee, drawCouch, drawDesk, drawOfficeTower, drawPlant, drawRoom, drawWorkerBack, drawWorkerFront } from "./officeart";
 
 const CORAL = "#d97757";
 const CORAL_DARK = "#b85c3e";
@@ -254,6 +255,25 @@ function drawGrounds(ctx: Ctx, w: number, h: number) {
   }
 }
 
+/** A Moon Shard: a glowing crystal splinter with a twinkle that moves (12 x 16). */
+function drawShard(ctx: Ctx, f: number) {
+  const pts: [number, number, string][] = [];
+  for (let y = 1; y < 15; y++) {
+    const half = y < 8 ? Math.round((y / 7) * 4) : Math.round(((15 - y) / 7) * 4);
+    for (let x = 6 - half; x <= 6 + half; x++) pts.push([x, y, x < 6 ? "#d7fbff" : x === 6 ? "#8ff0f0" : "#4fc4d8"]);
+  }
+  for (const [x, y] of pts) rect(ctx, INK, x - 1, y, 3, 1);
+  for (const [x, y] of pts) rect(ctx, INK, x, y - 1, 1, 3);
+  for (const [x, y, c] of pts) rect(ctx, c, x, y, 1, 1);
+  rect(ctx, "#b7a4f0", 7, 9, 2, 3);
+  const tw = [[4, 4], [8, 6], [5, 10]][f];
+  rect(ctx, "#ffffff", tw[0], tw[1], 1, 1);
+  if (f === 1) {
+    rect(ctx, "#ffffff", 10, 1, 1, 3);
+    rect(ctx, "#ffffff", 9, 2, 3, 1);
+  }
+}
+
 // ---------------------------------------------------------------- moon rocks
 
 const MOONROCK = { deep: "#4f4862", dark: "#6f6880", base: "#9a93a8", light: "#bdb6cb", hi: "#d8d2e2" };
@@ -361,7 +381,7 @@ function drawRockArch(ctx: Ctx) {
   for (const [x, y] of [[8, 30], [44, 28], [22, 6]]) rect(ctx, "#6fe3e1", x, y, 1, 1);
 }
 
-/** An ornate plaza lamppost with a coral banner (14 x 30). */
+/** An ornate plaza lamppost (14 x 30). */
 function drawGrandLamp(ctx: Ctx) {
   rect(ctx, INK, 4, 26, 7, 4);
   rect(ctx, "#5b5470", 5, 27, 5, 2);
@@ -374,14 +394,6 @@ function drawGrandLamp(ctx: Ctx) {
   rect(ctx, "#bff6f4", 4, 2, 7, 5);
   rect(ctx, "#6fe3e1", 5, 4, 5, 2);
   rect(ctx, "#f5c542", 5, 0, 5, 1);
-  // banner on a side arm
-  rect(ctx, INK, 8, 9, 5, 1);
-  rect(ctx, INK, 9, 10, 5, 10);
-  rect(ctx, CORAL, 10, 10, 3, 8);
-  rect(ctx, "#f5c542", 10, 12, 3, 1);
-  rect(ctx, INK, 11, 18, 1, 2);
-  rect(ctx, CORAL, 10, 18, 1, 1);
-  rect(ctx, CORAL, 12, 18, 1, 1);
 }
 
 /** The ship you arrived in, drawn at native size (twice a person's height). */
@@ -503,6 +515,7 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "portrait_sky", PORTRAIT + 8, PORTRAIT + 8, (ctx) => drawPortraitSky(ctx, PORTRAIT + 8));
   for (const [name, sprite] of Object.entries(ICON_SPRITES)) registerSprite(scene, `icon_${name}`, sprite);
   for (const [v, sprite] of Object.entries(VILLAGER_ICONS)) registerSprite(scene, `vicon_${v}`, sprite);
+  for (const [m, sprite] of Object.entries(MATERIAL_ICONS)) registerSprite(scene, `mat_${m}`, sprite);
   canvasTex(scene, "task_lantern", 16, 26, drawStoneLantern);
   for (const id of DECOR_ART_IDS) {
     const a = decorArt(id)!;
@@ -523,18 +536,35 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "b_rocket_pad", 112, 132, drawLaunchComplex);
   canvasTex(scene, "b_observatory", 112, 124, drawGrandObservatory);
   canvasTex(scene, "b_library", 128, 120, drawGrandLibrary);
+  canvasTex(scene, "b_office", 128, 156, drawOfficeTower);
+  // The office interior.
+  canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
+  for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
+  for (let look = 0; look < WORKER_LOOKS; look++) {
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 20, 26, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 16, 26, (ctx) => drawWorkerFront(ctx, look));
+  }
+  canvasTex(scene, "office_lead", 16, 26, (ctx) => drawWorkerFront(ctx, 4, true));
+  canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
+  canvasTex(scene, "office_plant", 18, 26, drawPlant);
+  canvasTex(scene, "office_couch", 52, 26, drawCouch);
   // A staked plot per building, the size of its footprint, and its formal grounds.
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     const t = buildingTiles(b);
     if (b !== "mailbox") canvasTex(scene, `grounds_${b}`, (t.w + 4) * TILE, 44, (ctx) => drawGrounds(ctx, (t.w + 4) * TILE, 44));
     canvasTex(scene, `plot_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawPlot(ctx, t.w * TILE, t.h * TILE + 16));
+    // A neighbor's lot: the old ruin, then the repaired foundation.
+    canvasTex(scene, `ruins_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawRuins(ctx, t.w * TILE, t.h * TILE + 16));
+    canvasTex(scene, `foundation_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawFoundation(ctx, t.w * TILE, t.h * TILE + 16));
   }
+  for (const v of [0, 1]) canvasTex(scene, `rubble_${v}`, 16, 12, (ctx) => drawRubble(ctx, v));
 
   canvasTex(scene, "ship", 28, 57, drawShip);
   for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f));
   canvasTex(scene, "obelisk", 18, 58, drawObelisk);
   canvasTex(scene, "topiary", 16, 24, drawTopiary);
   canvasTex(scene, "plaza_garden", 44, 24, drawPlazaGarden);
+  for (const f of [0, 1, 2]) canvasTex(scene, `shard_${f}`, 12, 16, (ctx) => drawShard(ctx, f));
   for (const v of [0, 1, 2]) {
     canvasTex(scene, `rock_small_${v}`, 20, 15, (ctx) => drawRockSmall(ctx, v));
     canvasTex(scene, `rock_big_${v}`, 36, 26, (ctx) => drawRockBig(ctx, v));
@@ -685,6 +715,10 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("walk-up", ["astro_4", "astro_3", "astro_5", "astro_3"], 8);
   mk("walk-side", ["astro_7", "astro_6", "astro_8", "astro_6"], 8);
   mk("clod-twinkle", ["clod_0", "clod_1"], 4);
+  mk("desk-coding", ["desk_code0", "desk_code1", "desk_code2"], 3);
+  mk("desk-thinking", ["desk_think0", "desk_think1", "desk_think2"], 2);
+  for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
+  mk("shard-twinkle", ["shard_0", "shard_1", "shard_2", "shard_1"], 4);
   mk("plaza-fountain", ["plaza_fountain_0", "plaza_fountain_1", "plaza_fountain_2"], 4);
   mk("jade_rabbit-idle", ["rabbit_0", "rabbit_1"], 1.5);
   mk("postmaster-idle", ["postmaster_0", "postmaster_0", "postmaster_0", "postmaster_1"], 2);

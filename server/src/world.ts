@@ -1,7 +1,8 @@
 // Authoritative colony state + event bus. Persisted to server/data/world.json
 // so agents keep working (and their results keep waiting) while the game is closed.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { DATA_DIR, HOSTED } from "./env.js";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,11 +11,14 @@ import {
   type BuildingId,
   type Chore,
   type Clod,
+  type ColonyRequest,
   type Deco,
   type GameEvent,
   type Lantern,
+  MOVE_INS,
+  type Materials,
   type Progress,
-  QUESTS,
+  currentMoveIn,
   type SeqEvent,
   type Snapshot,
   type VillagerId,
@@ -22,10 +26,10 @@ import {
 } from "../../shared/game.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
-import { SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockRect, rockSpots, type Rect } from "../../shared/layout.js";
+import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockKey, rockRect, rockSpots, shardKey, shardSpots, type Rect, type RockKind } from "../../shared/layout.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = join(here, "..", "data", "world.json");
+const DATA_FILE = join(DATA_DIR, "world.json");
 
 const SAVE_VERSION = 2;
 
@@ -42,12 +46,17 @@ export interface VillagerMemory {
 interface World {
   version: number;
   coins: number;
+  /** What you've collected around the island, for repairs. */
+  materials: Materials;
   chores: Record<string, Chore>;
   /** Phones linked over iMessage, keyed by E.164 number. */
   phones: Record<string, { phone: string; linkedAt: number; photonUserId?: string; line?: string }>;
   choreOptIn: Partial<Record<VillagerId, boolean>>;
   memory: Partial<Record<VillagerId, VillagerMemory>>;
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
+  clearedRocks: string[];
+  shards: string[];
+  requests: { day: string; list: ColonyRequest[]; v?: number };
   lastChoreAt: Partial<Record<VillagerId, number>>;
   progress: Progress;
   buildings: Partial<Record<BuildingId, boolean>>;
@@ -65,21 +74,28 @@ const idle = (): VillagerState => ({ status: "idle", activity: "relaxing" });
 function freshWorld(): World {
   const buildings: Partial<Record<BuildingId, boolean>> = {};
   for (const b of Object.values(BUILDINGS)) if (b.starter) buildings[b.id] = true;
-  const progress: Progress = { quest: 0, count: 0, revealed: Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), sandbox: {} };
-  // Demo prep / testing: everything built and revealed, on the last quest.
+  // The first lot (Hoot's) is there from the start, in ruins.
+  const progress: Progress = { revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office", MOVE_INS[0].home], sandbox: {}, movedIn: [], lots: {} };
+  // Online, people come to see their coding agents: the Office is open from day one.
+  if (HOSTED) buildings.office = true;
+  // Demo prep / testing: everything built and revealed, everyone home.
   if (process.env.UNLOCK_ALL === "1") {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
     progress.revealed = Object.values(BUILDINGS).map((b) => b.id);
-    progress.quest = QUESTS.length - 1;
+    everyoneHome(progress);
   }
   return {
     version: SAVE_VERSION,
     coins: 50,
+    materials: { moonstone: 0, stardust: 0, shard: 0 },
     chores: {},
     phones: {},
     choreOptIn: {},
     memory: {},
     layout: {},
+    clearedRocks: [],
+    shards: [],
+    requests: { day: "", list: [] },
     lastChoreAt: {},
     progress,
     buildings,
@@ -107,6 +123,29 @@ function load(file = DATA_FILE): World {
     w.choreOptIn ??= {};
     w.memory ??= {};
     w.layout ??= {};
+    w.clearedRocks ??= [];
+    w.shards ??= [];
+    w.requests ??= { day: "", list: [] };
+    w.materials ??= { moonstone: 0, stardust: 0, shard: 0 };
+    // Saves from the old quest chain: whoever had a house then has moved in
+    // (their lot counts as cleared and repaired). The quest counters go.
+    if (!Array.isArray(w.progress.movedIn)) {
+      const old = w.progress as Progress & { quest?: number; count?: number };
+      w.progress.movedIn = MOVE_INS.filter((m) => w.buildings[m.home]).map((m) => m.villager);
+      w.progress.lots = {};
+      for (const m of MOVE_INS) if (w.buildings[m.home]) w.progress.lots[m.home] = { cleared: [...Array(m.rubble).keys()], repaired: true };
+      delete old.quest;
+      delete old.count;
+    }
+    w.progress.lots ??= {};
+    // The lot being worked on is always on the map.
+    const next = currentMoveIn(w.progress);
+    if (next && !w.progress.revealed.includes(next.home)) w.progress.revealed.push(next.home);
+    // The old brief-a-project Office kept its projects in the save; the Office
+    // is a live view of your coding agents now, with nothing to save.
+    delete (w as { office?: unknown }).office;
+    // The office is open to everyone from the start (a plot to build).
+    if (!w.progress.revealed.includes("office")) w.progress.revealed.push("office");
     w.decos.forEach((d, i) => (d.id ??= `deco_old${i}`));
     w.lastChoreAt ??= {};
     // Anything mid-flight when the server stopped can't resume — its agent loop is gone.
@@ -123,7 +162,14 @@ function load(file = DATA_FILE): World {
     }
     return w;
   } catch (err) {
-    console.error("[world] couldn't read save, starting fresh:", err);
+    // Keep the unreadable file for recovery instead of overwriting it.
+    const aside = `${file}.bad-${Date.now()}`;
+    try {
+      renameSync(file, aside);
+    } catch {
+      /* nothing to move */
+    }
+    console.error(`[world] couldn't read save (kept it as ${aside}), starting fresh:`, err);
     return freshWorld();
   }
 }
@@ -135,19 +181,25 @@ applyLayout(world.layout);
 // A separate showcase save with everything unlocked. Switching never touches
 // the real save: it's written out first, and switching back reloads it as-is.
 
-const DEV_FILE = join(here, "..", "data", "world-dev.json");
+const DEV_FILE = join(DATA_DIR, "world-dev.json");
 let saveFile = DATA_FILE;
 
 export function isDevWorld() {
   return saveFile === DEV_FILE;
 }
 
-/** Everything built and revealed, every quest done, sample data so every villager moves in, coins to spend. */
+/** Every lot cleared and repaired, everyone moved in. */
+function everyoneHome(p: Progress) {
+  p.movedIn = MOVE_INS.map((m) => m.villager);
+  for (const m of MOVE_INS) p.lots[m.home] = { cleared: [...Array(m.rubble).keys()], repaired: true };
+}
+
+/** Everything built and revealed, everyone moved in, sample data so they all work, coins and materials to spend. */
 function showcase(w: World): World {
   for (const b of Object.keys(BUILDINGS) as BuildingId[]) w.buildings[b] = true;
   w.progress.revealed = Object.keys(BUILDINGS) as BuildingId[];
-  w.progress.quest = QUESTS.length;
-  w.progress.count = 0;
+  everyoneHome(w.progress);
+  w.materials = { moonstone: 99, stardust: 99, shard: 12 };
   w.progress.sandbox = { ...w.progress.sandbox, google: true, canvas: true };
   w.coins = Math.max(w.coins, 5000);
   for (const a of Object.values(w.approvals)) if (a.status === "pending") a.status = "denied";
@@ -169,11 +221,18 @@ export function switchWorld(dev: boolean): boolean {
   return true;
 }
 
+/** Write to a temp file and rename, so a crash mid-write can't leave half a save. */
+function writeSave() {
+  mkdirSync(dirname(saveFile), { recursive: true });
+  const tmp = `${saveFile}.tmp`;
+  writeFileSync(tmp, JSON.stringify(world));
+  renameSync(tmp, saveFile);
+}
+
 function flushSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
-  mkdirSync(dirname(saveFile), { recursive: true });
-  writeFileSync(saveFile, JSON.stringify(world));
+  writeSave();
 }
 
 let saveTimer: NodeJS.Timeout | null = null;
@@ -182,8 +241,7 @@ function persist() {
   saveTimer = setTimeout(() => {
     saveTimer = null;
     try {
-      mkdirSync(dirname(saveFile), { recursive: true });
-      writeFileSync(saveFile, JSON.stringify(world));
+      writeSave();
     } catch (err) {
       console.error("[world] save failed:", err);
     }
@@ -218,6 +276,7 @@ export function snapshot(): Snapshot {
     lastSeq: world.seq,
     phoneLinked: false,
     progress: world.progress,
+    materials: world.materials,
     // filled in by services.ts, which knows about connected accounts
     connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
     residents: [],
@@ -227,6 +286,9 @@ export function snapshot(): Snapshot {
     friendship: Object.fromEntries(Object.entries(world.memory).map(([v, m]) => [v, m!.points])),
     layout: world.layout,
     devMode: isDevWorld(),
+    clearedRocks: world.clearedRocks,
+    shards: world.shards,
+    requests: world.requests.list,
   };
 }
 
@@ -255,7 +317,7 @@ export function addLantern(l: Lantern) {
 }
 
 export function popClod(clodId: string): { ok: true; reward: number } | { ok: false; reason: string } {
-  const c = world.clods[clodId];
+  const c = typeof clodId === "string" && Object.hasOwn(world.clods, clodId) ? world.clods[clodId] : undefined;
   if (!c) return { ok: false, reason: "no such clod" };
   if (c.status !== "ready" && c.status !== "failed") return { ok: false, reason: `clod is ${c.status}` };
   const reward = c.status === "ready" ? c.reward : 1;
@@ -317,8 +379,59 @@ export function occupied(except?: { building?: BuildingId; deco?: string; lanter
     const p = lanternAt(l, i);
     out.push(footprint(p.x, p.y, 1, 1));
   });
-  for (const r of rockSpots(decoRects())) out.push(rockRect(r));
+  for (const r of rockSpots(decoRects(), world.clearedRocks)) out.push(rockRect(r));
+  const found = new Set(world.shards);
+  for (const p of shardSpots()) if (!found.has(shardKey(p))) out.push(footprint(p.x, p.y, 1, 1));
   return out;
+}
+
+/**
+ * What turns up under a rock. Crystal outcrops always pay, arches usually
+ * do, so clearing is a little gamble (sometimes a big win).
+ */
+const LOOT: Record<RockKind, { chance: number; min: number; max: number; what: string }> = {
+  small: { chance: 0.3, min: 5, max: 15, what: "a few moon pennies" },
+  big: { chance: 0.5, min: 10, max: 45, what: "a geode" },
+  spire: { chance: 0.55, min: 15, max: 50, what: "an old probe part" },
+  crystal: { chance: 1, min: 20, max: 90, what: "raw moon-crystal" },
+  arch: { chance: 0.75, min: 30, max: 130, what: "a fossilized meteorite" },
+};
+
+/** Clear a rock away for good: it breaks into moonstone (and sometimes a find). */
+export function clearRock(x: number, y: number): { ok: true; stone: number; loot?: { coins: number; what: string } } | { ok: false; reason: string } {
+  const rock = rockSpots(decoRects(), world.clearedRocks).find((r) => r.x === x && r.y === y);
+  if (!rock) return { ok: false, reason: "There's no rock there." };
+  world.clearedRocks.push(rockKey(rock));
+  const stone = ROCK_STONE[rock.kind];
+  world.materials.moonstone += stone;
+  const l = LOOT[rock.kind];
+  let loot: { coins: number; what: string } | undefined;
+  if (Math.random() < l.chance) {
+    loot = { coins: Math.round(l.min + Math.random() * (l.max - l.min)), what: l.what };
+    world.coins += loot.coins;
+  }
+  persist();
+  return { ok: true, stone, ...(loot ? { loot } : {}) };
+}
+
+/** Pick up a Moon Shard (each spot once); finding them all pays a bonus. */
+/** Shards found, counting only ones that are still on the map (old saves may hold stale keys). */
+export function shardsFound() {
+  const found = new Set(world.shards);
+  return shardSpots().filter((p) => found.has(shardKey(p))).length;
+}
+
+export function collectShard(x: number, y: number): { ok: true; reward: number; bonus?: number } | { ok: false } {
+  const spot = shardSpots().find((p) => p.x === x && p.y === y);
+  if (!spot || world.shards.includes(shardKey(spot))) return { ok: false };
+  world.shards.push(shardKey(spot));
+  world.coins += SHARD_REWARD;
+  // Found for good (the beacon counts them), and one to spend on repairs.
+  world.materials.shard += 1;
+  const bonus = shardsFound() === SHARD_COUNT ? SHARD_BONUS : undefined;
+  if (bonus) world.coins += bonus;
+  persist();
+  return { ok: true, reward: SHARD_REWARD, ...(bonus ? { bonus } : {}) };
 }
 
 /** Task lanterns can be moved (but not sold: they're earned). */

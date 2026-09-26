@@ -1,17 +1,27 @@
 // The line between the game and the player's real accounts. Every read or
 // write goes through here: live account if connected, labeled sample data if
-// the player chose "use sandbox for now". Also owns who has moved in and the
-// quest chain that unlocks them.
+// the player chose "use sandbox for now". Also owns who has moved in: each
+// neighbor's lot is a ruin to clear, repair, build on and decorate.
 
 import {
   BUILDINGS,
-  QUESTS,
-  VILLAGER_HOME,
+  MATERIALS,
+  MATERIAL_NAME,
+  MATERIAL_SOURCE,
+
   VILLAGER_SERVICE,
+  currentMoveIn,
+  moveInAt,
+  type BuildingId,
   type Connections,
+  type Material,
+  type Materials,
+  type MoveInDef,
   type Service,
   type VillagerId,
 } from "../../shared/game.js";
+import { happinessFor } from "../../shared/decor.js";
+import { nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
 import * as google from "./connectors/google.js";
 import * as sandbox from "./sandbox.js";
@@ -54,10 +64,16 @@ export function sourceOf(service: Service): Source {
 
 const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar"];
 
+/** Yutu and Nova were here first; everyone else moves in once their lot's checklist is done. */
 export function isResident(v: VillagerId): boolean {
-  if (v === "jade_rabbit") return true; // the guide is always home
+  if (v === "jade_rabbit" || v === "stargazer") return true;
+  return world.progress.movedIn.includes(v);
+}
+
+/** Moved in, but their account isn't connected (and no sample data chosen): they can't work yet. */
+export function needsConnect(v: VillagerId): Service | null {
   const service = VILLAGER_SERVICE[v];
-  return owns(VILLAGER_HOME[v]) && (!service || service === "web" || ready(service));
+  return service && service !== "web" && isResident(v) && !ready(service) ? service : null;
 }
 
 export function residents(): VillagerId[] {
@@ -94,51 +110,131 @@ export function announceConnections() {
 export function chooseSandbox(service: Service) {
   world.progress.sandbox[service] = true;
   savePersist();
-  checkArrivals();
+  emit({ type: "sandbox", sandbox: { ...world.progress.sandbox } });
+  announceConnections();
 }
 
-// ---------------------------------------------------------------- quests
+// ---------------------------------------------------------------- moving in
 
-function reveal(b: keyof typeof BUILDINGS) {
+function reveal(b: BuildingId) {
   if (world.progress.revealed.includes(b)) return;
   world.progress.revealed.push(b);
   savePersist();
   emit({ type: "plot_revealed", building: b });
 }
 
-function advance(amount: number) {
-  const q = QUESTS[world.progress.quest];
-  if (!q) return;
-  world.progress.count += amount;
-  if (world.progress.count < q.goal) {
-    emit({ type: "quest", progress: world.progress, coins: world.coins });
-    return;
-  }
-  world.progress.quest += 1;
-  world.progress.count = 0;
-  world.coins += q.bonus;
-  for (const b of q.reveals) reveal(b);
+/** Tell the game: lots, materials and coins (and what was just picked up, and where). */
+export function announceProgress(gained?: Partial<Materials>, at?: { x: number; y: number }) {
+  emit({ type: "progress", progress: world.progress, materials: { ...world.materials }, coins: world.coins, ...(gained ? { gained } : {}), ...(at ? { at } : {}) });
+}
+
+/** Picked something up (sweeping, a meteor rock, ...). */
+export function gain(what: Partial<Materials>, at?: { x: number; y: number }) {
+  for (const m of MATERIALS) world.materials[m] += what[m] ?? 0;
   savePersist();
-  emit({ type: "quest", progress: world.progress, completed: q.id, story: q.story, bonus: q.bonus, coins: world.coins });
+  announceProgress(what, at);
 }
 
-/** Dev/demo prep: finish the current quest outright. */
-export function devCompleteQuest() {
-  const q = QUESTS[world.progress.quest];
-  if (q) advance(q.goal - world.progress.count);
+const lotOf = (d: MoveInDef) => (world.progress.lots[d.home] ??= { cleared: [], repaired: false });
+
+/** The lot you can work on: revealed and not yet anyone's home. */
+function workable(b: BuildingId): MoveInDef | null {
+  const d = moveInAt(b);
+  if (!d || !world.progress.revealed.includes(b) || world.progress.movedIn.includes(d.villager)) return null;
+  return d;
 }
 
-/** A villager finished a task the player gave them. */
-export function onTaskDone(v: VillagerId, delegatedTo: Set<VillagerId>) {
-  const q = QUESTS[world.progress.quest];
-  if (!q || q.villager !== v) return;
-  if (q.counts.teamTask ? delegatedTo.size >= 2 : !q.counts.tool) advance(1);
+export function clearRubble(b: BuildingId, index: number): string | null {
+  const d = workable(b);
+  if (!d) return "There's nothing to clear there.";
+  const lot = lotOf(d);
+  if (!Number.isInteger(index) || index < 0 || index >= d.rubble || lot.cleared.includes(index)) return null;
+  lot.cleared.push(index);
+  world.materials.moonstone += 1;
+  savePersist();
+  announceProgress({ moonstone: 1 });
+  return null;
 }
 
-/** A tool succeeded. */
-export function onToolOk(v: VillagerId, tool: string) {
-  const q = QUESTS[world.progress.quest];
-  if (q && q.villager === v && q.counts.tool === tool) advance(1);
+/** What's still missing for a repair ("2 more stardust (sweep moondust drifts)"), or null. */
+export function missingFor(needs: Partial<Materials>): string | null {
+  const short = MATERIALS.filter((m) => (needs[m] ?? 0) > world.materials[m]);
+  if (!short.length) return null;
+  return short.map((m) => `${(needs[m] ?? 0) - world.materials[m]} more ${MATERIAL_NAME[m]} (${MATERIAL_SOURCE[m]})`).join(", ");
+}
+
+export function repairLot(b: BuildingId): string | null {
+  const d = workable(b);
+  if (!d) return "There's nothing to repair there.";
+  const lot = lotOf(d);
+  if (lot.repaired) return null;
+  if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
+  const missing = missingFor(d.repair);
+  if (missing) return `The foundation needs ${missing}.`;
+  for (const m of MATERIALS) world.materials[m as Material] -= d.repair[m] ?? 0;
+  lot.repaired = true;
+  savePersist();
+  announceProgress();
+  return null;
+}
+
+/** Why a house can't be built yet (its lot isn't ready), or null. */
+export function lotBlocker(b: BuildingId): string | null {
+  const d = moveInAt(b);
+  if (!d || world.progress.movedIn.includes(d.villager)) return null;
+  const lot = lotOf(d);
+  if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
+  if (!lot.repaired) return "Repair the old foundation first.";
+  return null;
+}
+
+/** Different things this neighbor loves, in their yard. */
+export function lovedInYard(v: VillagerId) {
+  return happinessFor(v, world.decos).items.filter((i) => i.loved).length;
+}
+
+/** After building or decorating: is the next neighbor's home ready? Then they move in. */
+export function checkMoveIn() {
+  const d = currentMoveIn(world.progress);
+  if (!d || !owns(d.home) || lovedInYard(d.villager) < d.loves) return;
+  world.progress.movedIn.push(d.villager);
+  world.coins += d.gift;
+  const next = currentMoveIn(world.progress);
+  if (d.villager === "postmaster") reveal("rocket_pad");
+  if (next) reveal(next.home);
+  savePersist();
+  const now = residents();
+  lastResidents = new Set(now);
+  emit({ type: "villager_arrived", villager: d.villager, residents: now, rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift: d.gift, next: next?.villager ?? null });
+  announceProgress();
+}
+
+/** Dev/demo prep: finish the current lot outright (materials, house, a loved decoration's worth). */
+export function devMoveIn() {
+  const d = currentMoveIn(world.progress);
+  if (!d) return;
+  world.progress.lots[d.home] = { cleared: [...Array(d.rubble).keys()], repaired: true };
+  world.buildings[d.home] = true;
+  if (d.home === "post_office") world.buildings.mailbox = true;
+  world.progress.movedIn.push(d.villager);
+  const next = currentMoveIn(world.progress);
+  if (d.villager === "postmaster") reveal("rocket_pad");
+  if (next) reveal(next.home);
+  savePersist();
+  lastResidents = new Set(residents());
+  emit({ type: "building_built", building: d.home, coins: world.coins });
+  emit({ type: "villager_arrived", villager: d.villager, residents: residents(), rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift: 0, next: next?.villager ?? null });
+  announceProgress();
+}
+
+export function devMaterials() {
+  gain({ moonstone: 10, stardust: 10, shard: 3 });
+}
+
+/** The next step for the lot being worked on, in words (for Yutu's prompt). */
+export function nextStep(): string {
+  const n = sharedNextStep({ progress: world.progress, materials: world.materials, buildings: world.buildings, coins: world.coins, decos: world.decos });
+  return n ? `${n.step.text} (for ${BUILDINGS[n.def.home].name}).` : "Everyone is home.";
 }
 
 // ---------------------------------------------------------------- data access

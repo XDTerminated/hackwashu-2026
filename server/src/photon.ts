@@ -16,7 +16,7 @@
 
 import { Spectrum } from "spectrum-ts";
 import { imessage, terminal } from "spectrum-ts/providers";
-import { VILLAGER_NAMES, type VillagerId } from "../../shared/game.js";
+import { VILLAGER_NAMES, VILLAGER_ROLE, VILLAGER_SHORT, type VillagerId } from "../../shared/game.js";
 import { lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
 import { registerSharedUser, textUsLink } from "./connectors/photonUsers.js";
@@ -138,21 +138,24 @@ const NO = /^\s*(n|no|nope|nah|stop|cancel|deny|don'?t|👎)\s*[.!]*\s*$/i;
 
 /** One number for the whole colony, so every text says who it's from. */
 const SIGNATURE: Record<VillagerId, string> = {
-  jade_rabbit: "🐇 Jade Rabbit",
-  stargazer: "🔭 Stargazer",
-  postmaster: "🦉 Postmaster",
-  timekeeper: "⏰ Timekeeper",
-  scholar: "🎓 Scholar",
+  jade_rabbit: "🐇 Yutu",
+  stargazer: "🔭 Nova",
+  postmaster: "🦉 Hoot",
+  timekeeper: "⏰ Cog",
+  scholar: "🎓 Mabel",
 };
 
-/** "Stargazer: ...", "@postmaster ...", "timekeeper, ..." → that villager + the rest. */
+/** "Nova: ...", "@stargazer ...", "hoot, ..." → that villager + the rest (by name or by role). */
 function route(text: string): { villager: VillagerId; text: string } {
-  const m = /^\s*@?\s*(jade rabbit|rabbit|stargazer|postmaster|timekeeper|scholar)\b[\s:,\-—]*(.*)$/is.exec(text);
-  if (m && m[2].trim()) {
-    const name = m[1].toLowerCase();
-    const villager = (name.includes("rabbit") ? "jade_rabbit" : name) as VillagerId;
-    return { villager, text: m[2].trim() };
+  const who = new Map<string, VillagerId>();
+  for (const v of Object.keys(VILLAGER_SHORT) as VillagerId[]) {
+    who.set(VILLAGER_SHORT[v].toLowerCase(), v);
+    who.set(VILLAGER_ROLE[v].toLowerCase(), v);
   }
+  who.set("rabbit", "jade_rabbit");
+  const names = [...who.keys()].sort((a, b) => b.length - a.length).join("|");
+  const m = new RegExp(`^\\s*@?\\s*(${names})\\b[\\s:,\\-—]*(.*)$`, "is").exec(text);
+  if (m && m[2].trim()) return { villager: who.get(m[1].toLowerCase())!, text: m[2].trim() };
   return { villager: "jade_rabbit", text };
 }
 
@@ -193,7 +196,7 @@ export async function startPhoton(): Promise<boolean> {
 
   onEvent((e) => {
     if (e.type === "villager_arrived" && e.villager !== "jade_rabbit") {
-      void textPlayer(`${SIGNATURE[e.villager]} just landed on the Moon! Text "${VILLAGER_NAMES[e.villager]}: hi" to say hello.`);
+      void textPlayer(`${SIGNATURE[e.villager]} just landed on the Moon! Text "${VILLAGER_SHORT[e.villager]}: hi" to say hello.`);
     } else if (e.type === "approval_needed") {
       // Every "!" in the village also buzzes the player's phone.
       const body = e.approval.body.length > 280 ? e.approval.body.slice(0, 277) + "…" : e.approval.body;
@@ -234,13 +237,13 @@ export async function startPhoton(): Promise<boolean> {
 
         if (/^\s*(help|\?|who)\s*[?!.]*\s*$/i.test(text)) {
           const here = residents().map((v) => VILLAGER_NAMES[v]).join(", ");
-          await say(space, `🌙 Moon Village. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Stargazer: how was stargazing?" — anything else goes to the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
+          await say(space, `🌙 Moon Village. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
           continue;
         }
 
         const { villager, text: task } = route(text);
         if (!isResident(villager)) {
-          await say(space, `🌙 The ${VILLAGER_NAMES[villager]} hasn't moved in yet — build their home in the colony first. Text "help" to see who's here.`);
+          await say(space, `🌙 ${VILLAGER_NAMES[villager]} hasn't moved in yet — build their home in the colony first. Text "help" to see who's here.`);
           continue;
         }
         const reply = await app!.responding(space, () => chatText(villager, task, "phone"));

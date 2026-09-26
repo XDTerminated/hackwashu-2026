@@ -11,7 +11,8 @@ export type BuildingId =
   | "clock_tower"
   | "rocket_pad"
   | "library"
-  | "observatory";
+  | "observatory"
+  | "office";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -24,25 +25,139 @@ export interface BuildingDef {
   unlocks: string;
 }
 
-/** Buildings the quest chain reveals are free — you can never be too broke to progress. */
+/** Houses cost coins (from your neighbors' work and keeping the colony tidy); the rest are gifts. */
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   player_house: { id: "player_house", name: "Your House", price: 0, starter: true, unlocks: "where villagers bring letters that need your OK" },
-  rabbit_burrow: { id: "rabbit_burrow", name: "Rabbit's Burrow", price: 0, starter: true, resident: "jade_rabbit", unlocks: "Jade Rabbit: your guide, and later the one who coordinates everyone" },
-  observatory: { id: "observatory", name: "Observatory", price: 0, starter: true, resident: "stargazer", unlocks: "Stargazer: researches anything on the web" },
-  post_office: { id: "post_office", name: "Post Office", price: 0, starter: false, resident: "postmaster", unlocks: "Postmaster: reads your Gmail and drafts replies" },
+  rabbit_burrow: { id: "rabbit_burrow", name: "Rabbit's Burrow", price: 0, starter: true, resident: "jade_rabbit", unlocks: "Yutu the Jade Rabbit: your guide, and later the one who coordinates everyone" },
+  observatory: { id: "observatory", name: "Observatory", price: 0, starter: true, resident: "stargazer", unlocks: "Nova the Stargazer: researches anything on the web" },
+  post_office: { id: "post_office", name: "Post Office", price: 30, starter: false, resident: "postmaster", unlocks: "Hoot the Postmaster: reads your Gmail and drafts replies" },
   mailbox: { id: "mailbox", name: "Mailbox", price: 0, starter: false, unlocks: "read & summarize email (comes with the Post Office)" },
-  clock_tower: { id: "clock_tower", name: "Clock Tower", price: 0, starter: false, resident: "timekeeper", unlocks: "Timekeeper: checks and books your Google Calendar" },
-  library: { id: "library", name: "Library", price: 0, starter: false, resident: "scholar", unlocks: "Scholar: reads your Canvas courses, assignments and announcements" },
-  rocket_pad: { id: "rocket_pad", name: "Rocket Pad", price: 0, starter: false, unlocks: "lets the Postmaster send mail to Earth (with your OK)" },
+  clock_tower: { id: "clock_tower", name: "Clock Tower", price: 60, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
+  library: { id: "library", name: "Library", price: 90, starter: false, resident: "scholar", unlocks: "Mabel the Scholar: reads your Canvas courses, assignments and announcements" },
+  rocket_pad: { id: "rocket_pad", name: "Rocket Pad", price: 0, starter: false, unlocks: "lets Hoot the Postmaster send mail to Earth (with your OK)" },
+  office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk" },
 };
 
-export const VILLAGER_NAMES: Record<VillagerId, string> = {
+// ---------------------------------------------------------------- the office
+// A live view of your coding agents. The server reads Claude Code's session
+// logs (and events other tools POST to /agents/event): the main session is the
+// team lead, and every sub-agent it spins up is a worker at a desk. Watching
+// only: nothing here steers the agents.
+
+export type AgentStatus = "thinking" | "working" | "waiting" | "done" | "failed";
+
+export interface AgentFeedItem {
+  at: number;
+  /** think = its reasoning, say = what it wrote, tool = a tool call, result = what came back, prompt = its instructions / your message */
+  kind: "think" | "say" | "tool" | "result" | "error" | "prompt";
+  text: string;
+}
+
+export interface AgentInfo {
+  id: string;
+  /** A sub-agent's task description ("Audit server bugs"); "Claude" for the lead. */
+  name: string;
+  /** Its agent type (general-purpose, Explore, ...), or "main" for the lead. */
+  kind: string;
+  /** 1 = sent out by the lead, 2 = by one of its helpers, ... */
+  depth: number;
+  parent: string | null;
+  status: AgentStatus;
+  /** What it's doing right now, in a few words. */
+  now: string;
+  model: string;
+  startedAt: number;
+  lastAt: number;
+  doneAt?: number;
+  /** Tool calls so far. */
+  tools: number;
+  /** Output tokens so far. */
+  tokens: number;
+  /** Its instructions (sub-agents). */
+  task: string;
+  /** Its last message: the answer, when it's done. */
+  result: string;
+  /** Recent thinking, messages, tool calls and results (oldest first). */
+  feed: AgentFeedItem[];
+}
+
+export interface AgentSession {
+  id: string;
+  source: "claude-code" | "api" | "replay";
+  title: string;
+  /** The project folder's name. */
+  project: string;
+  branch: string;
+  lead: AgentInfo;
+  workers: AgentInfo[];
+  live: boolean;
+  lastAt: number;
+  /** A replay of a past session: how sped up, and how far along (0..1). */
+  replay?: { speed: number; progress: number };
+}
+
+/** The hosted game: your Claude Code, on your own computer, linked to your Office. */
+export interface AgentLink {
+  status: "off" | "waiting" | "linked" | "lost";
+  /** While waiting: the one-time code, and the command that uses it. */
+  code?: string;
+  command?: string;
+  expiresAt?: number;
+  /** Once linked: the computer's name. */
+  host?: string;
+  at?: number;
+}
+
+export interface AgentsState {
+  /** The Claude Code sessions folder being watched ("~/.claude/projects"), or null if there isn't one. */
+  watching: string | null;
+  /** Hosted: linking your own Claude Code (null when the game runs on your computer and just watches). */
+  link: AgentLink | null;
+  /** Live sessions, most relevant first. */
+  sessions: AgentSession[];
+}
+
+// ---------------------------------------------------------------- colony requests
+// Three small goals a day from the villagers, for coins: something to do
+// every time you open the game.
+
+export type RequestKind = "sweep" | "meteor" | "pop" | "rock" | "decorate" | "shard" | "text" | "visit" | "wish" | "place";
+
+export interface ColonyRequest {
+  id: string;
+  kind: RequestKind;
+  villager: VillagerId;
+  text: string;
+  goal: number;
+  count: number;
+  reward: number;
+  done: boolean;
+  /** A wish: the decoration (id) the villager wants in their yard. */
+  item?: string;
+}
+
+/** Each villager's own name... */
+export const VILLAGER_SHORT: Record<VillagerId, string> = {
+  jade_rabbit: "Yutu",
+  postmaster: "Hoot",
+  timekeeper: "Cog",
+  scholar: "Mabel",
+  stargazer: "Nova",
+};
+
+/** ...their job in the colony... */
+export const VILLAGER_ROLE: Record<VillagerId, string> = {
   jade_rabbit: "Jade Rabbit",
   postmaster: "Postmaster",
   timekeeper: "Timekeeper",
   scholar: "Scholar",
   stargazer: "Stargazer",
 };
+
+/** ...and how they're shown: "Nova the Stargazer". */
+export const VILLAGER_NAMES = Object.fromEntries(
+  (Object.keys(VILLAGER_SHORT) as VillagerId[]).map((v) => [v, `${VILLAGER_SHORT[v]} the ${VILLAGER_ROLE[v]}`]),
+) as Record<VillagerId, string>;
 
 export const VILLAGER_HOME: Record<VillagerId, BuildingId> = {
   jade_rabbit: "rabbit_burrow",
@@ -63,76 +178,95 @@ export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
 };
 export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web" };
 
-/**
- * The unlock chain: each villager's real work uncovers the next one.
- * A quest counts either finished tasks by a villager, or successful uses of one tool.
- */
-export interface QuestDef {
-  id: string;
-  title: string;
-  hint: string;
+// ---------------------------------------------------------------- moving in
+// Animal Crossing style: each neighbor still on Earth has a lot on the Moon,
+// and it's a ruin. Clear the rubble, repair the foundation with materials you
+// collect around the island, build the house with coins, and put something
+// they love in the yard: then they move in. Connecting your real account
+// comes after, when you want them to work with your real stuff.
+
+export type Material = "moonstone" | "stardust" | "shard";
+export type Materials = Record<Material, number>;
+export const MATERIALS: Material[] = ["moonstone", "stardust", "shard"];
+export const MATERIAL_NAME: Record<Material, string> = { moonstone: "moonstone", stardust: "stardust", shard: "moon shard" };
+/** Where each one comes from (shown when you're short). */
+export const MATERIAL_SOURCE: Record<Material, string> = {
+  moonstone: "clear boulders and rubble, or grab fallen meteor rocks",
+  stardust: "sweep moondust drifts",
+  shard: "find Moon Shards glinting in the wilds",
+};
+
+export interface MoveInDef {
   villager: VillagerId;
-  goal: number;
-  counts: { tool?: string; teamTask?: boolean };
-  reveals: BuildingId[];
-  story: string;
-  bonus: number;
+  home: BuildingId;
+  /** Rubble piles on the lot to clear first. */
+  rubble: number;
+  /** What rebuilding the old foundation takes. */
+  repair: Partial<Materials>;
+  /** Different things they love, in their yard. */
+  loves: number;
+  /** Said when their lot opens up (by whoever lives here already). */
+  teaser: { by: VillagerId; text: string };
+  /** Said when they move in. */
+  hello: string;
+  /** Coins they bring as a housewarming thank-you. */
+  gift: number;
 }
 
-export const QUESTS: QuestDef[] = [
+export const MOVE_INS: MoveInDef[] = [
   {
-    id: "stargaze",
-    title: "Ask the Stargazer 3 questions",
-    hint: "Walk to the Observatory (south) and press E. Ask anything - she searches Earth's web.",
-    villager: "stargazer",
-    goal: 3,
-    counts: {},
-    reveals: ["post_office", "mailbox"],
-    story: "My telescope caught a glint in the west crater... a crashed MAIL POD! Build a Post Office there and maybe its pilot will stay.",
-    bonus: 20,
-  },
-  {
-    id: "inbox",
-    title: "Have the Postmaster check your mail",
-    hint: "Talk to the Postmaster and ask what's in your inbox.",
     villager: "postmaster",
-    goal: 1,
-    counts: { tool: "list_inbox" },
-    reveals: ["clock_tower", "rocket_pad"],
-    story: "Hoo! Invitations, deadlines, meetings... this colony needs someone to keep time. Build a Clock Tower!",
-    bonus: 20,
+    home: "post_office",
+    rubble: 3,
+    repair: { moonstone: 3, stardust: 2 },
+    loves: 1,
+    teaser: { by: "stargazer", text: "My telescope caught a signal: an owl postmaster on Earth wants to move up! The old post office lot is a wreck, though (follow the gold ★). Clear it, fix the foundation, build, and make it cozy." },
+    hello: "Hoo! What a lovely little post office. I'm moving in! Connect your Google when you'd like me to read your mail.",
+    gift: 20,
   },
   {
-    id: "week",
-    title: "Ask the Timekeeper about your week",
-    hint: "Talk to the Timekeeper and ask what your week looks like.",
     villager: "timekeeper",
-    goal: 1,
-    counts: { tool: "list_events" },
-    reveals: ["library"],
-    story: "Tick... your week is packed with classes. A Library would bring the Scholar - they know Canvas inside out.",
-    bonus: 25,
+    home: "clock_tower",
+    rubble: 3,
+    repair: { moonstone: 4, stardust: 3, shard: 1 },
+    loves: 2,
+    teaser: { by: "postmaster", text: "Hoo! Invitations, deadlines, meetings... this colony needs someone to keep time. My friend Cog, a clockwork fellow on Earth, would come if the old clock tower lot were fixed up." },
+    hello: "Tick... tock! A tower of my own. I'm home. Connect your Google Calendar and I'll keep your week in order.",
+    gift: 25,
   },
   {
-    id: "team",
-    title: "Give the Rabbit a job for two neighbors",
-    hint: "Now the Rabbit can coordinate. Try: \"Reply to my professor and put it on my calendar.\"",
-    villager: "jade_rabbit",
-    goal: 1,
-    counts: { teamTask: true },
-    reveals: [],
-    story: "Look at the colony go! Every line home is open. Happy Mid-Autumn, traveler.",
-    bonus: 50,
+    villager: "scholar",
+    home: "library",
+    rubble: 4,
+    repair: { moonstone: 5, stardust: 3, shard: 2 },
+    loves: 2,
+    teaser: { by: "timekeeper", text: "Tick... your week is packed with classes. Mabel the Scholar knows Canvas inside out, and the old library lot is waiting for her. It needs work, mind you." },
+    hello: "Books! Shelves! A reading nook! I'm staying. Connect your Canvas and I'll tell you what's due.",
+    gift: 30,
   },
 ];
 
+export const moveInFor = (v: VillagerId) => MOVE_INS.find((m) => m.villager === v);
+export const moveInAt = (b: BuildingId) => MOVE_INS.find((m) => m.home === b);
+
+/** A lot's progress: which rubble piles are gone, and whether the foundation is fixed. */
+export interface LotState {
+  cleared: number[];
+  repaired: boolean;
+}
+
 export interface Progress {
-  /** Index into QUESTS; QUESTS.length means the chain is complete. */
-  quest: number;
-  count: number;
   revealed: BuildingId[];
   /** Services the player chose to run on sample data for now. */
   sandbox: Partial<Record<Service, boolean>>;
+  /** Neighbors who've moved in (besides Yutu and Nova, who were here first). */
+  movedIn: VillagerId[];
+  lots: Partial<Record<BuildingId, LotState>>;
+}
+
+/** The lot being worked on now (the first neighbor not home yet), or null once everyone's home. */
+export function currentMoveIn(p: Progress): MoveInDef | null {
+  return MOVE_INS.find((m) => !p.movedIn.includes(m.villager)) ?? null;
 }
 
 /** A phone linked to the colony over iMessage (co-op: any number of them). Numbers are masked for display. */
@@ -219,7 +353,10 @@ export interface VillagerState {
 }
 
 export interface Snapshot {
+  /** The hosted game (each player signed in to their own copy): who's playing. */
+  account?: { email: string; name: string } | null;
   coins: number;
+  materials: Materials;
   buildings: Partial<Record<BuildingId, boolean>>;
   villagers: Record<VillagerId, VillagerState>;
   clods: Clod[];
@@ -242,6 +379,12 @@ export interface Snapshot {
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
   /** Playing on the dev showcase save (everything unlocked) instead of the real one. */
   devMode: boolean;
+  /** Rocks the player has paid to clear ("x,y"). */
+  clearedRocks: string[];
+  /** Moon shards picked up ("x,y"). */
+  shards: string[];
+  /** Today's colony requests. */
+  requests: ColonyRequest[];
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -272,6 +415,10 @@ export type GameEvent =
   | { type: "deco_moved"; id: string; x: number; y: number }
   | { type: "deco_toggled"; id: string; off: boolean }
   | { type: "lantern_moved"; id: string; x: number; y: number }
+  | { type: "rock_cleared"; x: number; y: number; stone: number; coins: number; loot?: { coins: number; what: string } }
+  | { type: "shard_found"; x: number; y: number; found: number; total: number; reward: number; coins: number; bonus?: number }
+  /** The day's colony requests changed (progress, or one was just completed). */
+  | { type: "requests"; requests: ColonyRequest[]; completed?: ColonyRequest; coins: number }
   | { type: "building_moved"; building: BuildingId; x: number; y: number }
   | { type: "deco_sold"; id: string; refund: number; coins: number }
   | { type: "phone"; direction: "in" | "out"; text: string }
@@ -281,11 +428,14 @@ export type GameEvent =
   /** A villager's happiness changed because of decorations around their home. */
   | { type: "happiness"; villager: VillagerId; score: number; hearts: number; levelUp?: boolean; gained?: { item: string; loved: boolean } }
   | { type: "connections"; connections: Connections }
-  | { type: "quest"; progress: Progress; completed?: string; story?: string; bonus?: number; coins: number }
-  | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean }
+  /** Which services the player chose to run on sample data. */
+  | { type: "sandbox"; sandbox: Partial<Record<Service, boolean>> }
+  /** Moving-in progress changed (rubble cleared, a repair, materials picked up). `gained` floats up at `at`. */
+  | { type: "progress"; progress: Progress; materials: Materials; coins: number; gained?: Partial<Materials>; at?: { x: number; y: number } }
+  | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean; hello?: string; gift?: number; next?: VillagerId | null }
   | { type: "plot_revealed"; building: BuildingId }
   | { type: "chore_spawned"; chore: Chore }
-  | { type: "chore_cleared"; id: string; reward: number; coins: number }
+  | { type: "chore_cleared"; id: string; kind: "dust" | "meteor"; reward: number; coins: number }
   | { type: "chore_gone"; id: string }
   | { type: "chore_optin"; optIn: Partial<Record<VillagerId, boolean>> };
 
@@ -298,6 +448,8 @@ export type ClientMessage =
   | { type: "approve"; approvalId: string; approved: boolean }
   | { type: "pop"; clodId: string }
   | { type: "build"; building: BuildingId }
+  | { type: "clear_rubble"; building: BuildingId; index: number }
+  | { type: "repair_lot"; building: BuildingId }
   | { type: "place_deco"; item: string; x: number; y: number }
   | { type: "move_deco"; id: string; x: number; y: number }
   | { type: "move_building"; building: BuildingId; x: number; y: number }
@@ -306,6 +458,14 @@ export type ClientMessage =
   /** Switch to (or back from) the dev showcase save. */
   | { type: "dev_mode"; on: boolean }
   | { type: "move_lantern"; id: string; x: number; y: number }
+  | { type: "clear_rock"; x: number; y: number }
+  | { type: "collect_shard"; x: number; y: number }
+  | { type: "canvas_login"; domain?: string }
+  | { type: "canvas_schools"; query: string }
+  | { type: "test_connections" }
+  | { type: "agents_replay"; on: boolean }
+  /** Hosted: a fresh one-time code for linking your Claude Code (or unlink it). */
+  | { type: "office_link"; on: boolean }
   | { type: "connect_canvas"; token: string; baseUrl?: string }
   | { type: "use_sandbox"; service: Service }
   | { type: "clear_chore"; id: string }
@@ -313,13 +473,17 @@ export type ClientMessage =
   | { type: "phone_unlink"; id: string }
   | { type: "set_chore_optin"; villager: VillagerId; enabled: boolean }
   /** Dev/demo-prep only; ignored unless the server runs with DEV_TOOLS=1. */
-  | { type: "dev"; action: "complete_quest" | "meteor" | "dust" }
+  | { type: "dev"; action: "move_in" | "materials" | "meteor" | "dust" }
   | { type: "disconnect"; service: "google" | "canvas" };
 
 export type ServerMessage =
+  | { type: "connection_test"; results: { name: string; ok: boolean | null; detail: string }[] }
+  | { type: "canvas_schools"; query: string; schools: { name: string; domain: string }[]; error?: string }
   | { type: "snapshot"; snapshot: Snapshot }
+  /** Your coding agents changed (only sent to the game on this computer). */
+  | { type: "agents"; state: AgentsState }
   | { type: "event"; event: SeqEvent }
-  | { type: "notice"; text: string }
+  | { type: "notice"; text: string; tone?: "ok" }
   /**
    * Linking a phone on Photon's shared pool: the person texts the colony first
    * (iMessage anti-spam), so the game shows a number + code + QR link to send it.

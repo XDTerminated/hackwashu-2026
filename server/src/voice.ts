@@ -4,6 +4,7 @@
 // leaves the server. When ElevenLabs can't help (no key, out of credits, the
 // account flagged), the game falls back to the browser's own voices.
 
+import { DATA_DIR } from "./env.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -12,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { VillagerId } from "../../shared/game.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = join(here, "..", "data", "voice");
+const CACHE_DIR = join(DATA_DIR, "voice");
 const KEY = process.env.ELEVENLABS_API_KEY ?? "";
 /** Flash costs half a credit per character; the free plan has 10,000 credits a month. */
 const MODEL = process.env.ELEVENLABS_MODEL ?? "eleven_flash_v2_5";

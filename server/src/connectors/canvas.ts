@@ -4,13 +4,14 @@
 // Settings → "+ New Access Token" → paste it into the game at the Library.
 // Or set CANVAS_TOKEN (and optionally CANVAS_BASE_URL) in .env.
 
+import { DATA_DIR } from "../env.js";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { htmlToText } from "./google.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CRED_FILE = join(here, "..", "..", "data", "canvas.json");
+const CRED_FILE = join(DATA_DIR, "canvas.json");
 export const DEFAULT_CANVAS = "https://wustl.instructure.com";
 
 let cred: { baseUrl: string; token: string; account?: string } | null = null;
@@ -51,6 +52,35 @@ export async function connectCanvas(token: string, baseUrl = DEFAULT_CANVAS): Pr
   writeFileSync(CRED_FILE, JSON.stringify(cred), { mode: 0o600 });
   console.log(`[canvas] connected as ${me.name}`);
   return me.name;
+}
+
+/** A Canvas web address from a school's domain ("canvas.harvard.edu" -> https://canvas.harvard.edu), or null if it isn't one. */
+export function canvasBase(domain: string | undefined): string | null {
+  const d = (domain ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) ? `https://${d}` : null;
+}
+
+const schoolCache = new Map<string, { at: number; list: { name: string; domain: string }[] }>();
+
+/**
+ * Find a school's Canvas by name, using the public directory the official
+ * Canvas apps use ("Find your school"). Any school on Canvas can connect.
+ */
+export async function searchSchools(term: string): Promise<{ name: string; domain: string }[]> {
+  const q = term.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const hit = schoolCache.get(q.toLowerCase());
+  if (hit && Date.now() - hit.at < 3_600_000) return hit.list;
+  const res = await fetch(`https://canvas.instructure.com/api/v1/accounts/search?search_term=${encodeURIComponent(q)}&per_page=12`);
+  if (!res.ok) throw new Error(`the school directory didn't answer (${res.status})`);
+  const raw = (await res.json()) as { name?: string; domain?: string }[];
+  const seen = new Set<string>();
+  const list = raw
+    .filter((x) => x.name && x.domain && canvasBase(x.domain))
+    .filter((x) => !seen.has(x.domain!) && seen.add(x.domain!))
+    .map((x) => ({ name: x.name!, domain: x.domain! }));
+  schoolCache.set(q.toLowerCase(), { at: Date.now(), list });
+  return list;
 }
 
 export function disconnectCanvas() {

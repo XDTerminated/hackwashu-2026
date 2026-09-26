@@ -127,3 +127,98 @@ export function drawPlot(ctx: Ctx, w: number, h: number) {
   rect(ctx, O, cx - 4, 3, 8, 3);
   rect(ctx, O, cx - 1, 6, 2, 6);
 }
+
+// ---------------------------------------------------------------- a neighbor's lot, before
+
+/**
+ * The old ruin on a neighbor's lot: crumbled wall stubs around the edge and a
+ * cracked floor, drawn under the staked plot (same size: the footprint plus
+ * 16px of sign on top).
+ */
+export function drawRuins(ctx: Ctx, w: number, h: number) {
+  const top = 18;
+  const floor = { x: 4, y: top + 4, w: w - 8, h: h - top - 8 };
+  // cracked, dusty floor stones
+  for (let y = floor.y; y < floor.y + floor.h; y += 6) {
+    for (let x = floor.x + ((y / 6) % 2 ? 3 : 0); x < floor.x + floor.w - 2; x += 8) {
+      if (hash(x, y, 31) < 0.3) continue; // missing stones
+      const sw = Math.min(7, floor.x + floor.w - x);
+      rect(ctx, hash(x, y, 32) > 0.5 ? "#8a8398" : "#7d768c", x, y, sw, 5);
+      rect(ctx, "#a39cb2", x, y, sw, 1);
+      if (hash(x, y, 33) > 0.7) rect(ctx, "#5e586e", x + 2, y + 2, 3, 1); // crack
+    }
+  }
+  // wall stubs: along the back and down the sides, with gaps where they fell
+  const stub = (x: number, y: number, bw: number, bh: number) => {
+    rect(ctx, O, x - 1, y - 1, bw + 2, bh + 2);
+    rect(ctx, STONE.base, x, y, bw, bh);
+    rect(ctx, STONE.light, x, y, bw, 1);
+    rect(ctx, STONE.dark, x, y + bh - 1, bw, 1);
+    for (let yy = y + 3; yy < y + bh - 1; yy += 3) rect(ctx, STONE.dark, x + (yy % 2 ? 2 : 4), yy, 1, 1);
+  };
+  for (let x = 3; x < w - 8; x += 10) {
+    const hh = 3 + Math.floor(hash(x, 7, 34) * 6);
+    if (hash(x, 7, 35) > 0.25 && Math.abs(x + 3 - w / 2) > 6) stub(x, top + 1 - hh + 5, 7, hh);
+  }
+  for (let y = top + 10; y < h - 8; y += 9) {
+    const hh = 4 + Math.floor(hash(y, 3, 36) * 4);
+    if (hash(y, 3, 37) > 0.35) stub(2, y, 4, hh);
+    if (hash(y, 5, 38) > 0.35) stub(w - 6, y, 4, hh);
+  }
+  // a toppled column
+  const cy = h - 10;
+  rect(ctx, O, 6, cy - 1, 16, 6);
+  rect(ctx, STONE.light, 7, cy, 14, 4);
+  rect(ctx, STONE.dark, 7, cy + 3, 14, 1);
+  for (const x of [11, 16]) rect(ctx, STONE.dark, x, cy, 1, 3);
+}
+
+/** The foundation, repaired: dressed stone all round and a clean slab (same size as the plot). */
+export function drawFoundation(ctx: Ctx, w: number, h: number) {
+  const top = 18;
+  const x0 = 3;
+  const y0 = top + 2;
+  const fw = w - 6;
+  const fh = h - top - 5;
+  rect(ctx, O, x0 - 1, y0 - 1, fw + 2, fh + 2);
+  rect(ctx, "#c8c1d6", x0, y0, fw, fh);
+  // slab seams
+  for (let y = y0 + 7; y < y0 + fh - 3; y += 8) rect(ctx, "#aaa3ba", x0 + 4, y, fw - 8, 1);
+  for (let x = x0 + 12; x < x0 + fw - 4; x += 16) rect(ctx, "#aaa3ba", x, y0 + 4, 1, fh - 8);
+  // dressed stone border
+  for (let x = x0; x < x0 + fw; x += 6) {
+    for (const y of [y0, y0 + fh - 3]) {
+      rect(ctx, STONE.base, x, y, Math.min(5, x0 + fw - x), 3);
+      rect(ctx, STONE.light, x, y, Math.min(5, x0 + fw - x), 1);
+    }
+  }
+  for (let y = y0; y < y0 + fh; y += 6) {
+    for (const x of [x0, x0 + fw - 3]) {
+      rect(ctx, STONE.base, x, y, 3, Math.min(5, y0 + fh - y));
+      rect(ctx, STONE.light, x, y, 3, 1);
+    }
+  }
+  // a sparkle or two: fresh work
+  for (const [x, y] of [[x0 + 8, y0 + 6], [x0 + fw - 12, y0 + fh - 10]]) {
+    rect(ctx, "#ffffff", x, y, 1, 1);
+    rect(ctx, "#fff6c8", x - 1, y, 3, 1);
+    rect(ctx, "#fff6c8", x, y - 1, 1, 3);
+  }
+}
+
+/** A pile of rubble to clear off a lot (16 x 12). */
+export function drawRubble(ctx: Ctx, v: number) {
+  const stones: [number, number, number, number][] =
+    v === 0
+      ? [[3, 7, 5, 4], [8, 6, 6, 5], [5, 3, 5, 4], [11, 3, 4, 3]]
+      : [[2, 6, 6, 5], [8, 7, 6, 4], [7, 2, 5, 5], [3, 3, 4, 3]];
+  // dust underneath
+  disc(ctx, "#8c8698", 8, 10, 7.5, 2);
+  for (const [x, y, sw, sh] of stones) {
+    rect(ctx, O, x - 1, y - 1, sw + 2, sh + 2);
+    rect(ctx, STONE.base, x, y, sw, sh);
+    rect(ctx, STONE.light, x, y, sw, 1);
+    rect(ctx, STONE.dark, x, y + sh - 1, sw, 1);
+  }
+  rect(ctx, "#c9744a", v ? 12 : 4, v ? 2 : 1, 3, 1); // an old plank end
+}

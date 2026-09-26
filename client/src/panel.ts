@@ -7,15 +7,16 @@
 // and you can answer by voice (hold TAB or the mic) instead of typing.
 
 import Phaser from "phaser";
-import type { Approval, VillagerId } from "../../shared/game";
-import { CHORE_EVERY_MIN, MAX_HEARTS, VILLAGER_NAMES, VILLAGER_SERVICE, heartsFor } from "../../shared/game";
+import type { AgentFeedItem, AgentInfo, AgentSession, AgentStatus, Approval, VillagerId } from "../../shared/game";
+import { CHORE_EVERY_MIN, MAX_HEARTS, VILLAGER_NAMES, VILLAGER_SHORT, VILLAGER_SERVICE, heartsFor } from "../../shared/game";
 import { FONT_METRICS, sanitize } from "./font";
 import { listen, micSupported, type Listening } from "./mic";
 import * as net from "./net";
+import { markdownToPlain } from "../../shared/markdown";
 import { PORTRAIT } from "./portraits";
 import { sfx } from "./sfx";
-import { store } from "./store";
-import { closeMoonPad } from "./tablet";
+import { agents, focusNextSession, focusedSession, store } from "./store";
+import { closeMoonPad, openMoonPad } from "./tablet";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import * as voice from "./voice";
 import { Button, C, IconButton, Label, fit, measure, pixBox, woodFrame, type Font } from "./widgets";
@@ -52,6 +53,8 @@ const SIDE_GAP = 6;
  */
 const TALK_W = 250;
 const TALK_H = 72;
+/** Room kept free at the bottom of the screen for the toolbar. */
+const TOOLBAR_CLEAR = 31;
 /** Each reply's first couple of sentences are spoken; the rest just types out (free-plan credits). */
 const VOICED_SENTENCES = 2;
 /** Typewriter speed when nobody's speaking. */
@@ -222,9 +225,10 @@ class Dialog {
     const side = f ? PORT_W + SIDE_GAP : 0;
     const titled = !f;
     const w = Math.min(talk ? TALK_W : 330, W - 16 - side);
-    const h = Math.min(talk ? TALK_H : 156, H - 30);
+    // Sit above the toolbar (25px tall + a gap), so a click near the box never lands on a tool.
+    const h = Math.min(talk ? TALK_H : 156, H - TOOLBAR_CLEAR - 8);
     const x = Math.round((W - w - side) / 2) + side;
-    const y = H - h - 6;
+    const y = H - TOOLBAR_CLEAR - h;
     const top = titled ? 22 : 9;
     this.box = { x, y, w, h };
     this.area = { x: x + 9, y: y + top, w: w - 18, h: h - top - 26 };
@@ -291,8 +295,8 @@ class Dialog {
     const ny = py + PORT_W + 3;
     pixBox(this.pg, px, ny, PORT_W, plateH, C.woodMid, C.woodDark);
     this.pg.fillStyle(0xffffff, 0.16).fillRect(px + 1, ny + 1, PORT_W - 2, 1);
-    // Bold when it fits; longer names ("Jade Rabbit") drop to the regular weight.
-    const name = VILLAGER_NAMES[f.villager];
+    // The short name fits the plate (the full "Yutu the Jade Rabbit" is in the title bar).
+    const name = VILLAGER_SHORT[f.villager];
     this.pName.setFont("pxb").setText(name);
     if (measure(this.pName).w > PORT_W - 6) this.pName.setFont("px").setText(fit(this.scene, name, PORT_W - 6));
     this.pName.setPosition(px + Math.round((PORT_W - measure(this.pName).w) / 2), ny + 4);
@@ -359,6 +363,7 @@ class Dialog {
     talk: boolean,
     opts: { placeholder?: string; secret?: boolean; onSubmit?: (text: string) => void; face?: Face; mic?: boolean } = {},
   ) {
+    accountsOpen = false;
     this.clear();
     this.onSubmit = opts.onSubmit ?? null;
     this.secret = !!opts.secret;
@@ -668,6 +673,38 @@ class Dialog {
     this.scrollTo(this.contentH);
   }
 
+  /** Scrolled to (about) the newest line? Live feeds only follow along when you are. */
+  /** How many lines are showing. */
+  get lineCount() {
+    return this.items.length;
+  }
+
+  atEnd() {
+    return this.scrollY >= Math.max(0, this.contentH - this.area.h) - 12;
+  }
+
+  toEnd() {
+    this.scrollToEnd();
+  }
+
+  /** A line's text changed in place (live views): re-stack the lines. */
+  refresh() {
+    this.relayoutItems();
+  }
+
+  /** Live feeds: drop the oldest lines past `max` (after the first `keep`), keeping your place. */
+  trim(max: number, keep = 0) {
+    let removed = 0;
+    while (this.items.length > max && this.items.length > keep) {
+      const [l] = this.items.splice(keep, 1);
+      removed += l.boxH + 4;
+      l.destroy();
+    }
+    if (!removed) return;
+    this.scrollY -= removed;
+    this.relayoutItems();
+  }
+
   private scrollTo(y: number) {
     this.scrollY = y;
     this.clampScroll();
@@ -689,6 +726,13 @@ class Dialog {
     g.fillStyle(C.inkSoft, 1);
     if (up) g.fillRect(x + 1, this.area.y, 1, 1).fillRect(x, this.area.y + 1, 3, 1);
     if (down) g.fillRect(x, this.area.y + this.area.h - 2, 3, 1).fillRect(x + 1, this.area.y + this.area.h - 1, 1, 1);
+  }
+
+  /** Put text in the reply box (e.g. an example to edit or send as-is). */
+  setDraft(text: string) {
+    input.value = text;
+    input.focus();
+    this.renderInput();
   }
 
   renderInput() {
@@ -732,6 +776,9 @@ let toggleCb: (open: boolean) => void = () => {};
 /** Called by the UI scene; re-mounting after a resize keeps callers working. */
 export function mountPanel(scene: Phaser.Scene) {
   voice.stopSpeaking();
+  // Remounting (the UI restarts on resize) with a dialog up: close it properly
+  // first, or the game stays frozen waiting for a dialog nobody can see.
+  if (dialog?.visible) closePanel();
   dialog = new Dialog(scene);
 }
 
@@ -757,18 +804,28 @@ export function initPanel() {
   });
 
   net.onNotice((text) => {
-    if (dialog?.visible && callingFor) dialog.add("sys", text);
+    if (dialog?.visible && (callingFor || accountsOpen)) dialog.add("sys", text);
   });
 
   net.onEvent((e) => {
+    // The accounts checklist ticks itself off as connections come online.
+    if (e.type === "connections" && dialog?.visible && accountsOpen) {
+      openAccounts();
+      return;
+    }
+    if (e.type === "connections" && dialog?.visible && fromAccounts && callingFor === "scholar" && e.connections.canvas.connected) {
+      setTimeout(() => dialog?.visible && openAccounts(), 1500);
+      return;
+    }
     if (e.type === "chore_optin" && dialog?.visible && talkingTo) {
       choreToggle(talkingTo);
       dialog.note("sys", store.choreOptIn[talkingTo] ? "Chores ON - first round in about a minute." : "Chores OFF.");
       return;
     }
     if (e.type === "villager_arrived" && dialog?.visible && callingFor === e.villager) {
-      dialog.add("sys", `Signal received! The ${VILLAGER_NAMES[e.villager]} is landing.`);
-      setTimeout(closePanel, 1600);
+      dialog.add("sys", `Signal received! ${VILLAGER_NAMES[e.villager]} is landing.`);
+      const v = callingFor;
+      setTimeout(() => callingFor === v && closePanel(), 1600);
       return;
     }
     if (e.type === "friendship" && dialog?.visible) dialog.refreshHearts();
@@ -799,7 +856,7 @@ function choreToggle(v: VillagerId) {
   dialog.setSide({
     label: on ? "[x] CHORES" : "[ ] CHORES",
     kind: on ? "ok" : "",
-    tip: `When idle, the ${VILLAGER_NAMES[v]} will ${CHORE_WHAT[v]} on their own about every ${CHORE_EVERY_MIN} min. Each round uses REAL API calls.`,
+    tip: `When idle, ${VILLAGER_NAMES[v]} will ${CHORE_WHAT[v]} on their own about every ${CHORE_EVERY_MIN} min. Each round uses REAL API calls.`,
     onClick: () => net.send({ type: "set_chore_optin", villager: v, enabled: !store.choreOptIn[v] }),
   });
 }
@@ -815,7 +872,26 @@ export function openTalk(v: VillagerId, greeting: string) {
   dialog.open(VILLAGER_NAMES[v].toUpperCase(), true, { face: { villager: v, mode: "talk" }, mic: true, placeholder: example });
   dialog.say(greeting);
   choreToggle(v);
+  const nudge = realAccountNudge(v);
+  if (nudge) {
+    nudged.add(v);
+    dialog.add("sys", nudge);
+    dialog.setButtons([{ label: "USE MY REAL ACCOUNT", kind: "ok", onClick: () => openConnect(v) }]);
+  }
   toggleCb(true);
+}
+
+const nudged = new Set<VillagerId>();
+
+/** On sample data, but the real thing is one sign-in away? Say so (once per visit). */
+function realAccountNudge(v: VillagerId): string | null {
+  if (nudged.has(v)) return null;
+  const service = VILLAGER_SERVICE[v];
+  const c = store.connections;
+  if (service === "google" && store.progress.sandbox.google && !c.google.connected && c.google.configured)
+    return v === "postmaster" ? "Hoot is reading sample mail right now. Want him on your real inbox?" : "Cog is keeping a sample calendar right now. Want him on your real one?";
+  if (service === "canvas" && store.progress.sandbox.canvas && !c.canvas.connected) return "Mabel is studying sample courses right now. Want her on your real Canvas?";
+  return null;
 }
 
 export function openLetter(a: Approval) {
@@ -827,7 +903,10 @@ export function openLetter(a: Approval) {
   dialog.add("sys", "This needs your OK before it leaves the Moon.");
   dialog.add("title", a.title);
   dialog.add("letter", a.body);
+  const offerPhone = phoneOfferDue();
+  if (offerPhone) dialog.add("sys", "Want letters like this on your phone? Link it and you can answer yes or no by text, from anywhere.");
   dialog.setButtons([
+    ...(offerPhone ? [{ label: "TEXT ME THESE", onClick: () => (markPhoneOffered(), closePanel(), openMoonPad("phones")) }] : []),
     {
       label: "APPROVE",
       kind: "ok",
@@ -864,16 +943,24 @@ export function openInfo(title: string, lines: string[], buttons: ButtonSpec[] =
  * "Call" a villager who's still on Earth: their house is built, and connecting
  * their real account is what brings them to the Moon.
  */
-export function openConnect(v: VillagerId) {
+/** Opened from the Accounts checklist: come back to it afterwards. */
+let fromAccounts = false;
+
+export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}) {
   const service = VILLAGER_SERVICE[v];
   if (!dialog || !service || service === "web") return;
   closeMoonPad();
   const name = VILLAGER_NAMES[v];
   talkingTo = null;
   callingFor = v;
+  fromAccounts = !!opts.fromAccounts;
   const face: Face = { villager: v, mode: "call" };
+  const title = `CONNECT ${service === "google" ? "GOOGLE" : "CANVAS"}`;
+  const home = store.residents.includes(v);
+  const googleReady = store.connections.google.configured;
   const sampleButton = {
     label: "USE SAMPLE DATA",
+    kind: service === "google" && !googleReady ? "ok" : "",
     onClick: () => {
       net.send({ type: "use_sandbox", service });
       dialog?.add("sys", "OK - they'll practice on sample data until you connect for real.");
@@ -881,48 +968,455 @@ export function openConnect(v: VillagerId) {
   };
 
   if (service === "google") {
-    dialog.open(`CALL THE ${name.toUpperCase()}`, false, { face });
+    dialog.open(title, false, { face });
     dialog.add(
       "them",
-      v === "postmaster"
-        ? "The Postmaster is still on Earth, waiting for a signal. Connect your Google account and they'll land with your Gmail: reading, summarizing and drafting replies. Nothing gets sent without your OK."
-        : "The Timekeeper is waiting for a signal from Earth. Connect your Google account so they can read your calendar and book events (you approve every booking).",
+      (home ? `${name} is all moved in! ` : `${name} hasn't moved in yet, but you can connect now. `) +
+        (v === "postmaster"
+          ? "Connect your Google account and Hoot works with your real Gmail: reading, summarizing and drafting replies. Nothing gets sent without your OK."
+          : "Connect your Google account and Cog reads your real calendar and books events (you approve every booking)."),
     );
-    if (!store.connections.google.configured) dialog.add("sys", "Host setup needed first: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env (see README).");
-    dialog.setButtons([
-      {
-        label: "CONNECT GOOGLE",
-        kind: "ok",
-        onClick: () => {
-          window.open(`http://${location.hostname || "localhost"}:8787/connect/google`, "_blank");
-          dialog?.add("sys", "Finish signing in with Google in the new tab, then come back here.");
+    if (!googleReady) {
+      // No dead-end button: say what's possible and make the working option the obvious one.
+      dialog.add("sys", "Google sign-in isn't turned on for this colony yet. If you're the one running it, SET UP SIGN-IN walks you through it once (about 5 minutes); after that anyone can sign in with their own Google account. Or use sample data for now (it works the same way, clearly marked).");
+      dialog.setButtons([{ label: "SET UP SIGN-IN", onClick: () => (window.open(`${net.SERVER_HTTP}/setup/google`, "_blank"), dialog?.add("sys", "Follow the steps in the new tab, then come back and press CONNECT GOOGLE.")) }, sampleButton]);
+    } else {
+      dialog.setButtons([
+        {
+          label: "CONNECT GOOGLE",
+          kind: "ok",
+          onClick: () => {
+            window.open(`${net.SERVER_HTTP}/connect/google`, "_blank");
+            dialog?.add("sys", "Finish signing in with Google in the new tab, then come back here.");
+          },
         },
-      },
-      sampleButton,
-    ]);
+        sampleButton,
+      ]);
+    }
   } else {
-    dialog.open(`CALL THE ${name.toUpperCase()}`, true, {
-      placeholder: "Paste your Canvas access token...",
-      secret: true,
+    openCanvasConnect(v, title, face, sampleButton);
+    return;
+  }  toggleCb(true);
+}
+
+// ---------------------------------------------------------------- Canvas, any school
+
+const SCHOOL_KEY = "moon-canvas-school";
+type School = { name: string; domain: string };
+
+function savedSchool(): School | null {
+  try {
+    return JSON.parse(localStorage.getItem(SCHOOL_KEY) ?? "null") as School | null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Connect Canvas at any school: find the school (Canvas's own "Find your
+ * school" directory), then sign in at that school's Canvas, or paste a token.
+ */
+function openCanvasConnect(v: VillagerId, title: string, face: Face, sampleButton: ButtonSpec, school = savedSchool()) {
+  if (!dialog) return;
+  callingFor = v;
+  if (!school) {
+    // Step 1: which school?
+    dialog.open(title, true, {
+      placeholder: "Type your school's name (or its Canvas address)...",
       face,
-      onSubmit: (token) => {
-        net.send({ type: "connect_canvas", token });
-        dialog?.add("sys", "Checking that token with Canvas...");
+      onSubmit: (q) => {
+        const typed = q.trim();
+        // A web address typed straight in ("canvas.myschool.edu")
+        if (/^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+\/?$/i.test(typed) && typed.includes(".")) {
+          const domain = typed.replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
+          return pickSchool(v, title, face, sampleButton, { name: domain, domain });
+        }
+        dialog?.add("you", typed);
+        dialog?.showTyping();
+        net.send({ type: "canvas_schools", query: typed });
       },
     });
-    dialog.add(
-      "them",
-      "The Scholar needs a line to your Canvas. In Canvas (wustl.instructure.com): Account > Settings > + New Access Token. Paste it below. Read-only - the Scholar never submits anything.",
-    );
-    dialog.setButtons([sampleButton]);
+    dialog.add("them", "Mabel the Scholar reads your Canvas: courses, due dates, announcements. Which school are you at? Type its name below.");
+    dialog.setButtons([fromAccounts ? { label: "BACK", onClick: () => openAccounts() } : sampleButton]);
+    const off = net.onCanvasSchools((_q, schools, error) => {
+      off();
+      if (!dialog?.visible || callingFor !== v) return;
+      dialog.hideTyping();
+      if (error || !schools.length) {
+        dialog.add("sys", error ? `Couldn't search right now (${error}). You can type your school's Canvas address instead, like canvas.myschool.edu.` : "No match. Try another spelling, or type your school's Canvas address (like canvas.myschool.edu).");
+        // listen again for the next search
+        return openCanvasConnect(v, title, face, sampleButton, null);
+      }
+      const top = schools.slice(0, 3);
+      dialog.add("them", top.map((s, i) => `${i + 1}. ${s.name} (${s.domain})`).join("\n") + (schools.length > 3 ? "\nNot there? Type a longer name." : ""));
+      // Short, numbered buttons (the full names are listed just above).
+      const short = (name: string) => (name.length > 11 ? `${name.slice(0, 10).trimEnd()}.` : name);
+      dialog.setButtons(top.map((s, i) => ({ label: `${i + 1}. ${short(s.name)}`.toUpperCase(), kind: i === 0 ? "ok" : "", onClick: () => pickSchool(v, title, face, sampleButton, s) })));
+    });
+    toggleCb(true);
+    return;
   }
+  // Step 2: sign in at that school (or paste a token from it).
+  dialog.open(title, true, {
+    placeholder: "Or paste an access token from your Canvas...",
+    secret: true,
+    face,
+    onSubmit: (token) => {
+      net.send({ type: "connect_canvas", token, baseUrl: school.domain });
+      dialog?.add("sys", "Checking that token with Canvas...");
+    },
+  });
+  if (net.HOSTED) {
+    // Online, Canvas can't open a sign-in window for us: a key from your Canvas settings does the same job.
+    dialog.add("them", `${school.name}. Press GET A TOKEN: your Canvas settings open. Log in, press + New Access Token, then Generate, and paste the token below. I only read; I never submit anything.`);
+    dialog.add("sys", `Canvas at ${school.domain}.`);
+  } else {
+    dialog.add("them", `${school.name}. Press SIGN IN WITH CANVAS: your school's Canvas opens, you log in like normal, and it closes by itself when I'm connected. I only read; I never submit anything.`);
+    dialog.add("sys", `Canvas at ${school.domain}. Rather paste a key? Make one at ${school.domain}/profile/settings (+ New Access Token) and paste it below.`);
+  }
+  dialog.setButtons([
+    net.HOSTED
+      ? { label: "GET A TOKEN", kind: "ok", onClick: () => (window.open(`https://${school.domain}/profile/settings#access_tokens_holder`, "_blank", "noopener"), sfx.blip()) }
+      : { label: "SIGN IN WITH CANVAS", kind: "ok", onClick: () => (net.send({ type: "canvas_login", domain: school.domain }), sfx.blip()) },
+    { label: "CHANGE SCHOOL", onClick: () => (forgetSchool(), openCanvasConnect(v, title, face, sampleButton, null)) },
+    fromAccounts ? { label: "BACK", onClick: () => openAccounts() } : sampleButton,
+  ]);
   toggleCb(true);
 }
 
+function pickSchool(v: VillagerId, title: string, face: Face, sampleButton: ButtonSpec, s: School) {
+  try {
+    localStorage.setItem(SCHOOL_KEY, JSON.stringify(s));
+  } catch {
+    /* just for this visit */
+  }
+  sfx.blip();
+  openCanvasConnect(v, title, face, sampleButton, s);
+}
+
+function forgetSchool() {
+  try {
+    localStorage.removeItem(SCHOOL_KEY);
+  } catch {
+    /* nothing saved */
+  }
+}
+
+const PHONE_OFFER = "moon-phone-offered";
+
+/** Offer the phone link once: when a letter first needs an OK and no phone is linked yet. */
+function phoneOfferDue() {
+  const p = store.connections.photon;
+  if (!p.connected || p.phones.length) return false;
+  try {
+    if (localStorage.getItem(PHONE_OFFER) === "1") return false;
+    localStorage.setItem(PHONE_OFFER, "1");
+  } catch {
+    /* offer it anyway */
+  }
+  return true;
+}
+
+function markPhoneOffered() {
+  try {
+    localStorage.setItem(PHONE_OFFER, "1");
+  } catch {
+    /* fine */
+  }
+}
+
+let accountsOpen = false;
+
+/**
+ * Every account in one place, as a checklist: connect everything now (handy
+ * before a demo), or leave it and connect as neighbors move in. It updates
+ * live as each connection comes online.
+ */
+export function openAccounts() {
+  // Connections live in the MoonPad now (its CONNECT tab).
+  if (dialog?.visible) closePanel();
+  openMoonPad("connect");
+}
+
+/** Bumped whenever the dialog closes, so delayed follow-ups can tell they're stale. */
+let panelSeq = 0;
+
 export function closePanel() {
+  panelSeq++;
+  accountsOpen = false;
   if (!dialog?.visible) return;
+  agentView = null;
   dialog.close();
   talkingTo = null;
   callingFor = null;
   toggleCb(false);
+}
+
+// ---------------------------------------------------------------- the office
+// A live view of your coding agents: the board (the session and who's on
+// what) and each agent's own feed of thinking, messages and tool calls.
+
+let agentView:
+  | { kind: "board"; session: string | null; sig: string; lines: Map<string, Label> }
+  | { kind: "link"; sig: string; status: Label }
+  | { kind: "agent"; session: string; id: string; stats: Label; last: string; keep: number }
+  | null = null;
+let agentsWired = false;
+
+const excerpt = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 3).trimEnd()}...` : t);
+
+export const AGENT_STATUS: Record<AgentStatus, string> = { thinking: "thinking", working: "working", waiting: "waiting", done: "done", failed: "stopped" };
+const MARK: Record<AgentStatus, string> = { thinking: "●", working: "●", waiting: "○", done: "✓", failed: "✕" };
+
+export function ago(ms: number) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+export const shortModel = (m: string) => m.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+const active = (a: AgentInfo) => a.status !== "done" && a.status !== "failed";
+
+function statsLine(a: AgentInfo) {
+  const took = ago((a.doneAt ?? Date.now()) - a.startedAt);
+  const tokens = a.tokens >= 1000 ? `${(a.tokens / 1000).toFixed(1)}k` : String(a.tokens);
+  return [
+    `${MARK[a.status]} ${AGENT_STATUS[a.status]}${active(a) ? `: ${excerpt(a.now, 70)}` : ""}`,
+    `${active(a) ? "for" : "took"} ${took} · ${a.tools} tool call${a.tools === 1 ? "" : "s"}${a.tokens ? ` · ${tokens} tokens written` : ""}${a.model ? ` · ${shortModel(a.model)}` : ""}`,
+  ].join("\n");
+}
+
+function workerLine(w: AgentInfo) {
+  return `${MARK[w.status]} ${excerpt(w.name, 60)}\n${AGENT_STATUS[w.status]}${active(w) ? `: ${excerpt(w.now, 70)}` : ""} (${ago((w.doneAt ?? Date.now()) - w.startedAt)}, ${w.tools} tool call${w.tools === 1 ? "" : "s"})`;
+}
+
+function leadLine(s: AgentSession) {
+  const l = s.lead;
+  return `${MARK[l.status]} Team lead (${l.name}${l.model ? `, ${shortModel(l.model)}` : ""})\n${AGENT_STATUS[l.status]}: ${excerpt(l.now, 80)}`;
+}
+
+/** What changes the board's layout (new workers, finished ones, a new session). */
+const boardSig = (s: AgentSession | null) => (s ? `${s.id}|${s.workers.map((w) => `${w.id}:${active(w)}`).join(",")}|${agents.state.sessions.length}` : `none|${agents.state.watching}`);
+
+function wireAgents() {
+  if (agentsWired) return;
+  agentsWired = true;
+  net.onAgents(() => {
+    const v = agentView;
+    if (!v || !dialog?.visible) return;
+    if (v.kind === "link") {
+      if (linkSig() !== v.sig) renderLink();
+      else v.status.setText(linkStatus());
+      return;
+    }
+    if (v.kind === "board") {
+      const s = focusedSession();
+      if (boardSig(s) !== v.sig) return renderAgentBoard();
+      if (!s) return;
+      // Same layout: just freshen each line.
+      v.lines.get("lead")?.setText(leadLine(s));
+      for (const w of s.workers) v.lines.get(w.id)?.setText(workerLine(w));
+      dialog.refresh();
+      return;
+    }
+    const s = agents.state.sessions.find((x) => x.id === v.session);
+    const a = v.id === "lead" ? s?.lead : s?.workers.find((w) => w.id === v.id);
+    if (!a) {
+      v.stats.setText("This session has ended.");
+      dialog.refresh();
+      return;
+    }
+    v.stats.setText(statsLine(a));
+    // Add whatever's new since last time.
+    const follow = dialog.atEnd();
+    const i = a.feed.findIndex((f) => feedKey(f) === v.last);
+    const fresh = i >= 0 ? a.feed.slice(i + 1) : a.feed.filter((f) => f.at > Number(v.last.split("|")[0] || 0));
+    for (const f of fresh) addFeed(f);
+    if (a.feed.length) v.last = feedKey(a.feed[a.feed.length - 1]);
+    dialog.trim(140, v.keep);
+    dialog.refresh();
+    if (follow && fresh.length) dialog.toEnd();
+  });
+}
+
+const feedKey = (f: AgentFeedItem) => `${f.at}|${f.kind}|${f.text.slice(0, 48)}`;
+
+function addFeed(f: AgentFeedItem) {
+  if (!dialog) return;
+  if (f.kind === "tool") dialog.add("letter", `→ ${excerpt(f.text, 360)}`);
+  else if (f.kind === "result") dialog.add("sys", `← ${excerpt(f.text, 200)}`);
+  else if (f.kind === "error") dialog.add("them", `✕ ${excerpt(f.text, 240)}`);
+  else if (f.kind === "think") dialog.add("sys", `(thinking) ${excerpt(f.text, 360)}`);
+  else if (f.kind === "prompt") dialog.add("you", excerpt(f.text, 360));
+  else dialog.add("them", excerpt(markdownToPlain(f.text), 500));
+}
+
+function startReplay() {
+  net.send({ type: "agents_replay", on: true });
+  agents.focus = null;
+  sfx.blip();
+}
+
+/** The Office board: which session, the lead, and every agent at a desk. */
+export function openAgentBoard() {
+  if (!dialog) return;
+  wireAgents();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  renderAgentBoard();
+  toggleCb(true);
+}
+
+function renderAgentBoard() {
+  if (!dialog) return;
+  const s = focusedSession();
+  const lines = new Map<string, Label>();
+  agentView = { kind: "board", session: s?.id ?? null, sig: boardSig(s), lines };
+  const link = agents.state.link;
+  if (!s) {
+    dialog.open("THE OFFICE", false);
+    dialog.add("title", "Nobody's at work right now");
+    dialog.add("sys", "The Office shows your coding agents, live. Your Claude Code session is the team lead, and every subagent it sends out walks in and takes a desk, with what it's thinking and doing.");
+    if (link) dialog.add("sys", link.status === "linked" ? `Your Claude Code is linked (${link.host}). Start a session and ask it to use subagents.` : "Press LINK to connect the Claude Code on your computer (one command in a terminal).");
+    else dialog.add("sys", agents.state.watching ? `Watching ${agents.state.watching} on this computer.` : "No Claude Code sessions on this computer yet.");
+    dialog.add("sys", "REPLAY plays back a recorded session, sped up.");
+    dialog.setButtons([...(link ? [{ label: link.status === "linked" ? "LINKED ✓" : "LINK", kind: "ok", onClick: () => openLinkClaude() }] : []), { label: "REPLAY", kind: link ? "" : "ok", onClick: startReplay }]);
+    return;
+  }
+  dialog.open(s.source === "replay" ? "OFFICE: REPLAY" : "THE OFFICE", false);
+  dialog.add("title", excerpt(s.title, 90));
+  const where = [s.project, s.branch && `branch ${s.branch}`, s.source === "replay" ? `replay at ${s.replay?.speed ?? 1}x speed` : s.source === "api" ? "reported by a tool" : "Claude Code"].filter(Boolean).join(" · ");
+  dialog.add("sys", where);
+  lines.set("lead", dialog.add("them", leadLine(s)));
+  const working = s.workers.filter(active).length;
+  dialog.add("sys", s.workers.length ? `${working} working · ${s.workers.length - working} finished` : "No subagents yet. When the lead sends one out, it walks in and takes a desk.");
+  for (const w of s.workers) lines.set(w.id, dialog.add("them", workerLine(w)));
+  const buttons: ButtonSpec[] = [];
+  if (s.workers.length) buttons.push({ label: "INSPECT", kind: "ok", onClick: () => openAgent(s.id, s.workers.find(active)?.id ?? s.workers[0].id) });
+  buttons.push({ label: "LEAD", onClick: () => openAgent(s.id, "lead") });
+  if (agents.state.sessions.length > 1) buttons.push({ label: "SWITCH", onClick: () => (focusNextSession(), sfx.blip(), renderAgentBoard()) });
+  buttons.push(s.source === "replay" ? { label: "STOP REPLAY", onClick: () => (net.send({ type: "agents_replay", on: false }), sfx.blip()) } : { label: "REPLAY", onClick: startReplay });
+  if (link && link.status !== "linked" && buttons.length < 5) buttons.push({ label: "LINK", onClick: () => openLinkClaude() });
+  dialog.setButtons(buttons);
+}
+
+// ---------------------------------------------------------------- linking your Claude Code (hosted)
+
+/** What to ask Claude Code for, so there's something to watch. */
+const TRY_PROMPT = "Use 3 subagents in parallel to explore this project: one maps how it's structured, one looks for bugs, one reviews the tests. Then give me a short summary.";
+
+const linkSig = () => {
+  const l = agents.state.link;
+  return l ? `${l.status}|${l.code ?? ""}|${l.host ?? ""}` : "none";
+};
+
+function linkStatus() {
+  const l = agents.state.link;
+  if (!l) return "";
+  if (l.status === "linked") return `✓ Linked: ${l.host}. Your agents will walk into the Office.`;
+  if (l.status === "lost") return `The link went quiet. Is the command still running on ${l.host}? If you closed it, press NEW CODE and run it again.`;
+  if (l.status === "waiting") return `Waiting for the command... (this code works for ${Math.max(1, Math.ceil(((l.expiresAt ?? 0) - Date.now()) / 60_000))} more min)`;
+  return "Getting a code...";
+}
+
+async function copy(text: string, what: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    dialog?.add("sys", `✓ ${what} copied.`);
+    dialog?.toEnd();
+    sfx.blip();
+  } catch {
+    dialog?.add("sys", "Couldn't copy: select the text above and copy it by hand.");
+  }
+}
+
+/** Link the Claude Code on your own computer to your Office (hosted). */
+export function openLinkClaude() {
+  if (!dialog) return;
+  wireAgents();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  const l = agents.state.link;
+  // Need a code? Ask for one (it arrives with the next update).
+  if (l && (l.status === "off" || (l.status === "waiting" && (l.expiresAt ?? 0) < Date.now()))) net.send({ type: "office_link", on: true });
+  renderLink();
+  toggleCb(true);
+}
+
+function renderLink() {
+  if (!dialog) return;
+  const l = agents.state.link;
+  dialog.open("LINK YOUR CLAUDE CODE", false);
+  if (!l) {
+    dialog.add("sys", "On this computer the Office watches your Claude Code directly: nothing to link.");
+    agentView = null;
+    dialog.setButtons([{ label: "OFFICE", onClick: () => renderAgentBoard() }]);
+    return;
+  }
+  if (l.status === "linked" || l.status === "lost") {
+    dialog.add("title", l.status === "linked" ? "Linked!" : "Link lost");
+    const status = dialog.add("them", linkStatus());
+    dialog.add("sys", "Now start Claude Code (in any project) and ask for work with subagents. For example:");
+    dialog.add("letter", TRY_PROMPT);
+    dialog.add("sys", "Each subagent walks in and takes a desk. Walk up to one (E) to watch it think and work. Ctrl+C in the terminal, or UNLINK here, stops it.");
+    agentView = { kind: "link", sig: linkSig(), status };
+    dialog.setButtons([
+      { label: "COPY PROMPT", kind: "ok", onClick: () => void copy(TRY_PROMPT, "Prompt") },
+      ...(l.status === "lost" ? [{ label: "NEW CODE", onClick: () => (net.send({ type: "office_link", on: true }), sfx.blip()) }] : []),
+      { label: "UNLINK", onClick: () => (net.send({ type: "office_link", on: false }), sfx.blip()) },
+      { label: "OFFICE", onClick: () => renderAgentBoard() },
+    ]);
+    return;
+  }
+  dialog.add("sys", "Watch the Claude Code on your own computer here, live. One step:");
+  dialog.add("them", "1. Open a terminal on the computer where you use Claude Code (it needs Node.js 18 or newer).\n2. Paste this line and press Enter:");
+  dialog.add("letter", l.command ?? "(getting a code...)");
+  const status = dialog.add("sys", linkStatus());
+  dialog.add("sys", "It reads your Claude Code activity on that computer and shows it only in your Office (add --summary to send less). Nothing is stored; Ctrl+C stops it.");
+  agentView = { kind: "link", sig: linkSig(), status };
+  dialog.setButtons([
+    ...(l.command ? [{ label: "COPY COMMAND", kind: "ok", onClick: () => void copy(l.command!, "Command") }] : []),
+    { label: "NEW CODE", onClick: () => (net.send({ type: "office_link", on: true }), sfx.blip()) },
+    { label: "OFFICE", onClick: () => renderAgentBoard() },
+  ]);
+}
+
+/** One agent up close: its task, and a live feed of what it thinks, says and does. */
+export function openAgent(sessionId: string, id: string) {
+  if (!dialog) return;
+  wireAgents();
+  const s = agents.state.sessions.find((x) => x.id === sessionId);
+  const a = id === "lead" ? s?.lead : s?.workers.find((w) => w.id === id);
+  if (!s || !a) return;
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  const crew = [s.lead, ...s.workers];
+  const idx = crew.indexOf(a);
+  dialog.open(id === "lead" ? `TEAM LEAD: ${a.name.toUpperCase()}` : excerpt(a.name.toUpperCase(), 44), false);
+  const stats = dialog.add("sys", statsLine(a));
+  if (id !== "lead") dialog.add("sys", `${a.kind} subagent${a.depth > 1 ? `, sent out by another helper` : ""} · ${idx} of ${crew.length - 1}`);
+  if (a.task) {
+    dialog.add("title", "Its task");
+    dialog.add("letter", excerpt(a.task, 900));
+  }
+  dialog.add("title", id === "lead" ? "What it's been doing" : "Its work so far");
+  const keep = dialog.lineCount;
+  for (const f of a.feed) addFeed(f);
+  if (!a.feed.length) dialog.add("sys", "Nothing yet...");
+  agentView = { kind: "agent", session: s.id, id, stats, last: a.feed.length ? feedKey(a.feed[a.feed.length - 1]) : "", keep };
+  dialog.toEnd();
+  const go = (d: number) => () => {
+    const next = crew[(idx + d + crew.length) % crew.length];
+    sfx.blip();
+    openAgent(s.id, next === s.lead ? "lead" : next.id);
+  };
+  const buttons: ButtonSpec[] = [];
+  if (crew.length > 1) buttons.push({ label: "< PREV", onClick: go(-1) }, { label: "NEXT >", onClick: go(1) });
+  buttons.push({ label: "BOARD", onClick: () => (sfx.blip(), renderAgentBoard()) });
+  dialog.setButtons(buttons);
+  toggleCb(true);
 }

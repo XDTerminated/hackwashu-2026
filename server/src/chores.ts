@@ -73,14 +73,15 @@ export function devSpawn(kind: "meteor" | "dust") {
   for (let i = 0; i < 3; i++) spawnMeteor(i * 2500);
 }
 
-export function clearChore(id: string): { ok: true; reward: number } | { ok: false; reason: string } {
-  const c = world.chores[id];
-  if (!c) return { ok: false, reason: "already gone" };
+export function clearChore(id: string): { ok: true; reward: number; kind: "dust" | "meteor"; x: number; y: number } | { ok: false; reason: string } {
+  // Own keys only: "__proto__" or "constructor" must not look like a chore.
+  const c = typeof id === "string" && Object.hasOwn(world.chores, id) ? world.chores[id] : undefined;
+  if (!c || !Number.isFinite(c.reward)) return { ok: false, reason: "already gone" };
   if (c.landsAt && Date.now() < c.landsAt) return { ok: false, reason: "it hasn't landed yet!" };
   delete world.chores[id];
   world.coins += c.reward;
   savePersist();
-  return { ok: true, reward: c.reward };
+  return { ok: true, reward: c.reward, kind: c.kind, x: c.x, y: c.y };
 }
 
 // ---------------------------------------------------------------- villager chores

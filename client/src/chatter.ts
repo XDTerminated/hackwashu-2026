@@ -61,7 +61,7 @@ const EXCHANGES: { pair?: [VillagerId, VillagerId]; lines: Line[] }[] = [
   { pair: ["postmaster", "scholar"], lines: [["scholar", "Any letters from the registrar?"], ["postmaster", "Hoo! Nothing I'd call urgent. Yet."]] },
   { pair: ["timekeeper", "jade_rabbit"], lines: [["timekeeper", "The traveler has a busy week."], ["jade_rabbit", "Then let's keep it cozy up here."]] },
   { lines: [["A", "Beautiful Earthrise today."], ["B", "Makes you miss the ocean, doesn't it?"]] },
-  { lines: [["A", "Have you tried the mooncakes?"], ["B", "Only every single day."]] },
+  { lines: [["A", "Have you tried the moon pies?"], ["B", "Only every single day."]] },
   { lines: [["A", "Do you think the traveler misses Earth?"], ["B", "Every building is another line home."]] },
   { lines: [["A", "Moondust on the paths again..."], ["B", "The traveler will sweep it up. They're good like that."]] },
   { lines: [["A", "Heard any meteors lately?"], ["B", "One nearly landed on my porch!"]] },

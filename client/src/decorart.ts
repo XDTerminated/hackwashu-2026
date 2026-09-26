@@ -79,19 +79,16 @@ const art: Record<string, DecorArt> = {
       rect(ctx, O, 3, 3, 12, 3);
       rect(ctx, WOOD.base, 4, 4, 10, 1);
       rect(ctx, O, 12, 6, 1, 3);
-      // The lantern: red paper over a warm candle.
-      disc(ctx, O, 12.5, 15, 5, 6);
-      disc(ctx, lit ? "#d9503f" : "#a33a2e", 12.5, 15, 4, 5);
-      disc(ctx, !lit ? "#7a2e28" : f ? "#ffd98a" : "#f7b267", 12.5, 15.5, 2, 3);
-      rect(ctx, "#b23a2e", 12, 10, 1, 3);
-      rect(ctx, "#b23a2e", 12, 18, 1, 3);
-      rect(ctx, lit ? "#ef7a5e" : "#c24a3a", 10, 12, 1, 5);
-      rect(ctx, O, 10, 8, 6, 2);
-      rect(ctx, "#f5c542", 11, 8, 4, 1);
-      rect(ctx, O, 10, 21, 6, 2);
-      rect(ctx, "#f5c542", 11, 22, 4, 1);
-      rect(ctx, "#f5c542", 12, 23, 1, 4);
-      rect(ctx, "#c99a3e", 12, 26, 1, 1);
+      // The lamp: a little iron-and-glass lantern with a warm bulb.
+      const glass = !lit ? "#8a8298" : f ? "#fff2b0" : "#ffe08a";
+      rect(ctx, O, 9, 8, 8, 2);
+      rect(ctx, "#5a5a6a", 10, 8, 6, 1);
+      rect(ctx, O, 9, 10, 8, 10);
+      rect(ctx, glass, 10, 11, 6, 8);
+      rect(ctx, O, 12, 11, 1, 8);
+      if (lit) rect(ctx, "#ffffff", 10, 11, 1, 3);
+      rect(ctx, O, 8, 20, 10, 2);
+      rect(ctx, "#5a5a6a", 9, 20, 8, 1);
     },
   },
 
@@ -133,7 +130,7 @@ const art: Record<string, DecorArt> = {
       for (const [x, y, rx, ry] of lobes) disc(ctx, "#3f7a36", x, y, rx, ry);
       for (const [x, y, rx, ry] of lobes) disc(ctx, "#5a9a44", x - 1, y - 1, rx - 1.5, ry - 1.5);
       for (const [x, y, rx, ry] of lobes) disc(ctx, "#7cbf55", x - 2, y - 2.5, rx * 0.45, ry * 0.4);
-      // Osmanthus: tiny gold blossoms.
+      // Moonbloom: tiny gold blossoms.
       for (let i = 0; i < 40; i++) {
         const x = 3 + Math.floor(hash(i, 1, 7) * 28);
         const y = 3 + Math.floor(hash(i, 2, 7) * 26);
@@ -501,7 +498,7 @@ Object.assign(art, {
       rect(ctx, O, 1, 9, 30, 6);
       for (let y = 10; y < 14; y++) for (let x = 2; x < 30; x++) rect(ctx, ((x >> 1) + (y >> 1)) % 2 ? "#fff6e6" : RED.base, x, y, 1, 1);
       for (let x = 2; x < 30; x += 2) rect(ctx, O, x, 14, 1, 1);
-      // mooncakes, cups, teapot
+      // pastries, cups, teapot
       for (const cx of [6, 11]) {
         disc(ctx, O, cx, 8, 2.5, 1.8);
         disc(ctx, GOLD.dark, cx, 8, 1.6, 1);
@@ -624,13 +621,13 @@ Object.assign(art, {
       rect(ctx, RED.dark, 15, 3, 2, 1);
       rect(ctx, RED.dark, 19, 2, 1, 3);
       rect(ctx, RED.dark, 22, 3, 2, 1);
-      // little lanterns under the awning
-      for (const x of [8, 29]) {
+      // warm bulbs under the awning
+      for (const x of [8, 19, 29]) {
         rect(ctx, O, x, 16, 1, 2);
-        rect(ctx, O, x - 1, 18, 3, 4);
-        rect(ctx, RED.base, x, 19, 1, 2);
+        rect(ctx, O, x - 1, 18, 3, 3);
+        rect(ctx, "#fff2b0", x, 19, 1, 1);
       }
-      // counter with mooncakes
+      // counter with pastries
       rect(ctx, O, 2, 25, 34, 13);
       rect(ctx, WOOD.base, 3, 27, 32, 10);
       for (let y = 29; y < 37; y += 3) rect(ctx, WOOD.dark, 3, y, 32, 1);
@@ -656,14 +653,14 @@ Object.assign(art, {
       }
       const sag = (x: number) => Math.round(6 + 8 * (1 - ((x - 25) / 21) ** 2));
       for (let x = 5; x < 45; x++) rect(ctx, O, x, sag(x), 1, 1);
-      [11, 18, 25, 32, 39].forEach((x, i) => {
+      // warm round bulbs that twinkle in turn
+      [9, 14, 19, 24, 29, 34, 39].forEach((x, i) => {
         const y = sag(x) + 1;
-        const c = i % 2 ? GOLD : RED;
-        rect(ctx, O, x - 2, y, 5, 7);
-        rect(ctx, lit ? c.base : c.dark, x - 1, y + 1, 3, 5);
         const bright = lit && (i + f) % 2 === 0;
-        rect(ctx, !lit ? "#5b4a4a" : bright ? "#fff1b0" : "#ffd98a", x, y + 2, 1, 3);
-        rect(ctx, GOLD.base, x, y + 7, 1, 2);
+        rect(ctx, O, x - 1, y, 3, 1);
+        rect(ctx, O, x - 1, y + 1, 3, 3);
+        rect(ctx, !lit ? "#6f6a80" : bright ? "#fff6d0" : "#ffd98a", x, y + 1, 1, 2);
+        rect(ctx, "#5a5a6a", x, y, 1, 1);
       });
     },
   },
@@ -692,68 +689,334 @@ Object.assign(art, {
     },
   },
 
+  // (the "gate" id is kept for old saves)
   gate: {
     w: 52,
     h: 48,
     frames: 1,
     draw(ctx) {
+      // A standing ring of moon-metal with a shimmer of starlight inside.
       const cx = 26;
-      const cy = 29;
-      for (let y = 9; y < 48; y++) {
-        for (let x = 1; x < 51; x++) {
+      const cy = 23;
+      for (let y = 0; y < 44; y++)
+        for (let x = 0; x < 52; x++) {
           const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-          if (d < 14) continue;
-          const wallEdge = x === 1 || x === 50 || y === 47;
-          const c = wallEdge || d < 15 ? O : d < 17 ? (y < cy ? ROCK.light : ROCK.base) : y > 41 ? ROCK.base : x < 6 ? "#e6ddcc" : "#f2ece0";
+          if (d > 22) continue;
+          let c: string;
+          if (d > 21) c = O;
+          else if (d > 16) c = (x + 0.5 - cx) * 0.6 + (y + 0.5 - cy) * 0.8 < -4 ? METAL.light : (x + 0.5 - cx) * 0.6 + (y + 0.5 - cy) * 0.8 > 6 ? METAL.dark : METAL.base;
+          else if (d > 15) c = O;
+          else c = d < 9 ? "#bff6f4" : d < 12 ? "#8ff0f0" : "#4fc4d8";
           rect(ctx, c, x, y, 1, 1);
         }
+      // stars in the portal
+      for (const [x, y] of [[21, 18], [30, 26], [25, 30], [32, 17]]) rect(ctx, "#ffffff", x, y, 1, 1);
+      // little running lights on the ring
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        rect(ctx, "#f5c542", Math.round(cx + Math.cos(a) * 18.5), Math.round(cy + Math.sin(a) * 18.5), 1, 1);
       }
-      for (let x = 2; x < 50; x += 6) rect(ctx, ROCK.dark, x, 42, 1, 5);
-      rect(ctx, ROCK.dark, 2, 41, 48, 1);
-      // green tiled roof with curled eaves
-      rect(ctx, O, 4, 2, 44, 2);
-      rect(ctx, GOLD.base, 5, 2, 42, 1);
-      eave(ctx, 0, 4, 52, TILE_GREEN);
-      rect(ctx, O, 1, 8, 50, 2);
-      for (const x of [6, 45]) {
-        rect(ctx, O, x, 0, 2, 3);
-        rect(ctx, GOLD.base, x, 0, 1, 2);
-      }
+      // the plinth
+      rect(ctx, O, 10, 42, 32, 6);
+      rect(ctx, ROCK.base, 11, 43, 30, 4);
+      rect(ctx, ROCK.light, 11, 43, 30, 1);
+      rect(ctx, O, 20, 38, 12, 5);
+      rect(ctx, METAL.dark, 21, 39, 10, 3);
     },
   },
 
+  // (kept the "pagoda" id so saves still load; it's a lighthouse now)
   pagoda: {
     w: 36,
     h: 58,
     frames: 1,
     draw(ctx, _f, lit) {
-      const glow = lit ? "#ffd98a" : "#6f6a80";
-      const WALL = "#b23a2e";
+      const glow = lit ? "#fff2b0" : "#6f6a80";
+      // rocky base
       rect(ctx, O, 2, 52, 32, 6);
       rect(ctx, ROCK.base, 3, 53, 30, 4);
       rect(ctx, ROCK.light, 3, 53, 30, 1);
-      const tier = (x: number, y: number, w: number, h: number, eaveY: number) => {
-        rect(ctx, O, x, y, w, h);
-        rect(ctx, WALL, x + 1, y + 1, w - 2, h - 1);
-        rect(ctx, RED.light, x + 1, y + 1, 1, h - 1);
-        eave(ctx, x - 5, eaveY, w + 10, TILE_GREEN);
-      };
-      tier(12, 16, 12, 8, 12);
-      tier(9, 28, 18, 10, 24);
-      tier(6, 42, 24, 11, 38);
-      // lit doorway and windows
-      rect(ctx, O, 15, 45, 6, 8);
-      rect(ctx, glow, 16, 46, 4, 7);
-      rect(ctx, GOLD.base, 17, 44, 2, 1);
-      for (const [x, y] of [[9, 45], [25, 45], [16, 31], [16, 19]]) {
-        rect(ctx, O, x, y, x === 16 ? 4 : 3, 4);
-        rect(ctx, glow, x + 1, y + 1, x === 16 ? 2 : 1, 2);
+      // tapering striped tower
+      for (let y = 18; y < 53; y++) {
+        const half = Math.round(5 + ((y - 18) / 34) * 4);
+        const band = Math.floor((y - 18) / 7) % 2 === 0;
+        rect(ctx, O, 18 - half - 1, y, half * 2 + 2, 1);
+        rect(ctx, band ? CORAL : "#fff6e6", 18 - half, y, half * 2, 1);
+        rect(ctx, band ? "#b85c3e" : "#e3d8c6", 18 + half - 2, y, 2, 1);
       }
-      // spire
-      rect(ctx, O, 16, 0, 4, 13);
-      rect(ctx, GOLD.base, 17, 1, 2, 11);
-      for (const y of [3, 6, 9]) rect(ctx, GOLD.dark, 16, y, 4, 1);
-      rect(ctx, GOLD.light, 17, 1, 1, 1);
+      // door and a window
+      rect(ctx, O, 15, 45, 6, 8);
+      rect(ctx, "#6b4a3a", 16, 46, 4, 7);
+      rect(ctx, O, 16, 31, 4, 5);
+      rect(ctx, glow, 17, 32, 2, 3);
+      // gallery with a railing
+      rect(ctx, O, 9, 16, 18, 3);
+      rect(ctx, METAL.dark, 10, 17, 16, 1);
+      for (let x = 10; x < 26; x += 3) rect(ctx, O, x, 13, 1, 3);
+      rect(ctx, O, 9, 12, 18, 1);
+      // the lamp room and its cap
+      rect(ctx, O, 12, 5, 12, 8);
+      rect(ctx, glow, 13, 6, 10, 6);
+      if (lit) rect(ctx, "#ffffff", 14, 6, 2, 3);
+      rect(ctx, O, 17, 5, 1, 7);
+      rect(ctx, O, 11, 3, 14, 2);
+      rect(ctx, "#b85c3e", 12, 3, 12, 1);
+      rect(ctx, O, 16, 0, 4, 3);
+      rect(ctx, CORAL, 17, 1, 2, 2);
+    },
+  },
+
+  carrots: {
+    w: 32,
+    h: 16,
+    frames: 2,
+    draw(ctx, f) {
+      // a raised bed of dark soil
+      rect(ctx, O, 1, 9, 30, 7);
+      rect(ctx, "#7a5236", 2, 10, 28, 5);
+      rect(ctx, "#8e6442", 2, 10, 28, 1);
+      for (const x of [5, 11, 17, 23, 28]) rect(ctx, "#5e3e28", x, 12, 2, 1);
+      // carrot shoulders peeking out, leafy tops that sway
+      [4, 10, 16, 22, 27].forEach((x, i) => {
+        rect(ctx, O, x - 1, 8, 4, 3);
+        rect(ctx, "#f08a3c", x, 9, 2, 2);
+        rect(ctx, "#ffb070", x, 9, 1, 1);
+        const sw = (i + f) % 2;
+        rect(ctx, JADE.dark, x + sw, 3, 1, 5);
+        rect(ctx, JADE.base, x - 1 + sw, 4, 1, 3);
+        rect(ctx, JADE.light, x + 1 + sw, 2, 1, 4);
+      });
+    },
+  },
+
+  birdbath: {
+    w: 20,
+    h: 26,
+    frames: 2,
+    draw(ctx, f) {
+      mound(ctx, 3, 23, 14);
+      rect(ctx, O, 7, 12, 6, 12);
+      rect(ctx, ROCK.base, 8, 13, 4, 10);
+      rect(ctx, ROCK.light, 8, 13, 1, 10);
+      // the basin, with a ripple
+      rect(ctx, O, 1, 8, 18, 5);
+      rect(ctx, ROCK.base, 2, 9, 16, 3);
+      rect(ctx, ROCK.dark, 2, 11, 16, 1);
+      rect(ctx, WATER.base, 3, 9, 14, 1);
+      rect(ctx, WATER.light, 4 + f * 5, 9, 3, 1);
+      // a little owl on the rim
+      rect(ctx, O, 12, 2, 6, 7);
+      rect(ctx, "#9a6a55", 13, 3, 4, 5);
+      rect(ctx, O, 12, 1, 1, 1);
+      rect(ctx, O, 17, 1, 1, 1);
+      rect(ctx, "#fff6e6", 13, 4, 1, 1);
+      rect(ctx, "#fff6e6", 16, 4, 1, 1);
+      rect(ctx, "#f5c542", 14, 5, 2, 1);
+      rect(ctx, "#c8a080", 13, 7, 4, 1);
+    },
+  },
+
+  sundial: {
+    w: 18,
+    h: 22,
+    frames: 1,
+    draw(ctx) {
+      mound(ctx, 2, 19, 14);
+      rect(ctx, O, 5, 10, 8, 10);
+      rect(ctx, ROCK.base, 6, 11, 6, 8);
+      rect(ctx, ROCK.light, 6, 11, 1, 8);
+      rect(ctx, ROCK.dark, 11, 11, 1, 8);
+      // a brass dial with hour marks and its pointer
+      disc(ctx, O, 9, 8, 7.5, 3.5);
+      disc(ctx, GOLD.dark, 9, 8, 6.5, 2.5);
+      disc(ctx, GOLD.base, 9, 7.6, 5.5, 1.8);
+      for (let k = 0; k < 6; k++) rect(ctx, GOLD.dark, 4 + k * 2, 8, 1, 1);
+      line(ctx, "#8a6a2a", 9, 8, 5, 9);
+      line(ctx, O, 9, 8, 12, 3);
+      line(ctx, METAL.dark, 9, 7, 11, 4);
+    },
+  },
+
+  bookcart: {
+    w: 30,
+    h: 26,
+    frames: 1,
+    draw(ctx) {
+      // books standing in a row
+      const spines = ["#d9503f", "#5b78c4", "#f5c542", "#5fb58a", "#9a7ff0", "#d97757", "#5b78c4", "#e89aa8"];
+      spines.forEach((c, i) => {
+        const bx = 4 + i * 3;
+        const h = 6 + ((i * 5) % 4);
+        rect(ctx, O, bx - 1, 12 - h, 4, h + 1);
+        rect(ctx, c, bx, 13 - h, 2, h);
+        rect(ctx, "#fff6e6", bx, 15 - h, 2, 1);
+      });
+      // the cart
+      rect(ctx, O, 2, 12, 26, 10);
+      rect(ctx, WOOD.base, 3, 13, 24, 8);
+      rect(ctx, WOOD.light, 3, 13, 24, 1);
+      rect(ctx, WOOD.dark, 3, 20, 24, 1);
+      line(ctx, O, 27, 13, 29, 6);
+      for (const x of [8, 22]) {
+        disc(ctx, O, x, 22.5, 3.5);
+        disc(ctx, METAL.dark, x, 22.5, 2.5);
+        rect(ctx, METAL.light, x - 1, 21, 1, 1);
+      }
+    },
+  },
+
+  hammock: {
+    w: 46,
+    h: 26,
+    frames: 2,
+    draw(ctx, f) {
+      for (const x of [3, 41]) {
+        rect(ctx, O, x, 4, 3, 22);
+        rect(ctx, WOOD.base, x + 1, 5, 1, 21);
+      }
+      // a starry cloth sagging between the posts
+      const sag = (x: number) => Math.round(8 + (6 + f) * (1 - ((x - 23) / 18) ** 2));
+      line(ctx, O, 5, 5, 6, sag(6));
+      line(ctx, O, 41, 5, 40, sag(40));
+      for (let x = 6; x <= 40; x++) {
+        const y = sag(x);
+        rect(ctx, O, x, y - 1, 1, 5);
+        rect(ctx, "#7e5fb8", x, y, 1, 3);
+        rect(ctx, "#9d80d6", x, y, 1, 1);
+        if ((x * 7) % 11 === 3) rect(ctx, "#fff1b0", x, y + 1, 1, 1);
+      }
+    },
+  },
+
+  postbox: {
+    w: 16,
+    h: 26,
+    frames: 1,
+    draw(ctx) {
+      mound(ctx, 1, 23, 14);
+      rect(ctx, O, 3, 4, 10, 20);
+      rect(ctx, "#5b78c4", 4, 5, 8, 18);
+      rect(ctx, "#7f9ae0", 4, 5, 2, 18);
+      rect(ctx, "#3f5a9e", 11, 5, 1, 18);
+      rect(ctx, O, 4, 2, 8, 2);
+      rect(ctx, "#5b78c4", 5, 3, 6, 1);
+      // the slot, a little star and a stripe
+      rect(ctx, O, 5, 8, 6, 1);
+      rect(ctx, "#f5c542", 7, 13, 2, 2);
+      rect(ctx, "#fff1b0", 7, 13, 1, 1);
+      rect(ctx, "#3f5a9e", 4, 19, 8, 1);
+    },
+  },
+
+  gear: {
+    w: 30,
+    h: 30,
+    frames: 2,
+    draw(ctx, f) {
+      mound(ctx, 5, 27, 20);
+      rect(ctx, O, 13, 19, 4, 9);
+      rect(ctx, METAL.dark, 14, 20, 2, 8);
+      // a big brass gear that ticks round
+      const cx = 15;
+      const cy = 12;
+      const R = 9;
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2 + (f ? Math.PI / 10 : 0);
+        const tx = Math.round(cx + Math.cos(a) * (R + 1));
+        const ty = Math.round(cy + Math.sin(a) * (R + 1));
+        rect(ctx, O, tx - 1, ty - 1, 3, 3);
+        rect(ctx, GOLD.base, tx, ty, 1, 1);
+      }
+      disc(ctx, O, cx, cy, R);
+      disc(ctx, GOLD.dark, cx, cy, R - 1);
+      disc(ctx, GOLD.base, cx - 1, cy - 1, R - 2);
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + (f ? Math.PI / 4 : 0);
+        line(ctx, GOLD.dark, cx + Math.round(Math.cos(a) * 3), cy + Math.round(Math.sin(a) * 3), cx + Math.round(Math.cos(a) * (R - 2)), cy + Math.round(Math.sin(a) * (R - 2)));
+      }
+      disc(ctx, O, cx, cy, 3.5);
+      disc(ctx, METAL.base, cx, cy, 2.5);
+      rect(ctx, METAL.light, cx - 1, cy - 1, 1, 1);
+      rect(ctx, GOLD.light, cx - 5, cy - 6, 2, 1);
+    },
+  },
+
+  satellite: {
+    w: 26,
+    h: 32,
+    frames: 2,
+    draw(ctx, f) {
+      mound(ctx, 6, 29, 14);
+      rect(ctx, O, 12, 14, 3, 16);
+      rect(ctx, METAL.dark, 13, 15, 1, 14);
+      // solar wings
+      for (const x of [1, 18]) {
+        rect(ctx, O, x, 6, 8, 7);
+        rect(ctx, "#3a5ab0", x + 1, 7, 6, 5);
+        for (let yy = 8; yy < 12; yy += 2) rect(ctx, "#5b78c4", x + 1, yy, 6, 1);
+        rect(ctx, "#8fb0f0", x + 1, 7, 2, 1);
+      }
+      // the body, with a blinking beacon
+      rect(ctx, O, 9, 4, 9, 11);
+      rect(ctx, METAL.base, 10, 5, 7, 9);
+      rect(ctx, METAL.light, 10, 5, 2, 9);
+      rect(ctx, GOLD.base, 10, 11, 7, 2);
+      rect(ctx, O, 13, 0, 1, 4);
+      rect(ctx, O, 12, 0, 3, 2);
+      rect(ctx, f ? "#ff5a4a" : "#7a2a2a", 13, 0, 1, 1);
+    },
+  },
+
+  bunting: {
+    w: 48,
+    h: 28,
+    frames: 2,
+    draw(ctx, f) {
+      for (const x of [2, 43]) {
+        rect(ctx, O, x, 3, 3, 25);
+        rect(ctx, WOOD.base, x + 1, 4, 1, 24);
+        rect(ctx, O, x - 1, 1, 5, 3);
+        rect(ctx, GOLD.base, x, 2, 3, 1);
+      }
+      const sag = (x: number) => Math.round(5 + 5 * (1 - ((x - 24) / 20) ** 2));
+      for (let x = 5; x < 43; x++) rect(ctx, O, x, sag(x), 1, 1);
+      // little pennants that flutter in turn
+      const cols = [CORAL, GOLD.base, "#5fb58a", "#5b78c4", "#e89aa8", "#9a7ff0"];
+      [9, 15, 21, 27, 33, 39].forEach((x0, i) => {
+        const x = x0 + (f && i % 2 ? 1 : 0);
+        const y = sag(x0) + 1;
+        for (let r = 0; r < 6; r++) {
+          const hw = Math.max(0, 2 - Math.floor(r / 2));
+          rect(ctx, O, x - hw - 1, y + r, hw * 2 + 3, 1);
+        }
+        for (let r = 0; r < 5; r++) {
+          const hw = Math.max(0, 2 - Math.floor(r / 2));
+          rect(ctx, cols[i], x - hw, y + r, hw * 2 + 1, 1);
+        }
+      });
+    },
+  },
+
+  balloons: {
+    w: 20,
+    h: 36,
+    frames: 2,
+    draw(ctx, f) {
+      rect(ctx, O, 7, 31, 6, 5);
+      rect(ctx, METAL.dark, 8, 32, 4, 3);
+      const bs: [number, number, string][] = [
+        [5, 9, CORAL],
+        [15, 8, "#5b78c4"],
+        [10, 5, GOLD.base],
+      ];
+      bs.forEach(([x, y, c], i) => {
+        const by = y + ((i + f) % 2);
+        line(ctx, O, 10, 31, x, by + 5);
+        disc(ctx, O, x, by, 4.5, 5.5);
+        disc(ctx, c, x, by, 3.5, 4.5);
+        rect(ctx, "#ffffff", x - 2, by - 3, 1, 2);
+        rect(ctx, O, x, by + 5, 1, 1);
+      });
     },
   },
 } satisfies Record<string, DecorArt>);

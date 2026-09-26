@@ -26,6 +26,12 @@ export class VillagerActor {
   readonly sprite: Phaser.GameObjects.Sprite;
   private shadow: Phaser.GameObjects.Image;
   private nameTag: Label;
+  private nameWanted = 0;
+
+  /** Show the name tag (when the player is near, or talking to them). */
+  showName(on: boolean) {
+    this.nameWanted = on ? 1 : 0;
+  }
   private alertIcon: Phaser.GameObjects.Image;
   private thoughtIcon: Phaser.GameObjects.Image;
   private letter: Phaser.GameObjects.Image;
@@ -51,7 +57,7 @@ export class VillagerActor {
   ) {
     this.shadow = scene.add.image(x, y, shadowKey(scene, 14)).setDepth(-8);
     this.sprite = scene.add.sprite(x, y, TEX[id]).setOrigin(0.5, 1).play(`${id}-idle`);
-    this.nameTag = new Label(scene, x, y + 2, VILLAGER_NAMES[id], { bg: C.paper, border: C.paperDark, originY: 0, padX: 2 });
+    this.nameTag = new Label(scene, x, y + 2, VILLAGER_NAMES[id], { bg: C.paper, border: C.paperDark, originY: 0, padX: 2 }).setAlpha(0);
     this.alertIcon = scene.add.image(x, y, "bang").setOrigin(0.5, 1).setVisible(false);
     this.thoughtIcon = scene.add.image(x, y, "thought").setOrigin(0, 1).setVisible(false).setInteractive({ useHandCursor: true });
     this.thoughtIcon.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
@@ -278,6 +284,9 @@ export class VillagerActor {
     s.setDepth(y);
     this.shadow.setPosition(x, y - 1);
     this.nameTag.place(x, y + 1).setDepth(y + 1);
+    // Name tags fade in when you're close (a street full of labels is noise).
+    const a = this.nameTag.alpha;
+    if (a !== this.nameWanted) this.nameTag.setAlpha(Phaser.Math.Clamp(a + (this.nameWanted > a ? 0.12 : -0.12), 0, 1));
     const top = y - s.height;
     const bob = Math.floor(time / 240) % 2;
     this.alertIcon.setPosition(x, top - 2 - bob).setDepth(99980);

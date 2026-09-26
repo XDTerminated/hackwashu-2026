@@ -9,10 +9,14 @@
     "dev": "npm-run-all --parallel dev:client dev:server",
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w client",
-    "typecheck": "npm run typecheck -w client && npm run typecheck -w server"
+    "build": "npm run build -w client && npm run build -w server",
+    "typecheck": "npm run typecheck -w client && npm run typecheck -w server",
+    "start": "npm run start:hosted -w server"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

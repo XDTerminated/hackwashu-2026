@@ -2,10 +2,11 @@
 // the world scene animates the same events at a watchable pace on its own.
 
 import { applyLayout } from "../../shared/layout";
-import { VILLAGER_NAMES, type Approval, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
+import { VILLAGER_NAMES, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
 
 export const store: Snapshot & { connected: boolean } = {
   coins: 0,
+  materials: { moonstone: 0, stardust: 0, shard: 0 },
   buildings: {},
   villagers: {} as Record<VillagerId, VillagerState>,
   clods: [],
@@ -15,7 +16,7 @@ export const store: Snapshot & { connected: boolean } = {
   lastSeq: 0,
   phoneLinked: false,
   connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
-  progress: { quest: 0, count: 0, revealed: [], sandbox: {} },
+  progress: { revealed: [], sandbox: {}, movedIn: [], lots: {} },
   residents: ["jade_rabbit"],
   rabbitTeamwork: false,
   chores: [],
@@ -23,8 +24,34 @@ export const store: Snapshot & { connected: boolean } = {
   friendship: {},
   layout: {},
   devMode: false,
+  clearedRocks: [],
+  shards: [],
+  requests: [],
   connected: false,
 };
+
+/** Your coding agents, for the Office (their own updates: see net.onAgents). */
+export const agents: { state: AgentsState; focus: string | null } = { state: { watching: null, link: null, sessions: [] }, focus: null };
+
+export function setAgents(state: AgentsState) {
+  agents.state = state;
+}
+
+const busy = (s: AgentSession) => s.workers.some((w) => w.status !== "done" && w.status !== "failed");
+
+/** The session the Office is showing: the one you picked, else one with agents at work, else the latest. */
+export function focusedSession(): AgentSession | null {
+  const list = agents.state.sessions;
+  return list.find((s) => s.id === agents.focus) ?? list.find((s) => s.source === "replay") ?? list.find(busy) ?? list.find((s) => s.workers.length) ?? list[0] ?? null;
+}
+
+/** Show the next live session (the Office board's SWITCH). */
+export function focusNextSession() {
+  const list = agents.state.sessions;
+  if (list.length < 2) return;
+  const i = list.findIndex((s) => s.id === focusedSession()?.id);
+  agents.focus = list[(i + 1) % list.length].id;
+}
 
 type Fn = () => void;
 const changed = new Set<Fn>();
@@ -128,6 +155,18 @@ export function applyEvent(e: SeqEvent) {
       store.decos.push(e.deco);
       store.coins = e.coins;
       break;
+    case "rock_cleared":
+      store.clearedRocks.push(`${e.x},${e.y}`);
+      store.coins = e.coins;
+      break;
+    case "shard_found":
+      store.shards.push(`${e.x},${e.y}`);
+      store.coins = e.coins;
+      break;
+    case "requests":
+      store.requests = e.requests;
+      store.coins = e.coins;
+      break;
     case "lantern_moved": {
       const l = store.lanterns.find((l) => l.id === e.id);
       if (l) Object.assign(l, { x: e.x, y: e.y });
@@ -154,11 +193,15 @@ export function applyEvent(e: SeqEvent) {
     case "phone":
       store.phoneLinked = true;
       break;
+    case "sandbox":
+      store.progress.sandbox = e.sandbox;
+      break;
     case "connections":
       store.connections = e.connections;
       break;
-    case "quest":
+    case "progress":
       store.progress = e.progress;
+      store.materials = e.materials;
       store.coins = e.coins;
       break;
     case "villager_arrived":

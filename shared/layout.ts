@@ -99,6 +99,8 @@ export const SPOTS: Record<BuildingId, BuildingSpot> = {
   post_office: spot("post_office", "b_post_office", 52, 40, 116, { dx: 0, dy: 14 }),
   rabbit_burrow: spot("rabbit_burrow", "b_rabbit_burrow", 48, 28, 96, { dx: 0, dy: 12 }),
   mailbox: { x: 0, y: 0, texture: "b_mailbox", fw: 5, fh: 4, tall: 24, door: { dx: 12, dy: 10 } },
+  // Off the ring, out to the northeast: the developers' building.
+  office: { x: 1328, y: 432, texture: "b_office", fw: 60, fh: 40, tall: 156, door: { dx: 0, dy: 14 } },
 };
 
 export function buildingTiles(b: BuildingId): { w: number; h: number } {
@@ -269,6 +271,11 @@ export function canOccupy(rects: Rect | Rect[], others: Rect[]): boolean {
 
 export type RockKind = "small" | "big" | "crystal" | "spire" | "arch";
 export const ROCK_TILES: Record<RockKind, number> = { small: 1, big: 2, crystal: 1, spire: 1, arch: 3 };
+/** What it costs to clear a rock away, and what to call it. */
+/** How much moonstone each kind of rock breaks into when you clear it (clearing is free). */
+export const ROCK_STONE: Record<RockKind, number> = { small: 1, big: 2, spire: 2, crystal: 3, arch: 3 };
+export const ROCK_NAME: Record<RockKind, string> = { small: "Pebbles", big: "Boulder", crystal: "Crystal Outcrop", spire: "Rock Spire", arch: "Stone Arch" };
+export const rockKey = (r: { x: number; y: number }) => `${r.x},${r.y}`;
 export interface Rock {
   kind: RockKind;
   x: number;
@@ -290,12 +297,11 @@ const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + m
 
 let rockCache: { key: string; rocks: Rock[] } | null = null;
 
-/** Every rock on the island. `avoid`: things already placed (decorations, lanterns) that rocks must not sit on. */
-export function rockSpots(avoid: Rect[] = []): Rock[] {
-  const key = JSON.stringify([Object.values(SPOTS).map((s) => [s.x, s.y]), avoid.map((r) => [r.x, r.y, r.w, r.h])]);
-  if (rockCache?.key === key) return rockCache.rocks;
-
-  const keepOut: Rect[] = [...RESERVED.map((r) => grow(r, TILE)), ...avoid.map((r) => grow(r, TILE))];
+/** Where nothing wild (rocks, shards) may go: the plaza, buildings (now and at their start), paths, lanterns. */
+function wildsKeepOut(avoid: Rect[]): { keepOut: Rect[]; paths: Pt[][] } {
+  // Decorations keep rocks off their own tiles only: growing them would let a
+  // cheap shrub placed beside a rock make it vanish without paying to clear it.
+  const keepOut: Rect[] = [...RESERVED.map((r) => grow(r, TILE)), ...avoid];
   const paths: Pt[][] = [[PLAZA, { x: LANDING.x, y: LANDING.y + 12 }]];
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     for (const at of [SPOTS[b], DEFAULT_POS[b]]) {
@@ -306,6 +312,19 @@ export function rockSpots(avoid: Rect[] = []): Rock[] {
     }
   }
   for (let i = 0; i < 32; i++) keepOut.push(grow(tileAt(lanternSpot(i)), TILE));
+  return { keepOut, paths };
+}
+
+/**
+ * Every rock on the island. `avoid`: things already placed (decorations,
+ * lanterns) that rocks must not sit on. `cleared`: rocks the player paid to
+ * remove (removed after generation, so clearing one never shifts the others).
+ */
+export function rockSpots(avoid: Rect[] = [], cleared: string[] = []): Rock[] {
+  const key = JSON.stringify([Object.values(SPOTS).map((s) => [s.x, s.y]), avoid.map((r) => [r.x, r.y, r.w, r.h]), cleared]);
+  if (rockCache?.key === key) return rockCache.rocks;
+
+  const { keepOut, paths } = wildsKeepOut(avoid);
 
   const rocks: Rock[] = [];
   const taken: Rect[] = [];
@@ -327,16 +346,83 @@ export function rockSpots(avoid: Rect[] = []): Rock[] {
   // The wilds.
   for (let ty = 2; ty < MAP_H - 2; ty++) {
     for (let tx = 2; tx < MAP_W - 2; tx++) {
-      if (noise(tx, ty, 41) > 0.04) continue;
+      // Sparse on purpose: a few rocks read as scenery, a lot read as clutter.
+      if (noise(tx, ty, 41) > 0.024) continue;
       const k = noise(tx, ty, 42);
-      const kind: RockKind = k < 0.34 ? "small" : k < 0.6 ? "big" : k < 0.78 ? "crystal" : k < 0.93 ? "spire" : "arch";
+      const kind: RockKind = k < 0.4 ? "small" : k < 0.68 ? "big" : k < 0.82 ? "crystal" : k < 0.95 ? "spire" : "arch";
       tryPlace(kind, tx * TILE + TILE / 2, (ty + 1) * TILE);
     }
   }
-  rockCache = { key, rocks };
-  return rocks;
+  const gone = new Set(cleared);
+  const kept = rocks.filter((r) => !gone.has(rockKey(r)));
+  rockCache = { key, rocks: kept };
+  return kept;
 }
 
 export function rockRect(r: Rock): Rect {
   return footprint(r.x, r.y, ROCK_TILES[r.kind], 1);
 }
+
+// ---------------------------------------------------------------- moon shards
+// Twelve glowing shards hidden out in the wilds, spread across the whole island
+// (each spot is the candidate farthest from the ones already picked). Walk over
+// one to pick it up; find them all for a bonus. Fixed per island, so the
+// client and server agree without talking about it.
+
+export const SHARD_COUNT = 12;
+export const SHARD_REWARD = 15;
+export const SHARD_BONUS = 200;
+
+let shardCache: Pt[] | null = null;
+
+/**
+ * Where the 12 shards are. Worked out from the default layout, so they don't
+ * shift when buildings are moved and the game and server always agree (the
+ * tiles are kept free: nothing can be placed on an unfound shard).
+ */
+export function shardSpots(): Pt[] {
+  if (shardCache) return shardCache;
+  const moved = Object.fromEntries((Object.keys(SPOTS) as BuildingId[]).map((b) => [b, { x: SPOTS[b].x, y: SPOTS[b].y }])) as Layout;
+  applyLayout({});
+  try {
+    shardCache = computeShards();
+  } finally {
+    applyLayout(moved);
+  }
+  return shardCache;
+}
+
+function computeShards(): Pt[] {
+  const { keepOut, paths } = wildsKeepOut([]);
+  const rocks = rockSpots([]).map((r) => grow(rockRect(r), TILE));
+  const candidates: Pt[] = [];
+  for (let ty = 3; ty < MAP_H - 3; ty += 2) {
+    for (let tx = 3; tx < MAP_W - 3; tx += 2) {
+      const p = { x: tx * TILE + TILE / 2, y: (ty + 1) * TILE };
+      const r = tileAt(p);
+      let ok = true;
+      for (let dy = -1; dy <= 1 && ok; dy++) for (let dx = -1; dx <= 1 && ok; dx++) ok = inIslandXY(p.x + dx * TILE * 2, p.y - TILE / 2 + dy * TILE * 2);
+      if (!ok || keepOut.some((k) => overlaps(k, r)) || rocks.some((k) => overlaps(k, r))) continue;
+      if (paths.some((pts) => pts.some((a, i) => i < pts.length - 1 && segDist(p.x, p.y - 8, a, pts[i + 1]) < 28))) continue;
+      candidates.push(p);
+    }
+  }
+  const picked: Pt[] = [];
+  if (candidates.length) picked.push(candidates.reduce((a, b) => (noise(b.x, b.y, 71) < noise(a.x, a.y, 71) ? b : a)));
+  while (picked.length < SHARD_COUNT && picked.length < candidates.length) {
+    let best: Pt | null = null;
+    let bestD = -1;
+    for (const c of candidates) {
+      const d = Math.min(...picked.map((p) => Math.hypot(p.x - c.x, p.y - c.y))) + noise(c.x, c.y, 72) * 24;
+      if (d > bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    picked.push(best!);
+  }
+  shardCache = picked;
+  return picked;
+}
+
+export const shardKey = (p: Pt) => `${p.x},${p.y}`;

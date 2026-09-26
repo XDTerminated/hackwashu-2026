@@ -15,7 +15,7 @@ const LOOKS: Record<string, Look> = {
   dome: { glow: { color: 0xffd98a, alpha: 0.2, dx: 11, dy: -10 } },
   fountain: { glow: { color: 0x9fe3f0, alpha: 0.18, dx: 0, dy: -14 } },
   garland: { glow: { color: 0xffb070, alpha: 0.3, dx: 0, dy: -16 } },
-  pagoda: { glow: { color: 0xffd98a, alpha: 0.3, dx: 0, dy: -12 } },
+  pagoda: { glow: { color: 0xfff2b0, alpha: 0.35, dx: 0, dy: -49 } },
 };
 
 export interface ShopItem extends DecorDef, Look {

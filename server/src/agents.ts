@@ -5,7 +5,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BUILDINGS,
-  QUESTS,
+  currentMoveIn,
   VILLAGER_HOME,
   type Approval,
   type BuildingId,
@@ -263,8 +263,10 @@ export function toolsFor(v: VillagerId): Tool[] {
 
 export function missingBuildingsNote(v: VillagerId): string {
   if (v === "jade_rabbit") {
-    const q = QUESTS[world.progress.quest];
-    const quest = q ? `\n\nThe player's current goal: "${q.title}" — ${q.hint}` : "\n\nThe player has unlocked every neighbor.";
+    const d = currentMoveIn(world.progress);
+    const quest = d
+      ? `\n\nThe player's current goal: getting ${nameOf(d.villager)} to move in. Next step: ${services.nextStep()} (Materials: moonstone from clearing boulders, rubble and fallen meteor rocks; stardust from sweeping moondust; moon shards from the wilds. Coins from popping clods after neighbors finish work, sweeping, meteors and requests.)`
+      : "\n\nEvery neighbor has moved in.";
     const guide = services.rabbitTeamwork()
       ? ""
       : "\n\nRight now you're just the guide: you can't hand out work until two neighbors live here. Point the player at their current goal instead.";
@@ -329,7 +331,6 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
     clod.result = summary;
     putClod(clod);
     emit({ type: "tool_end", villager: v, clodId: clod.id, ok: true, result: summary });
-    if (!choreTasks.has(taskId)) services.onToolOk(v, block.name);
     return { type: "tool_result", tool_use_id: block.id, content: text };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -493,8 +494,11 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
   };
   if (!movedIn(v)) {
     const home = BUILDINGS[VILLAGER_HOME[v]].name;
-    return early(owns(VILLAGER_HOME[v]) ? `${nameOf(v)} is waiting on Earth for a signal — connect their account at the ${home}.` : `${nameOf(v)} hasn't moved in yet — build the ${home} first.`);
+    return early(`${nameOf(v)} hasn't moved in yet: get the ${home} ready first.`);
   }
+  // Moved in, but their account isn't connected yet (and no sample data chosen).
+  const needs = services.needsConnect(v);
+  if (needs) return early(`Connect your ${needs === "google" ? "Google account" : "Canvas"} first (or try me on sample data), and I'm all yours!`);
   if (busy.has(v)) return early(`Still busy with your last request — hang tight!`);
 
   const taskId = newId("task");
@@ -522,7 +526,6 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
       addLantern(lantern);
       emit({ type: "task_done", taskId, villager: v, summary: reply, lantern });
     }
-    if (from !== "chore") services.onTaskDone(v, delegations.get(taskId) ?? new Set());
     if (from === "game") {
       remember(v, text, reply, "visit", notes);
       befriend(v, "visit");

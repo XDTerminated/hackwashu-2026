@@ -188,14 +188,14 @@ function plaza(ctx: Ctx) {
       if (d > R - 3) c = "#6f6880";
       else if (d > R - 8 && d <= R - 6.5) c = "#c99a3e";
       else if (d > R - 6.5 && d <= R - 3) c = "#8a8298";
-      else if (d > 66 && d < R - 12 && ray > 0.992) c = "#d97757";
-      else if (d > 74 && d < R - 14 && ray2 > 0.996) c = "#c99a3e";
+      else if (d > 66 && d < R - 12 && ray > 0.994) c = "#c4bccf";
+      else if (d > 74 && d < R - 14 && ray2 > 0.997) c = "#c9c2d4";
       else if (d > 62 && d <= 64) c = "#c99a3e";
       else if (d <= 62 && d > 60) c = "#8a8298";
       if (d <= 60) {
         // the fountain court: a star of coral and cream
         const star = Math.abs(Math.cos((16 * a) / 2));
-        c = d > 58 ? "#c99a3e" : star > 0.9 && d > 30 ? (Math.floor(d / 6) % 2 ? "#eb9a7c" : "#f2e6cc") : hash(Math.floor(x / 5), Math.floor(y / 5), 7) > 0.5 ? "#b8b0c4" : "#c4bdd0";
+        c = d > 58 ? "#c99a3e" : star > 0.93 && d > 34 ? "#ddd6e4" : hash(Math.floor(x / 5), Math.floor(y / 5), 7) > 0.5 ? "#c2bbcd" : "#c9c2d4";
       }
       rect(ctx, c, PLAZA.x + x, PLAZA.y + y, 1, 1);
     }
