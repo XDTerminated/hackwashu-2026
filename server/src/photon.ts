@@ -280,10 +280,3 @@ export async function textPlayer(text: string): Promise<boolean> {
   return sent;
 }
 
-let lastOpening = 0;
-/** The opening scene ends with the player's real phone buzzing. */
-export async function sendOpeningText() {
-  if (Date.now() - lastOpening < 60_000) return;
-  lastOpening = Date.now();
-  await textPlayer(`${SIGNATURE.jade_rabbit}: Made it to the Moon? Reply here anytime — text "help" to see who's around.`);
-}

@@ -105,8 +105,6 @@ export class TitleScene extends Phaser.Scene {
       if (!introSeen()) return intro();
       landing = true;
       startMusic();
-      // The opening scene ends with your real phone buzzing.
-      net.send({ type: "landed" });
       this.cameras.main.fadeOut(400, 11, 10, 26);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
         this.scene.start("Game");

@@ -15,7 +15,7 @@ import { DEFAULT_CANVAS, canvasBase, connectCanvas, disconnectCanvas, initCanvas
 import { canvasSignIn } from "./connectors/canvasLogin.js";
 import { testConnections } from "./selftest.js";
 import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle, setGoogleClient } from "./connectors/google.js";
-import { onPhoneLinked, phoneLinked, photonReady, sendOpeningText, startLink, startPhoton, unlink } from "./photon.js";
+import { onPhoneLinked, phoneLinked, photonReady, startLink, startPhoton, unlink } from "./photon.js";
 import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
 import { handleVoice, voiceStatus, voiceSummary } from "./voice.js";
 import * as services from "./services.js";
@@ -220,7 +220,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         break;
 
       case "landed":
-        void sendOpeningText();
+        // (joining the game doesn't text your phone; texts are for news and approvals)
         break;
 
       case "task":

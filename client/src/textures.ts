@@ -718,10 +718,10 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
   for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
   for (let look = 0; look < WORKER_LOOKS; look++) {
-    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 20, 26, (ctx) => drawWorkerBack(ctx, look, f));
-    canvasTex(scene, `worker_front_${look}`, 16, 26, (ctx) => drawWorkerFront(ctx, look));
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 32, 20, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 32, 20, (ctx) => drawWorkerFront(ctx, look));
   }
-  canvasTex(scene, "office_lead", 16, 26, (ctx) => drawWorkerFront(ctx, 4, true));
+  canvasTex(scene, "office_lead", 32, 24, (ctx) => drawWorkerFront(ctx, 0, true));
   canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
   canvasTex(scene, "office_plant", 18, 26, drawPlant);
   canvasTex(scene, "office_couch", 52, 26, drawCouch);

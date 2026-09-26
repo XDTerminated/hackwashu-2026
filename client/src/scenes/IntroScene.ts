@@ -70,8 +70,6 @@ export class IntroScene extends Cutscene {
       this.scene.wake("UI");
       return;
     }
-    // The opening ends with your real phone buzzing.
-    net.send({ type: "landed" });
     this.scene.start("Game");
     this.scene.launch("UI");
   }
