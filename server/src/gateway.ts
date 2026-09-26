@@ -51,6 +51,8 @@ interface Player {
   name: string;
   createdAt: number;
   lastSeen: number;
+  /** Bumped on sign-out: every session made before it stops working (all tabs, copied cookies). */
+  epoch?: number;
 }
 
 const USERS = join(ROOT, "players.json");
@@ -91,7 +93,13 @@ function cookies(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of String(req.headers.cookie ?? "").split(";")) {
     const i = part.indexOf("=");
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    // A mangled cookie is just ignored (decodeURIComponent throws on a bad % sequence).
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      /* skip it */
+    }
   }
   return out;
 }
@@ -102,7 +110,7 @@ function sessionCookie(req: IncomingMessage, value: string, maxAge: number) {
 }
 
 function newSession(req: IncomingMessage, p: Player) {
-  const body = `${p.id}.${Date.now() + SESSION_DAYS * 86_400_000}`;
+  const body = `${p.id}.${Date.now() + SESSION_DAYS * 86_400_000}.${p.epoch ?? 0}`;
   return sessionCookie(req, `${body}.${sign(body)}`, SESSION_DAYS * 86_400);
 }
 
@@ -110,13 +118,15 @@ function newSession(req: IncomingMessage, p: Player) {
 function whoIs(req: IncomingMessage): Player | null {
   const raw = cookies(req).moon_session;
   if (!raw) return null;
-  const [id, exp, mac] = raw.split(".");
-  if (!id || !exp || !mac) return null;
-  const want = Buffer.from(sign(`${id}.${exp}`));
+  const [id, exp, epoch, mac] = raw.split(".");
+  if (!id || !exp || !epoch || !mac) return null;
+  const want = Buffer.from(sign(`${id}.${exp}.${epoch}`));
   const got = Buffer.from(mac);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
   if (Number(exp) < Date.now()) return null;
-  return Object.hasOwn(players, id) ? players[id] : null;
+  const p = Object.hasOwn(players, id) ? players[id] : null;
+  // Signed out since this session began (in any tab)?
+  return p && String(p.epoch ?? 0) === epoch ? p : null;
 }
 
 // ---------------------------------------------------------------- each player's own game server
@@ -146,13 +156,14 @@ function freePort() {
 
 /** This player's game server, started if it isn't running. */
 async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
+  if (deleting.has(p.id)) throw new Error("That village is being deleted.");
   let c = copies.get(p.id);
   if (!c) {
     if (copies.size >= MAX_RUNNING) {
       // Make room: stop whoever's been idle longest.
       const idle = [...copies.entries()].filter(([, x]) => x.sockets === 0).sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
       if (!idle) throw new Error("The Moon is full right now. Try again in a few minutes!");
-      stopCopy(idle[0]);
+      void stopCopy(idle[0]);
     }
     const port = freePort();
     const site = siteUrl(req);
@@ -208,22 +219,34 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
   try {
     await c.ready;
   } catch (err) {
-    stopCopy(p.id);
+    void stopCopy(p.id);
     throw err;
   }
   return c;
 }
 
-function stopCopy(id: string) {
+/** Stop a player's copy; resolves once it has really exited (it saves on the way out). */
+function stopCopy(id: string): Promise<void> {
   const c = copies.get(id);
-  if (!c) return;
+  if (!c) return Promise.resolve();
   copies.delete(id);
-  c.proc.kill("SIGTERM");
+  if (c.proc.exitCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const hard = setTimeout(() => c.proc.kill("SIGKILL"), 5000);
+    c.proc.once("exit", () => {
+      clearTimeout(hard);
+      resolve();
+    });
+    c.proc.kill("SIGTERM");
+  });
 }
+
+/** Accounts being deleted: nothing may start their village back up meanwhile. */
+const deleting = new Set<string>();
 
 // Idle copies go to sleep (their saves stay).
 setInterval(() => {
-  for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > IDLE_MS) stopCopy(id);
+  for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > IDLE_MS) void stopCopy(id);
 }, 60_000);
 
 // ---------------------------------------------------------------- passing things through
@@ -345,14 +368,15 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
   const secure = siteUrl(req).startsWith("https:") ? "; Secure" : "";
   if (url.pathname === "/auth/google") {
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return redirect("/?signin=unconfigured");
-    const state = randomBytes(16).toString("base64url");
+    // One cookie per sign-in attempt, named by its state, so two tabs signing in don't trip over each other.
+    const state = randomBytes(12).toString("hex");
     const to = googleClient(req).generateAuthUrl({ scope: ["openid", "email", "profile"], state, prompt: "select_account" });
-    return redirect(to, `moon_oauth=${state}; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600${secure}`);
+    return redirect(to, `moon_oauth_${state}=1; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600${secure}`);
   }
   if (url.pathname === "/auth/google/callback") {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state || state !== cookies(req).moon_oauth) return redirect(url.searchParams.get("error") ? "/?signin=cancelled" : "/?signin=expired");
+    if (!code || !state || !/^[0-9a-f]{24}$/.test(state) || cookies(req)[`moon_oauth_${state}`] !== "1") return redirect(url.searchParams.get("error") ? "/?signin=cancelled" : "/?signin=expired");
     try {
       const g = googleClient(req);
       const { tokens } = await g.getToken(code);
@@ -360,7 +384,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       const info = ticket.getPayload();
       if (!info?.sub || !info.email) throw new Error("Google didn't say who you are");
       const p = playerFor(info.sub, info.email, info.name ?? info.email.split("@")[0]);
-      return redirect("/", [newSession(req, p), `moon_oauth=; Path=/auth; Max-Age=0${secure}`]);
+      return redirect("/", [newSession(req, p), `moon_oauth_${state}=; Path=/auth; Max-Age=0${secure}`]);
     } catch (err) {
       console.error("[gateway] sign-in failed:", err);
       return redirect("/?signin=failed");
@@ -371,7 +395,16 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
     const p = playerFor(`dev:${email}`, email, email.split("@")[0]);
     return redirect("/", newSession(req, p));
   }
-  if (url.pathname === "/auth/logout") return redirect("/?signin=signedout", sessionCookie(req, "", 0));
+  if (url.pathname === "/auth/logout") {
+    // Signing out signs out everywhere: every tab, and any copied cookie.
+    const p = whoIs(req);
+    if (p) {
+      p.epoch = (p.epoch ?? 0) + 1;
+      savePlayers();
+      void stopCopy(p.id); // open game tabs lose their connection and go back to sign-in
+    }
+    return redirect("/?signin=signedout", sessionCookie(req, "", 0));
+  }
   // The title screen asks this before connecting: signed in, and as whom.
   if (url.pathname === "/auth/me") {
     const p = whoIs(req);
@@ -384,11 +417,15 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (origin && origin !== siteUrl(req)) return page(res, 403, "Not here", "<p>That has to come from the game.</p>");
     const p = whoIs(req);
     if (!p) return redirect("/");
-    stopCopy(p.id);
-    await new Promise((r) => setTimeout(r, 800));
-    rmSync(join(ROOT, "players", p.id), { recursive: true, force: true });
-    delete players[p.id];
-    savePlayers();
+    deleting.add(p.id);
+    try {
+      await stopCopy(p.id); // (it may save once on its way out: wait for that, then delete)
+      rmSync(join(ROOT, "players", p.id), { recursive: true, force: true });
+      delete players[p.id];
+      savePlayers();
+    } finally {
+      deleting.delete(p.id);
+    }
     console.log(`[gateway] deleted player ${p.id}`);
     return page(res, 200, "Deleted", `<h2>All gone</h2><p>Your village, its connections and your account are deleted from Moon Village.</p><p class="small">To also remove the game's access from your Google account: myaccount.google.com → Security → Third-party connections.</p><p><a href="/?signin=deleted">Back to the start</a></p>`, { "set-cookie": sessionCookie(req, "", 0) });
   }
@@ -446,21 +483,25 @@ const server = createServer(async (req, res) => {
 
 server.on("upgrade", async (req, socket, head) => {
   socket.on("error", () => socket.destroy());
-  const p = whoIs(req);
-  if (!p) {
-    socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n");
-    return;
-  }
   try {
+    const p = whoIs(req);
+    if (!p) {
+      socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      return;
+    }
     proxyUpgrade(req, socket, head, await copyFor(p, req));
   } catch {
     socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
   }
 });
 
+// Never let one bad request take the whole site down.
+process.on("unhandledRejection", (err) => console.error("[gateway] unhandled:", err));
+
 const shutdown = () => {
-  for (const id of [...copies.keys()]) stopCopy(id);
-  setTimeout(() => process.exit(0), 1500);
+  // Every village saves on its way out; don't wait forever for them.
+  void Promise.all([...copies.keys()].map((id) => stopCopy(id))).then(() => process.exit(0));
+  setTimeout(() => process.exit(0), 6000);
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

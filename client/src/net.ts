@@ -42,6 +42,7 @@ const SIGNIN_NOTES: Record<string, string> = {
   failed: "Sign-in didn't work. Try again?",
   unconfigured: "Sign-in isn't set up on this server yet.",
   signedout: "Signed out. See you soon!",
+  ended: "You were signed out. Sign in to get back to your village.",
   deleted: "Your village and account are deleted.",
 };
 
@@ -114,7 +115,17 @@ export function connect() {
   };
   ws.onclose = () => {
     setConnected(false);
-    setTimeout(connect, 3000);
+    // Online, a dropped connection might mean you were signed out (it expired, or you signed
+    // out in another tab): then it's back to the title's sign-in, not retrying forever.
+    if (HOSTED)
+      void fetch("/auth/me", { cache: "no-store" })
+        .then((r) => r.json() as Promise<{ signedIn?: boolean }>)
+        .then((me) => {
+          if (me.signedIn === false) location.href = "/?signin=ended";
+          else setTimeout(connect, 3000);
+        })
+        .catch(() => setTimeout(connect, 3000));
+    else setTimeout(connect, 3000);
   };
   ws.onerror = () => ws?.close();
 }
