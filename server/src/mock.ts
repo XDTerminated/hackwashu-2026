@@ -55,7 +55,7 @@ async function postmaster(taskId: string, task: string): Promise<string> {
     }
   })();
   await sleep(600);
-  if (!owns("rocket_pad")) return `Drafted a reply to Prof. Vega (${draftId}), but there's no Rocket Pad to launch it — build one and I'll send it.`;
+  if (!owns("rocket_pad")) return `Drafted a reply to Prof. Vega (${draftId}), but there's no Mail Rocket on the Post Office yet: build it and I'll send it.`;
   const sent = await tool("postmaster", taskId, "send_email", { draft_id: draftId });
   return sent.ok && sent.text.includes('"sent":true')
     ? "Read Prof. Vega's note and sent your reply confirming Tuesday at 3pm."

@@ -34,7 +34,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   mailbox: { id: "mailbox", name: "Mailbox", price: 0, starter: false, unlocks: "read & summarize email (comes with the Post Office)" },
   clock_tower: { id: "clock_tower", name: "Clock Tower", price: 60, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
   library: { id: "library", name: "Library", price: 90, starter: false, resident: "scholar", unlocks: "Mabel the Scholar: reads your Canvas courses, assignments and announcements" },
-  rocket_pad: { id: "rocket_pad", name: "Rocket Pad", price: 0, starter: false, unlocks: "lets Hoot the Postmaster send mail to Earth (with your OK)" },
+  rocket_pad: { id: "rocket_pad", name: "Mail Rocket", price: 0, starter: false, unlocks: "an upgrade to Hoot's Post Office: he can send your emails to Earth (with your OK)" },
   office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk" },
 };
 

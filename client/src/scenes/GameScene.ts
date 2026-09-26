@@ -27,7 +27,7 @@ import type { Deco } from "../../../shared/game";
 import { itemById, type ShopItem } from "../items";
 import { shadowKey } from "../textures";
 import { Button, C, Label } from "../widgets";
-import { LANDING, SPOTS, TILE, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
+import { LANDING, SPOTS, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
 import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter, openTalk } from "../panel";
@@ -44,7 +44,7 @@ const PLOT_PURPOSE: Partial<Record<BuildingId, string>> = {
   post_office: "Hoot's home: your Gmail",
   clock_tower: "Cog's home: your calendar",
   library: "Mabel's home: your Canvas",
-  rocket_pad: "lets Hoot send your emails (you OK each one)",
+  rocket_pad: "Hoot's upgrade: send your emails (you OK each one)",
   office: "watch your coding agents work",
 };
 
@@ -473,7 +473,7 @@ export class GameScene extends Phaser.Scene {
     this.pathTex = paths;
     const ctx = paths.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
-    for (const b of BUILDING_IDS) if (store.buildings[b] && b !== "mailbox") drawBuildingPath(ctx, b);
+    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b);
     paths.refresh();
     this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
 
@@ -644,7 +644,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Lay a building's path (after it's built) and light its doorway lamp. */
   private layPath(b: BuildingId) {
-    if (b === "mailbox") return;
+    if (isAnnex(b)) return;
     drawBuildingPath(this.pathTex.getContext(), b);
     this.pathTex.refresh();
     const lamp = lampSpots((x) => x === b).find((p) => p.building === b);
@@ -661,7 +661,7 @@ export class GameScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
 
     if (store.buildings[b]) {
-      if (b !== "mailbox") objs.push(this.add.image(s.x, s.y - 2, `grounds_${b}`).setOrigin(0.5, 0).setDepth(-9.2));
+      if (!isAnnex(b)) objs.push(this.add.image(s.x, s.y - 2, `grounds_${b}`).setOrigin(0.5, 0).setDepth(-9.2));
       // The launch pad's base is a landing disc lying flat on the ground: a shadow under it reads as a second, floating disc.
       if (b !== "rocket_pad") objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.2)).setDepth(-8));
       const img = this.add.image(s.x, s.y, s.texture).setOrigin(0.5, 1).setDepth(s.y);
@@ -742,7 +742,8 @@ export class GameScene extends Phaser.Scene {
       return [hands];
     }
     if (b === "rocket_pad") {
-      const beacon = this.add.image(s.x + 32, s.y - 128, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff4a3a).setDepth(s.y + 1);
+      // the beacon on top of the Mail Rocket's gantry
+      const beacon = this.add.image(s.x - 13, s.y - 110, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff4a3a).setDepth(s.y + 1);
       pulse(beacon, 0.1, 0.9, 700);
       return [beacon];
     }
@@ -1266,12 +1267,12 @@ export class GameScene extends Phaser.Scene {
 
       case "plot_revealed":
         this.placeBuilding(e.building, true);
-        // Hoot says what the new Rocket Pad plot is for (after any quest chatter).
+        // Hoot says what the Mail Rocket (his Post Office's upgrade) is for, after his hello.
         if (e.building === "rocket_pad")
           this.time.delayedCall(8500, () =>
             this.game.events.emit("npc-toast", {
               who: VILLAGER_NAMES.postmaster,
-              text: "Hoo! See the Rocket Pad plot? Build it (free) and I can send your replies to Earth. I'll bring each one to your door for your OK first.",
+              text: "Hoo! I'd love a Mail Rocket on the side of my Post Office. Build it (free) and I can send your replies to Earth. I'll bring each one to your door for your OK first.",
             }),
           );
         break;
@@ -1751,7 +1752,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private heldTiles(h: Held): { w: number; h: number; apron: number } {
-    if (h.kind === "building") return { ...buildingTiles(h.b), apron: h.b === "mailbox" ? 0 : 1 };
+    if (h.kind === "building") return { ...buildingTiles(h.b), apron: isAnnex(h.b) ? 0 : 1 };
     if (h.kind === "lantern") return { w: 1, h: 1, apron: 0 };
     return { w: h.item.tiles[0], h: h.item.tiles[1], apron: 0 };
   }
@@ -1807,7 +1808,8 @@ export class GameScene extends Phaser.Scene {
     let bestY = -Infinity;
     const hit = (x: number, y: number, w: number, h: number) => wx >= x - w / 2 && wx < x + w / 2 && wy >= y - h && wy < y + 4;
     for (const b of BUILDING_IDS) {
-      if (!this.isShown(b) || this.constructing.has(b)) continue;
+      // (the Mail Rocket is part of the Post Office: move the Post Office and it comes along)
+      if (!this.isShown(b) || this.constructing.has(b) || b === "rocket_pad") continue;
       const s = SPOTS[b];
       const tex = this.textures.get(store.buildings[b] ? s.texture : `plot_${b}`).getSourceImage();
       const h = tex.height;

@@ -104,7 +104,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
       const { data: d, source } = await services.mail.draft(str(i.to), str(i.subject), str(i.body), str(i.reply_to_email_id) || undefined);
       const next = owns("rocket_pad")
         ? "Next: if you were asked to send it, call send_email with this draft_id now — the player approves it via a letter at their door."
-        : "The Rocket Pad isn't built, so it can't be sent yet — it's saved in the player's drafts. Report that.";
+        : "The Mail Rocket isn't built on the Post Office yet, so it can't be sent — it's saved in the player's drafts. Report that.";
       return { text: JSON.stringify({ source, draft_id: d.id, to: d.to, subject: d.subject, next }), summary: `draft to ${d.to}: "${d.subject}"` };
     },
   },

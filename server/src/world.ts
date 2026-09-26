@@ -446,6 +446,8 @@ export function moveLantern(id: string, x: number, y: number): boolean {
 
 /** Buildings (and revealed plots) can be moved anywhere their tiles fit. */
 export function moveBuilding(b: BuildingId, x: number, y: number): boolean {
+  // The Mail Rocket is built onto the Post Office: it moves when the Post Office does.
+  if (b === "rocket_pad") return false;
   if (!SPOTS[b] || (!owns(b) && !world.progress.revealed.includes(b))) return false;
   if (!canOccupy(buildingRects(b, { x, y }), occupied({ building: b }))) return false;
   world.layout[b] = { x, y };

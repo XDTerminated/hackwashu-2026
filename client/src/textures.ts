@@ -13,8 +13,8 @@ import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
 import { ICON_SPRITES, MATERIAL_ICONS, VILLAGER_ICONS } from "./icons";
 import { decorById } from "../../shared/decor";
 import { drawMailbox, drawPlot, drawRuins, drawFoundation, drawRubble } from "./buildings";
-import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawLaunchComplex, drawManor } from "./estate";
-import { SPOTS, TILE, buildingTiles } from "./layout";
+import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawMailRocket, drawManor } from "./estate";
+import { SPOTS, TILE, buildingTiles, isAnnex } from "./layout";
 import type { BuildingId, VillagerId } from "../../shared/game";
 import { type Ctx, INK, box, disc, hash, rect } from "./pix";
 import { PORTRAIT, drawPortrait, drawPortraitSky, type PortraitFrame } from "./portraits";
@@ -229,30 +229,207 @@ function drawPlazaGarden(ctx: Ctx) {
  * Formal grounds in front of an estate (flat, under everything): a marble
  * forecourt with a gold border, clipped hedges down both sides and flowers.
  */
-function drawGrounds(ctx: Ctx, w: number, h: number) {
+/**
+ * Each home's forecourt, in front of its door (w x h, the building's width
+ * plus two tiles each side). No two alike: they say who lives there.
+ */
+function drawGrounds(ctx: Ctx, w: number, h: number, b: BuildingId) {
   const x0 = 14;
   const x1 = w - 14;
-  rect(ctx, "#8a8298", x0, 0, x1 - x0, h - 6);
-  for (let y = 0; y < h - 7; y++) {
-    for (let x = x0 + 1; x < x1 - 1; x++) {
-      const row = Math.floor(y / 6);
-      const seam = y % 6 === 5 || (x + (row % 2 ? 5 : 0)) % 10 === 0;
-      rect(ctx, seam ? "#a49cb3" : hash(Math.floor((x + (row % 2 ? 5 : 0)) / 10), row, 3) > 0.5 ? "#d8d2e0" : "#cfc8d9", x, y, 1, 1);
+  const pw = x1 - x0;
+  const ph = h - 6;
+  /** A paved area, one pixel at a time: `px(x, y)` gives the colour. */
+  const pave = (px: (x: number, y: number) => string) => {
+    for (let y = 0; y < ph; y++) for (let x = x0; x < x1; x++) rect(ctx, px(x - x0, y), x, y, 1, 1);
+    rect(ctx, INK, x0, ph, pw, 1);
+  };
+  /** Side strips (hedge, lavender...) with something at the front corner. */
+  const sides = (base: string, light: string, dots: string[], corner: (cx: number, cy: number) => void) => {
+    for (const hx of [2, w - 14]) {
+      rect(ctx, INK, hx, 0, 12, h - 6);
+      rect(ctx, base, hx + 1, 0, 10, h - 7);
+      for (let y = 1; y < h - 8; y += 4) rect(ctx, light, hx + 2, y, 8, 2);
+      for (let y = 2; y < h - 8; y += 5) rect(ctx, dots[y % dots.length], hx + 3 + ((y * 3) % 6), y, 1, 1);
+      corner(hx + 6, h - 6);
+    }
+  };
+  const planter = (cx: number, cy: number, box: string, flowers: string[]) => {
+    rect(ctx, INK, cx - 6, cy - 5, 13, 7);
+    rect(ctx, box, cx - 5, cy - 4, 11, 5);
+    for (let i = 0; i < 5; i++) rect(ctx, flowers[i % flowers.length], cx - 4 + i * 2, cy - 7 + (i % 2), 1, 2);
+    rect(ctx, "#3f8a4a", cx - 5, cy - 5, 11, 1);
+  };
+
+  switch (b) {
+    case "player_house": {
+      // warm brick in a herringbone, tulip boxes, a welcome mat
+      pave((x, y) => {
+        const k = (Math.floor(x / 4) + Math.floor(y / 4)) % 2;
+        const seam = k ? x % 4 === 0 : y % 4 === 0;
+        return seam ? "#9a4f2e" : hash(Math.floor(x / 4), Math.floor(y / 4), 11) > 0.5 ? "#c9744a" : "#d7875a";
+      });
+      sides("#3f8a4a", "#5fae5a", ["#f07a9a", "#f5c542", "#ff9ac0"], (cx, cy) => planter(cx, cy, "#c98f5a", ["#f07a9a", "#f5c542", "#e84a6a"]));
+      const mx = Math.round(w / 2);
+      rect(ctx, INK, mx - 12, 1, 24, 8);
+      rect(ctx, "#8a5a3b", mx - 11, 2, 22, 6);
+      rect(ctx, "#c98f5a", mx - 9, 3, 18, 4);
+      for (let x = mx - 7; x < mx + 8; x += 3) rect(ctx, "#8a5a3b", x, 4, 1, 2);
+      break;
+    }
+    case "rabbit_burrow": {
+      // a lawn with stepping stones to the door, and a carrot patch
+      pave((x, y) => (hash(x >> 1, y >> 1, 12) > 0.8 ? "#6fbf6a" : hash(x, y, 13) > 0.5 ? "#4f9e54" : "#57a65a"));
+      const mx = Math.round(w / 2);
+      for (const [dx, y] of [[-3, 5], [4, 14], [-2, 24], [5, 33]]) {
+        disc(ctx, INK, mx + dx, y, 5, 3.5);
+        disc(ctx, "#c8c1d6", mx + dx, y, 4, 2.5);
+        rect(ctx, "#e0dbe8", mx + dx - 2, y - 2, 3, 1);
+      }
+      // carrot rows on the left, flowers and a mushroom on the right
+      for (let r = 0; r < 3; r++) {
+        const ry = 8 + r * 10;
+        rect(ctx, "#6b4a3a", x0 + 4, ry, 30, 5);
+        for (let cx = x0 + 6; cx < x0 + 32; cx += 6) {
+          rect(ctx, "#e0802e", cx, ry + 1, 2, 3);
+          rect(ctx, "#5fae5a", cx - 1, ry - 2, 1, 3);
+          rect(ctx, "#5fae5a", cx + 2, ry - 2, 1, 3);
+        }
+      }
+      disc(ctx, INK, x1 - 12, 30, 5, 4);
+      disc(ctx, "#d9503f", x1 - 12, 29, 4, 3);
+      rect(ctx, "#fff6ee", x1 - 13, 28, 1, 1);
+      rect(ctx, "#fff6ee", x1 - 10, 29, 1, 1);
+      rect(ctx, "#f2e6cc", x1 - 13, 32, 3, 3);
+      for (const [fx, fy, c] of [[x1 - 22, 12, "#f07a9a"], [x1 - 30, 20, "#f5c542"], [x1 - 18, 20, "#cfe7ff"], [x1 - 26, 8, "#f5c542"]] as const) {
+        rect(ctx, "#3f8a4a", fx, fy + 1, 1, 3);
+        rect(ctx, c, fx - 1, fy, 3, 1);
+      }
+      break;
+    }
+    case "observatory": {
+      // night-sky slate with gold stars inlaid, and glowing crystals for hedges
+      pave((x, y) => {
+        const seam = y % 8 === 7 || (x + (Math.floor(y / 8) % 2 ? 6 : 0)) % 12 === 0;
+        return seam ? "#1f2440" : hash(Math.floor(x / 12), Math.floor(y / 8), 14) > 0.5 ? "#2e3552" : "#353d5e";
+      });
+      const stars = [[20, 6], [34, 14], [52, 8], [70, 18], [88, 6], [106, 14], [124, 24], [44, 28], [96, 30]];
+      for (const [sx, sy] of stars) {
+        if (x0 + sx >= x1 - 2) continue;
+        rect(ctx, "#f5c542", x0 + sx, sy, 1, 1);
+        rect(ctx, "#fff1b0", x0 + sx - 1, sy, 3, 1);
+        rect(ctx, "#fff1b0", x0 + sx, sy - 1, 1, 3);
+      }
+      // one constellation, joined up
+      for (let i = 0; i < 12; i++) rect(ctx, "#6f76a8", x0 + 20 + i, 6 + Math.round(i * (8 / 12)), 1, 1);
+      for (let i = 0; i < 18; i++) rect(ctx, "#6f76a8", x0 + 34 + i, 14 - Math.round(i * (6 / 18)), 1, 1);
+      for (const hx of [2, w - 14]) {
+        for (const [cx, cy, ht] of [[hx + 3, h - 8, 10], [hx + 7, h - 8, 14], [hx + 10, h - 8, 8], [hx + 5, 14, 9], [hx + 8, 16, 6]]) {
+          rect(ctx, INK, cx - 2, cy - ht, 4, ht);
+          rect(ctx, "#8ff0f0", cx - 1, cy - ht + 1, 2, ht - 1);
+          rect(ctx, "#d7fbff", cx - 1, cy - ht + 1, 1, ht - 3);
+        }
+      }
+      break;
+    }
+    case "post_office": {
+      // blue-and-cream civic checkerboard, trim planters, a stack of parcels
+      pave((x, y) => {
+        const k = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+        if (x % 8 === 7 || y % 8 === 7) return "#a49cb3";
+        return k ? "#fbf3dd" : "#7390cc";
+      });
+      sides("#3f8a4a", "#5fae5a", ["#ffffff", "#cfe7ff"], (cx, cy) => planter(cx, cy, "#4f6fb0", ["#ffffff", "#cfe7ff", "#ffffff"]));
+      for (const [px, py, pw2, ph2] of [[x1 - 22, 22, 10, 8], [x1 - 20, 15, 7, 7], [x1 - 34, 26, 9, 7]] as const) {
+        rect(ctx, INK, px - 1, py - 1, pw2 + 2, ph2 + 2);
+        rect(ctx, "#c98f5a", px, py, pw2, ph2);
+        rect(ctx, "#fff6ee", px + Math.floor(pw2 / 2), py, 1, ph2);
+        rect(ctx, "#d97757", px + 1, py + 1, 2, 1);
+      }
+      break;
+    }
+    case "clock_tower": {
+      // cobbles around a brass compass rose; gear-shaped planters
+      pave((x, y) => {
+        const cx = Math.floor(x / 5);
+        const cy = Math.floor(y / 4);
+        const edge = x % 5 === 4 || y % 4 === 3;
+        return edge ? "#6f6880" : hash(cx, cy, 15) > 0.5 ? "#9a93a8" : "#a8a1b6";
+      });
+      const mx = Math.round(w / 2);
+      const my = 20;
+      disc(ctx, INK, mx, my, 16, 12);
+      disc(ctx, "#c99a3e", mx, my, 15, 11);
+      disc(ctx, "#b8b0c4", mx, my, 13, 9.5);
+      for (const [dx, dy] of [[0, -8], [0, 8], [-11, 0], [11, 0]]) {
+        for (let i = 0; i < 4; i++) {
+          const t = i / 4;
+          rect(ctx, "#f5c542", Math.round(mx + dx * (1 - t)), Math.round(my + dy * (1 - t)), 1, 1);
+        }
+      }
+      rect(ctx, "#fff1b0", mx - 1, my - 1, 3, 3);
+      for (const hx of [8, w - 8]) {
+        disc(ctx, INK, hx, h - 12, 7, 6);
+        disc(ctx, "#c99a3e", hx, h - 12, 6, 5);
+        for (const [tx, ty] of [[0, -6], [0, 5], [-6, 0], [6, 0], [-4, -4], [4, -4], [-4, 4], [4, 4]]) rect(ctx, "#c99a3e", hx + tx, h - 12 + ty, 2, 2);
+        disc(ctx, "#3f8a4a", hx, h - 13, 4, 3.5);
+        disc(ctx, "#5fae5a", hx - 1, h - 14, 2, 1.5);
+      }
+      break;
+    }
+    case "library": {
+      // a reading deck of warm boards with a rug; lavender, and stacks of books
+      pave((x, y) => {
+        if (y % 5 === 4) return "#8a5a3b";
+        if ((x + (Math.floor(y / 5) % 3) * 9) % 26 === 0) return "#9c6639";
+        return hash(Math.floor(x / 26), Math.floor(y / 5), 16) > 0.5 ? "#c98f5a" : "#d49c64";
+      });
+      const mx = Math.round(w / 2);
+      rect(ctx, INK, mx - 20, 6, 40, 20);
+      rect(ctx, "#7e5fb8", mx - 19, 7, 38, 18);
+      rect(ctx, "#f5c542", mx - 17, 9, 34, 1);
+      rect(ctx, "#f5c542", mx - 17, 22, 34, 1);
+      for (let x = mx - 15; x < mx + 16; x += 6) rect(ctx, "#b7a4f0", x, 13, 3, 5);
+      sides("#5f4596", "#7e5fb8", ["#b7a4f0", "#d9c8ff"], (cx, cy) => {
+        for (const [i, c] of [[0, "#d9503f"], [1, "#4f6fb0"], [2, "#5fa84e"]] as const) {
+          rect(ctx, INK, cx - 5, cy - 3 - i * 3, 10, 4);
+          rect(ctx, c, cx - 4, cy - 2 - i * 3, 8, 2);
+          rect(ctx, "#fff6ee", cx + 2, cy - 2 - i * 3, 1, 2);
+        }
+      });
+      break;
+    }
+    case "office": {
+      // smooth concrete slabs, glowing strip lights, glass bollards
+      pave((x, y) => {
+        if (y % 12 === 11 || x % 24 === 0) return "#9aa0b4";
+        return hash(Math.floor(x / 24), Math.floor(y / 12), 17) > 0.5 ? "#d4d8e4" : "#cbd0de";
+      });
+      for (const y of [4, ph - 3]) rect(ctx, "#6fe3e1", x0 + 6, y, pw - 12, 1);
+      const mx = Math.round(w / 2);
+      for (const [dx, glyph] of [[-8, "<"], [0, "/"], [8, ">"]] as const) {
+        const gx = mx + dx;
+        if (glyph === "/") for (let i = 0; i < 7; i++) rect(ctx, "#4fb8c8", gx + 2 - Math.floor(i / 2), 16 + i, 1, 1);
+        else for (let i = 0; i < 4; i++) {
+          // "<" points left: both arms start at the right and meet at the middle
+          rect(ctx, "#4fb8c8", gx + (glyph === "<" ? 3 - i : i), 16 + i, 1, 1);
+          rect(ctx, "#4fb8c8", gx + (glyph === "<" ? 3 - i : i), 22 - i, 1, 1);
+        }
+      }
+      for (const hx of [5, 12, w - 12, w - 5]) {
+        rect(ctx, INK, hx - 2, h - 20, 5, 14);
+        rect(ctx, "#2a2838", hx - 1, h - 19, 3, 12);
+        rect(ctx, "#6fe3e1", hx - 1, h - 19, 3, 2);
+      }
+      break;
+    }
+    default: {
+      // (a plain stone forecourt, just in case)
+      pave((x, y) => (y % 6 === 5 || (x + (Math.floor(y / 6) % 2 ? 5 : 0)) % 10 === 0 ? "#a49cb3" : "#d8d2e0"));
     }
   }
-  rect(ctx, "#c99a3e", x0 + 1, h - 8, x1 - x0 - 2, 1);
-  rect(ctx, "#6f6880", x0, h - 7, x1 - x0, 1);
-  for (const [hx, dir] of [[2, 1], [w - 14, -1]] as const) {
-    rect(ctx, INK, hx, 0, 12, h - 6);
-    rect(ctx, "#3f8a4a", hx + 1, 0, 10, h - 7);
-    for (let y = 1; y < h - 8; y += 4) rect(ctx, "#5fae5a", hx + 2, y, 8, 2);
-    for (let y = 2; y < h - 8; y += 5) rect(ctx, ["#f07a9a", "#f5c542", "#cfe7ff"][y % 3], hx + 3 + ((y * 3) % 6), y, 1, 1);
-    // topiary at the front corner
-    disc(ctx, INK, hx + 6, h - 6, 6.5, 5.5);
-    disc(ctx, "#3f8a4a", hx + 6, h - 6, 5.5, 4.5);
-    disc(ctx, "#8fd07a", hx + 4 + (dir > 0 ? 0 : 1), h - 8, 2, 1.5);
-    rect(ctx, "#f5c542", hx + 1, h - 6, 11, 1);
-  }
+  // every forecourt ends in a gold-trimmed step
+  rect(ctx, "#c99a3e", x0 + 1, h - 8, pw - 2, 1);
+  rect(ctx, "#6f6880", x0, h - 7, pw, 1);
 }
 
 /** A Moon Shard: a glowing crystal splinter with a twinkle that moves (12 x 16). */
@@ -533,7 +710,7 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "b_post_office", 112, 116, drawGrandPost);
   canvasTex(scene, "b_mailbox", 16, 24, drawMailbox);
   canvasTex(scene, "b_clock_tower", 72, 180, drawGrandClock);
-  canvasTex(scene, "b_rocket_pad", 112, 132, drawLaunchComplex);
+  canvasTex(scene, "b_rocket_pad", 48, 112, drawMailRocket);
   canvasTex(scene, "b_observatory", 112, 124, drawGrandObservatory);
   canvasTex(scene, "b_library", 128, 120, drawGrandLibrary);
   canvasTex(scene, "b_office", 128, 156, drawOfficeTower);
@@ -551,7 +728,7 @@ export function buildTextures(scene: Phaser.Scene) {
   // A staked plot per building, the size of its footprint, and its formal grounds.
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     const t = buildingTiles(b);
-    if (b !== "mailbox") canvasTex(scene, `grounds_${b}`, (t.w + 4) * TILE, 44, (ctx) => drawGrounds(ctx, (t.w + 4) * TILE, 44));
+    if (!isAnnex(b)) canvasTex(scene, `grounds_${b}`, (t.w + 4) * TILE, 44, (ctx) => drawGrounds(ctx, (t.w + 4) * TILE, 44, b));
     canvasTex(scene, `plot_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawPlot(ctx, t.w * TILE, t.h * TILE + 16));
     // A neighbor's lot: the old ruin, then the repaired foundation.
     canvasTex(scene, `ruins_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawRuins(ctx, t.w * TILE, t.h * TILE + 16));

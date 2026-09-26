@@ -125,7 +125,7 @@ it (or try them on sample data), and then they work with your real mail, calenda
 fallen meteor rocks; stardust from sweeping moondust drifts; moon shards from the 12 glinting in the wilds
 (spending them doesn't un-find them: find all 12 and the beacon still relights). **Coins** come from popping
 clods after your neighbors finish work (so using them pays), sweeping, meteors, requests and shards.
-Hoot moving in also reveals the Rocket Pad (free; it lets him send your replies, with your OK).
+Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), built onto its east wall with a brass mail tube from the Post Office into the rocket. It lets him send your replies, with your OK, and it moves with the Post Office in edit mode.
 Saves from the old quest chain carry over: anyone who had a house counts as moved in.
 
 ## The Office (for developers)
@@ -236,7 +236,7 @@ what they actually fetched for you (no extra API calls).
 
 | On the island | What the agent is doing |
 |---|---|
-| Villager walks to a building | Using that tool: Mailbox = read inbox, Post Office = draft, Rocket Pad = send, Clock Tower = calendar, Library = Canvas, Observatory = web |
+| Villager walks to a building | Using that tool: Mailbox = read inbox, Post Office = draft, Mail Rocket = send, Clock Tower = calendar, Library = Canvas, Observatory = web |
 | Thought bubble over a villager (click it) | Its latest reasoning |
 | Baby clod runs off, then glows | One real tool call finished. E pops it for the result and coins |
 | Two villagers meet, a letter flies | A handoff between agents |
@@ -304,7 +304,7 @@ the friendship and real work waits for a visit; `help` lists who's
 around. Approval letters also arrive as texts: reply YES or NO. No credentials yet? `PHOTON_TERMINAL=1`
 runs the same flow in Photon's terminal chat.
 
-The buildings sit evenly on one circle around the central plaza, each with a single path. They're full estates (all hand-built pixel art at native size): a turreted manor with a smoking chimney, the Jade Rabbit's hollow under a giant blossoming tree, a colonnaded post office with a bell cupola and a mail rocket, a 180px clock tower whose clock shows the real time, an observatory with a giant brass telescope, a domed library with twin towers, and a launch complex with a gantry and a full-size rocket. Before a building is built, its plot is staked out at its real footprint. Each estate sits on formal grounds (a marble forecourt with clipped hedges and topiaries) and its windows glow. The grand plaza is marble laid in rings with gold and coral inlays, around the three-tier Earthrise Fountain (the coral spark turns on top), kept wide open to walk around: lampposts stand on the rim and gold-tipped obelisks just outside it, both in the gaps between the paths. Moon rocks (boulders, spires, arches and glowing crystal outcrops) are scattered over the island; they sit on the tile grid and take up their tiles like everything else.
+The buildings sit evenly on one circle around the central plaza, each with a single path. They're full estates (all hand-built pixel art at native size): a turreted manor with a smoking chimney, the Jade Rabbit's hollow under a giant blossoming tree, a colonnaded post office with a bell cupola (and, once upgraded, a mail rocket on a gantry beside it), a 180px clock tower whose clock shows the real time, an observatory with a giant brass telescope, a domed library with twin towers. Before a building is built, its plot is staked out at its real footprint. Each home has its own forecourt, in the character of whoever lives there: brick herringbone and tulip boxes at your house, a lawn with stepping stones and a carrot patch at Yutu's, star-inlaid navy slate and glowing crystals at Nova's, a blue-and-cream checkerboard with parcels at the Post Office, cobbles around a brass compass rose at the Clock Tower, a reading deck with a rug and lavender at the Library, and lit concrete with a </> inlay at the Office. Windows glow. The grand plaza is marble laid in rings with gold and coral inlays, around the three-tier Earthrise Fountain (the coral spark turns on top), kept wide open to walk around: lampposts stand on the rim and gold-tipped obelisks just outside it, both in the gaps between the paths. Moon rocks (boulders, spires, arches and glowing crystal outcrops) are scattered over the island; they sit on the tile grid and take up their tiles like everything else.
 
 **Dev mode** (Help → DEV MODE): switches to a separate showcase save (`server/data/world-dev.json`, made from a copy of your colony the first time) with every estate built, every villager moved in, every quest done and 5000¢. Your real save is written out first and never touched; EXIT (top of the screen) brings it back exactly as it was.
 

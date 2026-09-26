@@ -361,23 +361,8 @@ export function drawHollow(ctx: Ctx) {
   }
 }
 
-/** The Grand Post Office: portico, mansard roof, bell cupola and a mail rocket. 112 x 116. */
+/** The Grand Post Office: portico, mansard roof and bell cupola (the Mail Rocket is built on beside it). 112 x 116. */
 export function drawGrandPost(ctx: Ctx) {
-  // mail rocket on its launch rail
-  rect(ctx, O, 95, 2, 3, 52);
-  rect(ctx, "#8f93a3", 96, 3, 1, 50);
-  rect(ctx, O, 99, 10, 10, 32);
-  rect(ctx, "#fff6ee", 100, 12, 8, 29);
-  rect(ctx, "#d9dbe6", 105, 12, 3, 29);
-  rect(ctx, O, 100, 6, 8, 4);
-  rect(ctx, O, 102, 3, 4, 3);
-  rect(ctx, "#d97757", 101, 7, 6, 4);
-  rect(ctx, "#4f6fb0", 100, 22, 8, 3);
-  roundWindow(ctx, 104, 17, 2, "#c9cbd6");
-  rect(ctx, O, 97, 36, 3, 8);
-  rect(ctx, O, 108, 36, 3, 8);
-  rect(ctx, "#d97757", 98, 37, 1, 6);
-  rect(ctx, "#d97757", 109, 37, 1, 6);
   // flag
   rect(ctx, O, 10, 6, 2, 44);
   rect(ctx, GOLD, 10, 5, 2, 1);
@@ -638,74 +623,76 @@ export function drawGrandLibrary(ctx: Ctx) {
   }
 }
 
-/** The Launch Complex: a towering rocket, gantry, fuel tanks and floodlights. 112 x 132. */
-export function drawLaunchComplex(ctx: Ctx) {
-  // launch pad
-  disc(ctx, O, 56, 120, 55, 11.5);
-  disc(ctx, "#7d7494", 56, 120, 54, 10.5);
-  disc(ctx, "#a49cb8", 56, 119, 46, 8);
-  for (let x = 16; x < 96; x += 8) rect(ctx, GOLD, x, 118, 4, 2);
-  disc(ctx, "#3b2a3a", 50, 121, 12, 3);
-  for (const [x, y] of [[4, 120], [108, 120], [56, 109], [56, 130]] as const) {
-    rect(ctx, O, x - 1, y - 1, 3, 3);
-    rect(ctx, "#6fe3e1", x, y, 1, 1);
+/**
+ * Hoot's Mail Rocket, built onto the Post Office's east wall: a steel gantry
+ * holds his mail rocket upright on a stone plinth, and a brass mail tube runs
+ * from the Post Office wall up into the rocket's hatch. 48 x 112.
+ */
+export function drawMailRocket(ctx: Ctx) {
+  const STEEL = { base: "#8f93a3", dark: "#5b5470", light: "#c9cbd6" };
+  const BRASS = { base: GOLD_DARK, light: GOLD, dark: "#8a6a2a" };
+  // plinth
+  stoneBase(ctx, 1, 100, 46, 12);
+  rect(ctx, BLUE_ROOF.base, 2, 100, 44, 2);
+  // gantry: two rails with cross braces, and a platform on top
+  for (const x of [5, 14]) {
+    rect(ctx, O, x - 1, 10, 4, 91);
+    rect(ctx, STEEL.base, x, 11, 2, 89);
+    rect(ctx, STEEL.light, x, 11, 1, 89);
   }
-  // fuel tanks
-  for (const [x, h] of [[4, 34], [18, 26]] as const) {
-    const top = 116 - h;
-    disc(ctx, O, x + 6, top, 6.5, 4);
-    rect(ctx, O, x - 0.5, top, 13, h);
-    disc(ctx, "#e9e9f2", x + 6, top, 5.5, 3);
-    rect(ctx, "#e9e9f2", x + 0.5, top, 11, h - 1);
-    rect(ctx, "#c9cbd6", x + 8, top, 3, h - 1);
-    for (const y of [top + 6, top + h - 10]) rect(ctx, "#d97757", x + 0.5, y, 11, 2);
+  for (let y = 16; y < 98; y += 10) {
+    for (let i = 0; i < 9; i++) rect(ctx, STEEL.dark, 7 + i, y + Math.floor(i / 2), 1, 1);
+    rect(ctx, STEEL.base, 7, y + 5, 7, 1);
   }
-  rect(ctx, O, 30, 104, 8, 1);
-  // gantry tower
-  rect(ctx, O, 78, 6, 20, 106);
-  rect(ctx, "#8f93a3", 79, 7, 18, 104);
-  for (let y = 7; y < 111; y += 12) {
-    rect(ctx, O, 79, y + 11, 18, 1);
-    for (let i = 0; i < 11; i++) {
-      rect(ctx, "#5b5470", 80 + Math.round(i * 1.5), y + i, 1, 1);
-      rect(ctx, "#5b5470", 95 - Math.round(i * 1.5), y + i, 1, 1);
-    }
-  }
-  for (const y of [36, 70]) {
-    rect(ctx, O, 57, y, 22, 4);
-    rect(ctx, "#c9cbd6", 58, y + 1, 20, 1);
-  }
-  rect(ctx, O, 83, 0, 10, 7);
-  rect(ctx, "#8a2a22", 85, 2, 6, 3);
+  rect(ctx, O, 2, 7, 18, 4);
+  rect(ctx, STEEL.light, 3, 8, 16, 2);
+  rect(ctx, O, 10, 2, 2, 6);
+  rect(ctx, "#ff5a4a", 9, 1, 4, 2); // beacon (it blinks in the game)
+  // the cradle arm that holds the rocket's hatch
+  rect(ctx, O, 17, 37, 10, 4);
+  rect(ctx, STEEL.base, 17, 38, 9, 2);
+  // the brass mail tube: out of the Post Office wall, along, and up to the hatch
+  rect(ctx, O, 0, 63, 12, 7);
+  rect(ctx, BRASS.base, 0, 64, 11, 5);
+  rect(ctx, BRASS.light, 0, 64, 11, 1);
+  rect(ctx, O, 0, 62, 3, 9); // the flange on the wall
+  rect(ctx, BRASS.dark, 1, 63, 1, 7);
+  rect(ctx, O, 17, 39, 7, 31);
+  rect(ctx, BRASS.base, 18, 40, 5, 29);
+  rect(ctx, BRASS.light, 18, 40, 1, 29);
+  rect(ctx, O, 10, 63, 14, 7);
+  rect(ctx, BRASS.base, 11, 64, 12, 5);
+  rect(ctx, BRASS.light, 11, 64, 12, 1);
+  for (const y of [48, 58]) rect(ctx, BRASS.dark, 18, y, 5, 1);
   // the rocket
-  const cx = 46;
-  const half = (y: number) => (y < 30 ? Math.max(1, Math.round(((y - 4) / 26) ** 0.6 * 11)) : 11);
-  for (let y = 4; y < 106; y++) {
-    const h = half(y);
-    rect(ctx, O, cx - h - 1, y, h * 2 + 2, 1);
-    const band = y < 26 ? "#d97757" : (y > 60 && y < 66) || (y > 88 && y < 92) ? "#d97757" : "#fff6ee";
-    rect(ctx, band, cx - h, y, h * 2, 1);
-    rect(ctx, y < 26 ? "#b85c3e" : "#d9dbe6", cx + Math.max(0, h - 4), y, Math.min(4, h), 1);
-    rect(ctx, y < 26 ? "#eb9a7c" : "#ffffff", cx - h + 1, y, 1, 1);
+  const cx = 34;
+  for (let y = 12; y < 28; y++) {
+    const half = Math.round(((y - 12) / 16) * 6);
+    rect(ctx, O, cx - half - 1, y, half * 2 + 3, 1);
+    rect(ctx, "#d97757", cx - half, y, half * 2 + 1, 1);
   }
-  for (const wy of [38, 50]) {
-    disc(ctx, O, cx, wy, 4.5);
-    disc(ctx, "#c9cbd6", cx, wy, 3.5);
-    disc(ctx, "#4f7fcf", cx, wy, 2.5);
-    rect(ctx, "#a9ccff", cx - 1, wy - 1, 1, 1);
+  rect(ctx, "#f0a080", cx - 1, 16, 1, 6);
+  rect(ctx, O, cx - 7, 28, 15, 60);
+  rect(ctx, "#fff6ee", cx - 6, 28, 13, 59);
+  rect(ctx, "#d9dbe6", cx + 3, 28, 4, 59);
+  rect(ctx, BLUE_ROOF.base, cx - 6, 44, 13, 4);
+  roundWindow(ctx, cx, 35, 3, "#c9cbd6");
+  // a gold envelope on its side: it carries your mail
+  box(ctx, GOLD, cx - 4, 54, 9, 7, O);
+  for (let i = 0; i < 4; i++) {
+    rect(ctx, O, cx - 3 + i, 55 + Math.floor(i / 2), 1, 1);
+    rect(ctx, O, cx + 3 - i, 55 + Math.floor(i / 2), 1, 1);
   }
-  rect(ctx, "#4f6fb0", cx - 11, 72, 22, 6);
-  for (let x = cx - 9; x < cx + 9; x += 3) rect(ctx, "#fff6ee", x, 74, 2, 2);
-  // fins and engine bell
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < 16; i++) {
-      const w = Math.round(i * 0.6);
-      const x = side < 0 ? cx - 11 - w - 1 : cx + 11 + 1;
-      rect(ctx, O, x - (side < 0 ? 1 : 0), 92 + i, w + 2, 1);
-      rect(ctx, "#d97757", side < 0 ? x : x, 92 + i, w, 1);
-    }
+  rect(ctx, BLUE_ROOF.base, cx - 6, 70, 13, 2);
+  // fins and nozzle, on its launch ring
+  for (const dir of [-1, 1]) {
+    const fx = dir < 0 ? cx - 12 : cx + 7;
+    rect(ctx, O, fx, 74, 6, 18);
+    rect(ctx, "#d97757", fx + 1, 76, 4, 15);
   }
-  rect(ctx, O, cx - 7, 106, 14, 6);
-  rect(ctx, "#5b5470", cx - 6, 106, 12, 5);
-  rect(ctx, "#8f93a3", cx - 6, 106, 12, 1);
+  rect(ctx, O, cx - 5, 88, 11, 6);
+  rect(ctx, STEEL.dark, cx - 4, 88, 9, 5);
+  rect(ctx, O, cx - 10, 94, 21, 6);
+  rect(ctx, STEEL.base, cx - 9, 95, 19, 4);
+  rect(ctx, STEEL.light, cx - 9, 95, 19, 1);
 }

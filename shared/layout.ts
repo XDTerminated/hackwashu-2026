@@ -81,7 +81,7 @@ export const PLAZA_R = 120;
 
 /** Every building starts on one circle around the plaza, evenly spaced, clockwise from north. */
 export const RING_RADIUS = 300;
-const RING: BuildingId[] = ["player_house", "library", "rocket_pad", "clock_tower", "observatory", "post_office", "rabbit_burrow"];
+const RING: BuildingId[] = ["player_house", "library", "clock_tower", "observatory", "post_office", "rabbit_burrow"];
 
 function onRing(b: BuildingId) {
   const a = -Math.PI / 2 + (RING.indexOf(b) / RING.length) * Math.PI * 2;
@@ -93,7 +93,8 @@ const spot = (b: BuildingId, texture: string, fw: number, fh: number, tall: numb
 export const SPOTS: Record<BuildingId, BuildingSpot> = {
   player_house: spot("player_house", "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
   library: spot("library", "b_library", 60, 40, 120, { dx: 0, dy: 14 }),
-  rocket_pad: spot("rocket_pad", "b_rocket_pad", 52, 24, 132, { dx: 0, dy: 14 }),
+  // Hoot's Mail Rocket: an annex built onto the Post Office (placed beside it, below).
+  rocket_pad: { x: 0, y: 0, texture: "b_rocket_pad", fw: 24, fh: 24, tall: 112, door: { dx: 0, dy: 14 } },
   clock_tower: spot("clock_tower", "b_clock_tower", 28, 28, 180, { dx: 0, dy: 14 }),
   observatory: spot("observatory", "b_observatory", 52, 40, 124, { dx: 0, dy: 14 }),
   post_office: spot("post_office", "b_post_office", 52, 40, 116, { dx: 0, dy: 14 }),
@@ -108,10 +109,22 @@ export function buildingTiles(b: BuildingId): { w: number; h: number } {
   return { w: Math.max(1, Math.ceil((s.fw * 2) / TILE)), h: Math.max(1, Math.ceil(s.fh / TILE)) };
 }
 
-// Snap the starting spots to the grid. The mailbox stands just outside the Post
-// Office's doorway lamp, on the same base line.
+/**
+ * Annexes aren't buildings of their own on the map: the mailbox stands just
+ * outside the Post Office's doorway lamp, and the Mail Rocket (Hoot's upgrade)
+ * is built onto the Post Office's other side. The Mail Rocket moves with it.
+ */
+export const isAnnex = (b: BuildingId) => b === "mailbox" || b === "rocket_pad";
+
+/** Where the Mail Rocket stands, for the Post Office at `po`. */
+export function mailRocketAt(po: Pt): Pt {
+  return { x: po.x + ((buildingTiles("post_office").w + buildingTiles("rocket_pad").w) / 2) * TILE, y: po.y };
+}
+
+// Snap the starting spots to the grid.
 for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snapToTiles(SPOTS[b].x, SPOTS[b].y, buildingTiles(b).w));
 Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
+Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
 
 /** The ship you arrived in: parked just outside the ring, between your house and the Rabbit's. */
 export const LANDING = (() => {
@@ -138,7 +151,7 @@ export function lanternAt(l: { x?: number; y?: number }, i: number): { x: number
 export function lampSpots(built: (b: BuildingId) => boolean = () => true): { x: number; y: number; building?: BuildingId }[] {
   const out: { x: number; y: number; building?: BuildingId }[] = plazaRing().lamps.map((p) => ({ ...p }));
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
-    if (b === "mailbox" || !built(b)) continue;
+    if (isAnnex(b) || !built(b)) continue;
     out.push({ ...besideDoor(b, -1), building: b });
   }
   return out;
@@ -200,7 +213,7 @@ export function besideDoor(b: BuildingId, side: -1 | 1, at: Pt = SPOTS[b]): Pt {
  */
 export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
   const angles = (Object.keys(SPOTS) as BuildingId[])
-    .filter((b) => b !== "mailbox")
+    .filter((b) => !isAnnex(b))
     .map((b) => {
       const p = pathPoints(b)[0];
       return Math.atan2(p.y - PLAZA.y, p.x - PLAZA.x);
@@ -228,18 +241,23 @@ const DEFAULT_POS = Object.fromEntries(Object.entries(SPOTS).map(([b, s]) => [b,
 /** Move buildings to where the save says they are. SPOTS is read live everywhere. */
 export function applyLayout(layout: Layout) {
   for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], layout[b] ?? DEFAULT_POS[b]);
+  // The Mail Rocket is part of the Post Office: it goes wherever the Post Office goes.
+  Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
 }
 
 /** The building's own tiles plus the row in front of its door (kept clear for the door). */
 export function buildingFootprint(b: BuildingId, at: Pt = SPOTS[b]): Rect {
   const t = buildingTiles(b);
-  return footprint(at.x, at.y, t.w, t.h, b === "mailbox" ? 0 : 1);
+  return footprint(at.x, at.y, t.w, t.h, isAnnex(b) ? 0 : 1);
 }
 
 /** Every tile a building claims: its footprint, and the tiles of its doorway lamp and doorbell. */
 export function buildingRects(b: BuildingId, at: Pt = SPOTS[b]): Rect[] {
+  // The Mail Rocket's tiles belong to the Post Office (kept free for it, and moved with it).
+  if (b === "rocket_pad") return [];
   const rects = [buildingFootprint(b, at)];
   if (b !== "mailbox") rects.push(tileAt(besideDoor(b, -1, at)), tileAt(besideDoor(b, 1, at)));
+  if (b === "post_office") rects.push(buildingFootprint("rocket_pad", mailRocketAt(at)));
   return rects;
 }
 
@@ -308,7 +326,7 @@ function wildsKeepOut(avoid: Rect[]): { keepOut: Rect[]; paths: Pt[][] } {
       const s = { ...SPOTS[b], ...at };
       for (const r of buildingRects(b, at)) keepOut.push(grow(r, TILE));
       keepOut.push({ x: s.x - s.fw - 16, y: s.y - s.tall - 8, w: s.fw * 2 + 32, h: s.tall + 8 });
-      if (b !== "mailbox") paths.push(pathPoints(b, at));
+      if (!isAnnex(b)) paths.push(pathPoints(b, at));
     }
   }
   for (let i = 0; i < 32; i++) keepOut.push(grow(tileAt(lanternSpot(i)), TILE));
