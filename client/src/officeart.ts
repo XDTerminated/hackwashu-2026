@@ -1,11 +1,9 @@
 // The Office, inside and out: the room, desks with live monitors (code while
-// an agent works, "..." while it thinks), and the agents themselves, drawn as
-// little stars (seen from behind at their desks, wiggling as they type, and
-// from the front when they walk; the lead wears a crown).
+// an agent works, "..." while it thinks), and the workers (seen from behind at
+// their desks, from the front when they walk; the team lead wears a tie).
 // Native size, like everything else.
 
 import { type Ctx, INK as O, disc, hash, rect } from "./pix";
-import { drawStar } from "./star";
 
 export const ROOM_W = 448;
 export const ROOM_H = 322;
@@ -17,6 +15,11 @@ export const DESKS: { x: number; y: number }[] = [140, 204, 268].flatMap((y) => 
 export const BOARD = { x: 224, y: 60, w: 176, h: 50 };
 export const ELEVATOR = { x: 224, y: ROOM_H - 2 };
 export const WORKER_LOOKS = 6;
+
+const SKIN = ["#f2c9a0", "#d9a47a", "#a8704a", "#7a4a2c", "#e8b890", "#8a5a3a"];
+const HAIR = ["#3b2a2a", "#8a5a3b", "#e0c070", "#c4553f", "#2a2a3a", "#b8b0c4"];
+const SHIRT = ["#4f6fb0", "#5fa84e", "#e0708a", "#7e5fb8", "#e0a040", "#3f8a7a"];
+const SHIRT_DARK = ["#34508a", "#3f7a36", "#b44f6c", "#5f4596", "#b8862e", "#2c6a5c"];
 
 
 // ---------------------------------------------------------------- the room
@@ -136,26 +139,61 @@ export function drawDesk(ctx: Ctx, screen: DeskScreen) {
   rect(ctx, "#b8b0c4", 5, 22, 6, 1);
 }
 
-/** An agent at their desk, seen from behind in an office chair; `f` wiggles them (typing). 26 x 26. */
+/** A worker at their desk, seen from behind in an office chair; `f` moves their elbows (typing). 20 x 26. */
 export function drawWorkerBack(ctx: Ctx, look: number, f: number) {
-  // the chair back peeks out below
-  rect(ctx, O, 7, 17, 12, 9);
-  rect(ctx, "#3b3a4a", 8, 18, 10, 7);
-  rect(ctx, "#5b5a6e", 8, 18, 10, 1);
-  drawStar(ctx, 1, 0, 24, { color: look, face: false, rot: f ? 0.08 : -0.08 });
+  const hair = HAIR[look % HAIR.length];
+  const skin = SKIN[look % SKIN.length];
+  const shirt = SHIRT[look % SHIRT.length];
+  const dark = SHIRT_DARK[look % SHIRT_DARK.length];
+  // shoulders and arms
+  disc(ctx, O, 10, 15, 7.5, 5);
+  disc(ctx, shirt, 10, 15, 6.5, 4);
+  rect(ctx, O, 1 + (f ? 1 : 0), 13 - f, 4, 6);
+  rect(ctx, O, 15 - (f ? 1 : 0), 13 + f - 1, 4, 6);
+  rect(ctx, shirt, 2 + (f ? 1 : 0), 14 - f, 2, 4);
+  rect(ctx, shirt, 16 - (f ? 1 : 0), 13 + f, 2, 4);
+  rect(ctx, dark, 7, 17, 6, 2);
+  // head (back of it) and ears
+  disc(ctx, O, 10, 7, 5.5);
+  disc(ctx, hair, 10, 7, 4.5);
+  rect(ctx, skin, 4, 7, 1, 2);
+  rect(ctx, skin, 15, 7, 1, 2);
+  rect(ctx, skin, 8, 11, 4, 1);
+  if (look % 3 === 1) rect(ctx, hair, 9, 12, 2, 3);
+  // office chair back
+  rect(ctx, O, 4, 18, 12, 8);
+  rect(ctx, "#3b3a4a", 5, 19, 10, 6);
+  rect(ctx, "#5b5a6e", 5, 19, 10, 1);
 }
 
-/** An agent standing, facing you (walking in and out). 24 x 24; the lead (with a crown) is 24 x 30. */
-export function drawWorkerFront(ctx: Ctx, look: number, crown = false) {
-  const by = crown ? 6 : 0;
-  drawStar(ctx, 0, by, 24, { color: look });
-  if (crown) {
-    rect(ctx, O, 6, 0, 12, 6);
-    rect(ctx, "#f5c542", 7, 2, 10, 3);
-    for (const cx of [7, 11, 15]) rect(ctx, "#f5c542", cx, 1, 2, 1);
-    rect(ctx, "#fff0a8", 7, 2, 10, 1);
-    rect(ctx, "#e05a5a", 11, 3, 2, 1);
+/** A worker standing, facing you (walking in and out, or the team lead). 16 x 26. */
+export function drawWorkerFront(ctx: Ctx, look: number, tie = false) {
+  const hair = HAIR[look % HAIR.length];
+  const skin = SKIN[look % SKIN.length];
+  const shirt = SHIRT[look % SHIRT.length];
+  const dark = SHIRT_DARK[look % SHIRT_DARK.length];
+  rect(ctx, O, 4, 20, 3, 6);
+  rect(ctx, O, 9, 20, 3, 6);
+  rect(ctx, "#3b3a4a", 5, 20, 1, 5);
+  rect(ctx, "#3b3a4a", 10, 20, 1, 5);
+  rect(ctx, O, 2, 11, 12, 10);
+  rect(ctx, shirt, 3, 12, 10, 8);
+  rect(ctx, dark, 3, 18, 10, 2);
+  rect(ctx, skin, 3, 19, 1, 1);
+  rect(ctx, skin, 12, 19, 1, 1);
+  if (tie) {
+    rect(ctx, "#fff6ee", 6, 12, 4, 2);
+    rect(ctx, "#d9503f", 7, 13, 2, 5);
   }
+  disc(ctx, O, 8, 7, 5.5);
+  disc(ctx, skin, 8, 7.5, 4.5);
+  disc(ctx, hair, 8, 5, 4.5, 3, 5);
+  rect(ctx, hair, 3, 5, 1, 3);
+  rect(ctx, hair, 12, 5, 1, 3);
+  rect(ctx, O, 6, 8, 1, 1);
+  rect(ctx, O, 10, 8, 1, 1);
+  rect(ctx, "#e89aa8", 5, 10, 1, 1);
+  rect(ctx, "#e89aa8", 11, 10, 1, 1);
 }
 
 export function drawCoffee(ctx: Ctx) {
