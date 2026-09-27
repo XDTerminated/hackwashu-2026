@@ -109,7 +109,12 @@ fountain square opens off its south side across from the Town Hall; the Observat
 the row, and Yutu's burrow and your house are out in the south-west and south-east. Every door has its own path,
 lamps line the street, and the neighbors mostly stroll the town (the street, the square, each other's doors).
 
-You start with Yutu and Nova in the ruins of an old colony. Stardew-style, you bring the **town** back:
+**The tutorial: Nova's Observatory.** You start with just Yutu in the ruins of an old colony. Nova the
+Stargazer wants to move up, and her Observatory is the first lot, with Yutu walking you through it in four
+steps: clear the rubble on her lot, break a boulder for moonstone, sweep a moondust drift for stardust, then
+repair the Observatory and she moves in. (Nova doesn't count toward the Town Hall's room.)
+
+Then, Stardew-style, you bring the **town** back:
 four landmarks, each going **ruined → repaired → grand**. E at the Town Hall for the projects board (or E at
 the Fountain or the Market): a card per landmark with its stage, what the next stage gives, and what it takes
 as chips (each resource's sprite and a bold have/need count, green when you've got enough; hover one to see
@@ -121,7 +126,7 @@ points at what's next.
 | **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new neighbor | room for 2, and the Office can be built | room for all 3 |
 | **Fountain** | dry and cracked | water again: neighbors make daily wishes | the star turns: friendships grow faster |
 | **Roads & Lamps** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
-| **Market** | a collapsed cart: a few basic decorations | a striped stall: all Garden and Cozy | a real shop: everything |
+| **Market** | a collapsed cart: no shop yet (the Shop button appears once it's repaired) | a striped stall: all Garden and Cozy | a real shop: everything |
 
 | Upgrade | Repaired needs | Grand needs |
 |---|---|---|

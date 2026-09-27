@@ -24,7 +24,7 @@ import {
 } from "../../shared/game.js";
 import { happinessFor } from "../../shared/decor.js";
 import { SPOTS } from "../../shared/layout.js";
-import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, STAGE_NAME, TASKS, digSpots, neighborCap, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
+import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, STAGE_NAME, TASKS, digSpots, neighborCap, newNeighborCount, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
 import { nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
 import * as google from "./connectors/google.js";
@@ -68,9 +68,9 @@ export function sourceOf(service: Service): Source {
 
 const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar"];
 
-/** Yutu and Nova were here first; everyone else moves in once their lot's checklist is done. */
+/** Yutu was here first; everyone else (Nova first, as the tutorial) moves in once their lot is repaired. */
 export function isResident(v: VillagerId): boolean {
-  if (v === "jade_rabbit" || v === "stargazer") return true;
+  if (v === "jade_rabbit") return true;
   // Ada runs the Office: she's there as soon as it is
   if (v === "manager") return !!world.buildings.office;
   return world.progress.movedIn.includes(v);
@@ -178,7 +178,8 @@ export function repairLot(b: BuildingId): string | null {
   if (lot.repaired) return null;
   if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
   const cap = neighborCap(world.progress.town);
-  if (world.progress.movedIn.length >= cap) return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"} right now. Upgrade it to make room.`;
+  // (Nova's the tutorial: she never waits on the Town Hall)
+  if (d.villager !== "stargazer" && newNeighborCount(world.progress.movedIn) >= cap) return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"} right now. Upgrade it to make room.`;
   const missing = missingFor(d.repair);
   if (missing) return `The foundation needs ${missing}.`;
   for (const m of MATERIALS) world.materials[m as Material] -= d.repair[m] ?? 0;
@@ -199,8 +200,8 @@ function moveIn(d: MoveInDef, gift = d.gift) {
   lastResidents = new Set(now);
   emit({ type: "building_built", building: d.home, coins: world.coins });
   emit({ type: "villager_arrived", villager: d.villager, residents: now, rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift, next: null });
-  const nth = world.progress.movedIn.length;
-  const present = ARRIVAL_GIFTS.find((g) => g.nth === nth);
+  const nth = newNeighborCount(world.progress.movedIn);
+  const present = d.villager === "stargazer" ? undefined : ARRIVAL_GIFTS.find((g) => g.nth === nth);
   const town = world.progress.town;
   if (present && !town.items.includes(present.item) && !town.used.includes(present.item)) {
     town.items.push(present.item);
@@ -288,7 +289,7 @@ export function townNote(): string {
   const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${STAGE_NAME[town.stages[id]]}`).join(", ");
   const cap = neighborCap(town);
   const held = town.items.map((i) => ITEMS[i].name);
-  return `The town (you're its mayor): ${stages}. The Town Hall has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${world.progress.movedIn.length} moved in).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
+  return `The town (you're its mayor): ${stages}. The Town Hall has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${newNeighborCount(world.progress.movedIn)} moved in).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
 }
 
 /** Why a house can't be built yet (its lot isn't ready), or null. */

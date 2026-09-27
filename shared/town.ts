@@ -51,7 +51,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   },
   market: {
     name: "Market",
-    perks: ["A rickety cart: a few basic decorations", "A proper stall: every Garden and Cozy decoration", "A real shop: everything, Sci-Fi and Party too"],
+    perks: ["A collapsed cart: no shop yet", "A proper stall: the Shop opens (Garden and Cozy decorations)", "A real shop: everything, Sci-Fi and Party too"],
     up: [{ needs: { moonstone: 2, stardust: 2, shard: 1 } }, { needs: { scrap: 2, helium: 2 }, item: "bell" }],
   },
 };
@@ -83,8 +83,10 @@ export interface Town {
 
 export const freshTown = (): Town => ({ stages: { town_hall: 0, fountain: 0, roads: 0, market: 0 }, items: [], used: [], tasks: [], dug: [], harvested: [], day: "" });
 
-/** How many new neighbors (besides Yutu and Nova) the Town Hall has room for. */
+/** How many new neighbors the Town Hall has room for (Nova, the tutorial, doesn't count). */
 export const neighborCap = (t: Town) => [1, 2, 3][t.stages.town_hall];
+/** New neighbors home so far (not counting Nova). */
+export const newNeighborCount = (movedIn: VillagerId[]) => movedIn.filter((v) => v !== "stargazer").length;
 export const officeAllowed = (t: Town) => t.stages.town_hall >= 1;
 export const hasItem = (t: Town, i: TownItem) => t.items.includes(i) || t.used.includes(i);
 
@@ -103,13 +105,14 @@ export function upgradeBlocker(t: Town, id: LandmarkId, materials: Materials): s
 
 // ---------------------------------------------------------------- the Market's stock
 
-const STARTER_STOCK = ["shrub", "planter", "carrots", "sundial", "flag", "lantern", "bench"];
+/** Is the Shop open at all? (Not until the Market is repaired.) */
+export const shopOpen = (t: Town) => t.stages.market >= 1;
 
 /** Can the Market sell this decoration yet? */
 export function inStock(stage: Stage, d: Pick<DecorDef, "id" | "cat">): boolean {
   if (stage >= 2) return true;
   if (stage === 1) return d.cat === "garden" || d.cat === "cozy";
-  return STARTER_STOCK.includes(d.id);
+  return false;
 }
 
 // ---------------------------------------------------------------- the crater's north and south

@@ -1,6 +1,6 @@
 import { TownPanel, type TownPanelSpec } from "../townpanel";
 import { inStock } from "../../../shared/town";
-import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, newNeighborCount, shopOpen } from "../../../shared/town";
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, type VillagerId, type VillagerStatus } from "../../../shared/game";
 import { PHONE } from "../font";
@@ -207,6 +207,11 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on("town-panel", openTown);
     this.unsubs.push(() => this.game.events.off("town-panel", openTown));
     this.unsubs.push(onStoreChange(() => this.townPanel.refresh()));
+    // The Market just opened its shop: rebuild the toolbar with the Shop button on it.
+    const hadShop = shopOpen(store.progress.town);
+    this.unsubs.push(onStoreChange(() => {
+      if (shopOpen(store.progress.town) !== hadShop) this.time.delayedCall(0, () => this.scene.restart());
+    }));
     this.input.keyboard!.on("keydown-ESC", () => {
       if (this.shopOpen) this.closeShop();
       this.townPanel.close();
@@ -721,7 +726,8 @@ export class UIScene extends Phaser.Scene {
     const groups: [string, string, string, () => void][][] = [
       [
         ["icon_moonpad_0", "phone", "MoonPad - texts and connections", click(() => openMoonPad())],
-        ["icon_shop_0", "shop", "Shop - decorations (B)", click(() => this.toggleShop())],
+        // (the Shop button only once the Market's repaired: there's no shop before that)
+        ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", click(() => this.toggleShop())] as [string, string, string, () => void]] : []),
         ["icon_quests_0", "quests", "Quests", click(() => this.showQuests())],
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
@@ -749,7 +755,8 @@ export class UIScene extends Phaser.Scene {
       x += sep - gap;
       g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, bh - 4);
     }
-    const [moonpad, , quests, , mic, edit, music, sound] = made;
+    const byWord = (w: string) => made[groups.flat().findIndex((g) => g[1] === w)];
+    const [moonpad, quests, mic, edit, music, sound] = ["phone", "quests", "mic", "edit", "music", "sound"].map(byWord);
     const showMic = (on: boolean) => mic.setIcon(on ? "icon_mic_on_0" : "icon_mic_0").setTooltip(MIC_TIP(on)).setLabel("mic", on ? 0x9dff8a : undefined);
     showMic(isMicOn());
     this.unsubs.push(onMicToggle(showMic));
@@ -872,6 +879,7 @@ export class UIScene extends Phaser.Scene {
       return `${stage === 2 ? "✓" : "○"} ${LANDMARKS[id].name}: ${STAGE_NAME[stage]}${stage < 2 ? ` → ${STAGE_NAME[stage + 1]}` : ""}`;
     });
     const cap = neighborCap(town);
+    const home = newNeighborCount(store.progress.movedIn);
     const neighborLines = MOVE_INS.map((m) => {
       const who = VILLAGER_NAMES[m.villager];
       if (store.progress.movedIn.includes(m.villager)) return `✓ ${who} moved in`;
@@ -881,7 +889,7 @@ export class UIScene extends Phaser.Scene {
     const lines = [
       `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
       ...townLines,
-      `NEIGHBORS (the Town Hall has room for ${cap} new, ${store.progress.movedIn.length} moved in)`,
+      `NEIGHBORS (the Town Hall has room for ${cap} new, ${home} moved in)`,
       ...neighborLines,
       ...(held.length ? ["STORY ITEMS", ...held] : []),
       `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
@@ -1112,6 +1120,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   private toggleShop() {
+    if (!this.shopOpen && !shopOpen(store.progress.town)) {
+      this.toast("The Market", "There's no shop yet: repair the Market first (E at the Market, or the Town Hall's board).", C.red);
+      return;
+    }
     this.shopOpen ? this.closeShop() : this.openShop();
   }
 

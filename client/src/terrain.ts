@@ -43,7 +43,7 @@ function mareAt(px: number, py: number): boolean {
   let d = Math.hypot(px - PLAZA.x, py - PLAZA.y) * 0.8;
   for (const s of Object.values(SPOTS)) d = Math.min(d, Math.hypot(px - s.x, py - (s.y - 10)));
   const n = noise(px / (TILE * 5), py / (TILE * 5)) * 0.65 + noise(px / (TILE * 2.2), py / (TILE * 2.2)) * 0.35;
-  return n > 0.28 + d / 260;
+  return n > 0.36 + d / 240;
 }
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -147,14 +147,15 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number,
     for (let w = -half; w <= half; w++) {
       const gx = Math.round(x + px * w);
       const gy = Math.round(y + py * w);
-      // (broken roads: the packed band has worn away in patches)
-      if (broken && noise(gx / 9, gy / 9) < 0.42) continue;
       const g = hash(gx, gy, seed % 97);
-      const c = Math.abs(w) === half ? "#978c93" : g > 0.93 ? "#b3a9ae" : g < 0.06 ? "#8e848a" : "#a4999f";
+      // (a broken road is just a packed-dirt track: tidy, a shade darker than the ground)
+      const c = broken
+        ? Math.abs(w) === half ? "#a098b0" : g < 0.04 ? "#9d95b0" : "#aaa2bb"
+        : Math.abs(w) === half ? "#978c93" : g > 0.93 ? "#b3a9ae" : g < 0.06 ? "#8e848a" : "#a4999f";
       rect(ctx, c, gx, gy, 1, 1);
     }
     // a pebble kicked just off the edge now and then
-    if (r(t, 21) > 0.94) {
+    if (!broken && r(t, 21) > 0.94) {
       const side = r(t, 22) > 0.5 ? 1 : -1;
       rect(ctx, "#8e848a", Math.round(x + px * side * (half + 2)), Math.round(y + py * side * (half + 2)), 1, 1);
     }
@@ -167,7 +168,7 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number,
     const rows = big ? [0] : half <= 7 ? [-half / 2, half / 2] : [-half * 0.6, 0, half * 0.6];
     rows.forEach((side, n) => {
       const k = i * 5 + n;
-      if (r(k, 2) < (broken ? 0.5 : 0.07)) return; // missing (half of them, on a broken road)
+      if (r(k, 2) < (broken ? 0.85 : 0.07)) return; // missing (most of them, on a broken road)
       const w = big ? 7 + Math.floor(r(k, 3) * 3) : 4 + Math.floor(r(k, 3) * 3);
       const h = big ? 5 : 3 + Math.floor(r(k, 4) * 2);
       // staggered rows, a little off true
@@ -177,7 +178,7 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number,
       const y = Math.round(ay + uy * along + py * across - h / 2);
       // broken roads: what's left is cracked or sunken, with chips of stone around
       stone(ctx, x, y, w, h, r(k, 7), broken ? r(k, 8) * 0.12 + (r(k, 9) > 0.5 ? 0.9 : 0) : r(k, 8));
-      if (broken && r(k, 10) > 0.6) rect(ctx, "#8f8578", x + w + 1, y + h - 1, 2, 1);
+
     });
     t += big ? 9 : 6 + Math.floor(r(i, 9) * 3);
   }

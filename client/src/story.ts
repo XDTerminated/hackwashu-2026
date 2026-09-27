@@ -31,9 +31,9 @@ export const CHAPTER_AFTER: Record<number, Chapter> = {
 };
 
 /** How many new neighbors are home, given everyone who lives here. */
-export const newNeighbors = (residents: VillagerId[]) => MOVE_INS.filter((m) => residents.includes(m.villager)).length;
-/** With every new neighbor home, the finale plays. */
-export const FINALE_AT = MOVE_INS.length;
+export const newNeighbors = (residents: VillagerId[]) => MOVE_INS.filter((m) => m.villager !== "stargazer" && residents.includes(m.villager)).length;
+/** With every new neighbor home, the finale plays. (Nova, the tutorial, doesn't count.) */
+export const FINALE_AT = MOVE_INS.length - 1;
 
 const PENDING = "moon-finale-pending";
 

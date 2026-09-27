@@ -7,7 +7,7 @@
 
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, VILLAGER_SHORT, moveInAt, type BuildingId, type Material } from "../../shared/game";
-import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, upgradeBlocker, type LandmarkId, type TownItem, type TownTask } from "../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, newNeighborCount, upgradeBlocker, type LandmarkId, type TownItem, type TownTask } from "../../shared/town";
 import * as net from "./net";
 import { sfx } from "./sfx";
 import { store } from "./store";
@@ -174,7 +174,7 @@ export class TownPanel {
       this.chips(list, x + 8, y + h - 15);
     }
     const buttons: { label: string; fill: number; act: () => void }[] = [];
-    if (id === "market") buttons.push({ label: "SHOP", fill: C.woodMid, act: () => (this.close(), s.game.events.emit("toggle-shop")) });
+    if (id === "market" && stage >= 1) buttons.push({ label: "SHOP", fill: C.woodMid, act: () => (this.close(), s.game.events.emit("toggle-shop")) });
     if (stage < 2) {
       const ready = !upgradeBlocker(town, id, store.materials);
       buttons.push({ label: ready ? "UPGRADE" : "NOT YET", fill: ready ? C.greenBtn : 0x9a93a8, act: () => (ready ? this.upgrade(id) : sfx.deny()) });
@@ -199,7 +199,9 @@ export class TownPanel {
     const who = VILLAGER_SHORT[def.villager];
     const lot = store.progress.lots[home] ?? { cleared: [], repaired: false };
     const cap = neighborCap(store.progress.town);
-    const room = store.progress.movedIn.length < cap;
+    const free = cap - newNeighborCount(store.progress.movedIn);
+    // (Nova, the tutorial, never waits on the Town Hall)
+    const room = def.villager === "stargazer" || free > 0;
     const cleared = lot.cleared.length >= def.rubble;
     const g = s.add.graphics();
     pixBox(g, x, y, w, h, C.paperLight, C.paperDark);
@@ -209,7 +211,7 @@ export class TownPanel {
     const list: Chip[] = [
       { text: `Rubble ${Math.min(lot.cleared.length, def.rubble)}/${def.rubble}`, ok: cleared, tip: "Press E by each heap of rubble on the lot" },
       ...this.materialChips(def.repair),
-      { icon: "item_room_0", text: room ? `${cap - store.progress.movedIn.length} room${cap - store.progress.movedIn.length === 1 ? "" : "s"} free` : "No room", ok: room, tip: room ? "The Town Hall has room for them" : "The Town Hall is full: upgrade it to make room (E at the Town Hall)" },
+      ...(def.villager === "stargazer" ? [] : [{ icon: "item_room_0", text: room ? `${free} room${free === 1 ? "" : "s"} free` : "No room", ok: room, tip: room ? "The Town Hall has room for them" : "The Town Hall is full: upgrade it to make room (E at the Town Hall)" }]),
     ];
     this.chips(list, x + 8, y + h - 15);
     const ready = cleared && room && MATERIALS.every((m) => (def.repair[m] ?? 0) <= store.materials[m]);

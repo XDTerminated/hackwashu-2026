@@ -131,6 +131,8 @@ function load(file = DATA_FILE): World {
     w.requests ??= { day: "", list: [] };
     w.materials = { ...noMaterials(), ...w.materials };
     w.progress.town ??= freshTown();
+    // Nova used to be here from the start; in older town saves she's already home.
+    if (w.buildings.observatory && !w.progress.movedIn.includes("stargazer")) w.progress.movedIn.unshift("stargazer");
     // Saves from the old quest chain: whoever had a house then has moved in
     // (their lot counts as cleared and repaired). The quest counters go.
     if (!Array.isArray(w.progress.movedIn)) {

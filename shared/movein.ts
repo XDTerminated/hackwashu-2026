@@ -6,8 +6,8 @@
 
 import { happinessFor } from "./decor.js";
 import { SPOTS } from "./layout.js";
-import { LANDMARKS, STAGE_NAME, digSpots, neighborCap, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
-import { MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_SHORT, type BuildingId, type Deco, type Materials, type MoveInDef, type Progress } from "./game.js";
+import { LANDMARKS, STAGE_NAME, digSpots, neighborCap, newNeighborCount, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
+import { MATERIALS, MATERIAL_NAME, MOVE_INS, TUTORIAL_VILLAGER, VILLAGER_SHORT, type BuildingId, type Deco, type Materials, type MoveInDef, type Progress } from "./game.js";
 
 export interface MoveInState {
   progress: Progress;
@@ -38,7 +38,7 @@ export function lovedCount(d: MoveInDef, s: MoveInState) {
 }
 
 /** Is there room at the Town Hall for another new neighbor? */
-export const hasRoom = (s: MoveInState) => s.progress.movedIn.length < neighborCap(s.progress.town);
+export const hasRoom = (s: MoveInState) => newNeighborCount(s.progress.movedIn) < neighborCap(s.progress.town);
 
 export function checklist(d: MoveInDef, s: MoveInState): Step[] {
   const lot = s.progress.lots[d.home] ?? { cleared: [], repaired: false };
@@ -46,12 +46,13 @@ export function checklist(d: MoveInDef, s: MoveInState): Step[] {
   const enough = MATERIALS.every((m) => (d.repair[m] ?? 0) <= s.materials[m]);
   return [
     { key: "rubble", done: cleared, text: `Clear the rubble (${Math.min(lot.cleared.length, d.rubble)}/${d.rubble})` },
-    { key: "repair", done: lot.repaired, text: `Repair the lot: ${needsText(d.repair)} (then ${VILLAGER_SHORT[d.villager]} moves in)`, ready: cleared && enough && hasRoom(s) },
+    { key: "repair", done: lot.repaired, text: `Repair the lot: ${needsText(d.repair)} (then ${VILLAGER_SHORT[d.villager]} moves in)`, ready: cleared && enough && (d.villager === TUTORIAL_VILLAGER || hasRoom(s)) },
   ];
 }
 
 export type Goal =
-  | { kind: "lot"; text: string; def: MoveInDef; step: Step }
+  /** `tutorial`: which of Nova's four tutorial steps this is (1-4). */
+  | { kind: "lot"; text: string; def: MoveInDef; step: Step; tutorial?: number }
   | { kind: "landmark"; text: string; id: LandmarkId; ready: boolean }
   | { kind: "dig"; text: string; spot: DigSpot };
 
@@ -66,6 +67,16 @@ const landmarkGoal = (s: MoveInState, id: LandmarkId): Goal => {
 /** The next thing worth doing (null once everyone's home and the whole town is grand). */
 export function nextStep(s: MoveInState): Goal | null {
   const town = s.progress.town;
+  // First, the tutorial: Nova's Observatory, step by step.
+  const nova = MOVE_INS.find((m) => m.villager === TUTORIAL_VILLAGER)!;
+  if (!s.progress.movedIn.includes(nova.villager)) {
+    const steps = checklist(nova, s);
+    const short = (m: keyof Materials) => (nova.repair[m] ?? 0) > s.materials[m];
+    if (!steps[0].done) return { kind: "lot", def: nova, step: steps[0], tutorial: 1, text: `Tutorial 1/4: clear the rubble on Nova's lot (E by each heap)` };
+    if (short("moonstone")) return { kind: "lot", def: nova, step: steps[1], tutorial: 2, text: "Tutorial 2/4: break a boulder for moonstone (E by any rock)" };
+    if (short("stardust")) return { kind: "lot", def: nova, step: steps[1], tutorial: 3, text: "Tutorial 3/4: sweep a moondust drift for stardust (hold E)" };
+    return { kind: "lot", def: nova, step: steps[1], tutorial: 4, text: "Tutorial 4/4: repair Nova's Observatory, and she moves in" };
+  }
   const waiting = MOVE_INS.filter((m) => !s.progress.movedIn.includes(m.villager));
   // A neighbor can move in: the lot furthest along first.
   if (waiting.length && hasRoom(s)) {

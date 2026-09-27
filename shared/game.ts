@@ -36,7 +36,7 @@ export interface BuildingDef {
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   player_house: { id: "player_house", name: "Your House", price: 0, starter: true, unlocks: "where villagers bring letters that need your OK" },
   rabbit_burrow: { id: "rabbit_burrow", name: "Rabbit's Burrow", price: 0, starter: true, resident: "jade_rabbit", unlocks: "Yutu the Jade Rabbit: your guide, and later the one who coordinates everyone" },
-  observatory: { id: "observatory", name: "Observatory", price: 0, starter: true, resident: "stargazer", unlocks: "Nova the Stargazer: researches anything on the web" },
+  observatory: { id: "observatory", name: "Observatory", price: 0, starter: false, resident: "stargazer", unlocks: "Nova the Stargazer: researches anything on the web" },
   post_office: { id: "post_office", name: "Post Office", price: 30, starter: false, resident: "postmaster", unlocks: "Hoot the Postmaster: reads your Gmail and drafts replies" },
   mailbox: { id: "mailbox", name: "Mailbox", price: 0, starter: false, unlocks: "read & summarize email (comes with the Post Office)" },
   clock_tower: { id: "clock_tower", name: "Clock Tower", price: 60, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
@@ -230,7 +230,20 @@ export interface MoveInDef {
   gift: number;
 }
 
+/** Nova's Observatory is the first lot: the tutorial (it doesn't count toward the Town Hall's room). */
+export const TUTORIAL_VILLAGER: VillagerId = "stargazer";
+
 export const MOVE_INS: MoveInDef[] = [
+  {
+    villager: "stargazer",
+    home: "observatory",
+    rubble: 2,
+    repair: { moonstone: 3, stardust: 2 },
+    loves: 0,
+    teaser: { by: "jade_rabbit", text: "Nova the Stargazer wants to come up from Earth, but her old Observatory is a ruin. Let's fix it up together!" },
+    hello: "Oh, what a view of Earth's web! I'm Nova. Ask me anything and I'll look it up for you.",
+    gift: 20,
+  },
   {
     villager: "postmaster",
     home: "post_office",
@@ -278,7 +291,7 @@ export interface Progress {
   revealed: BuildingId[];
   /** Services the player chose to run on sample data for now. */
   sandbox: Partial<Record<Service, boolean>>;
-  /** Neighbors who've moved in (besides Yutu and Nova, who were here first). */
+  /** Neighbors who've moved in (Yutu was here first; Nova's the tutorial). */
   movedIn: VillagerId[];
   lots: Partial<Record<BuildingId, LotState>>;
 }

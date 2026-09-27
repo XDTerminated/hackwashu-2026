@@ -1,4 +1,4 @@
-import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, walkableAt, type LandmarkId } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, shopOpen, walkableAt, type LandmarkId } from "../../../shared/town";
 import { TownView } from "../townview";
 import Phaser from "phaser";
 import {
@@ -171,6 +171,8 @@ export class GameScene extends Phaser.Scene {
     this.town = new TownView(this);
     this.town.refresh();
     this.townStages = { ...store.progress.town.stages };
+    this.tutorialStep = undefined;
+    this.time.delayedCall(1500, () => this.tutorialLine());
 
     this.add.image(LANDING.x, LANDING.y - 1, shadowKey(this, 34)).setDepth(-8);
     this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
@@ -298,7 +300,7 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(900, () => {
         const text = ready
           ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
-          : "Welcome to the Moon! I'm Yutu, the mayor. The old town's in ruins, but we'll bring it back: follow the gold ★. E at the Town Hall shows every project.";
+          : "Welcome to the Moon! I'm Yutu, the mayor. The old town's in ruins, but we'll bring it back. First, let's get Nova moved in: follow the gold ★.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
         const seen = rabbit.x > v.x + 40 && rabbit.x < v.right - 40 && rabbit.y - 40 > v.y + 30 && rabbit.y < v.bottom - 60;
@@ -563,9 +565,29 @@ export class GameScene extends Phaser.Scene {
     this.pathTex.refresh();
   }
 
+  private tutorialStep: number | null | undefined;
+
+  /** Nova's tutorial: Yutu says a word as each step comes up (and once it's all done). */
+  private tutorialLine() {
+    const n = nextStep(this.moveState());
+    const step = n?.kind === "lot" && n.tutorial ? n.tutorial : null;
+    const was = this.tutorialStep;
+    this.tutorialStep = step;
+    if (was === undefined || step === was) return;
+    const LINES: Record<number, string> = {
+      1: "Let's get you started! Nova the Stargazer wants to move up, but her Observatory is a ruin. Walk to her lot (follow the gold ★) and press E by each heap of rubble.",
+      2: "Rubble breaks into moonstone! The repair needs a little more: press E by any boulder to break it up.",
+      3: "Now stardust: moondust drifts settle around the lamps. Stand on one and hold E to sweep it.",
+      4: "That's everything the repair needs. Walk up to Nova's lot and press E to repair it!",
+    };
+    const text = step ? LINES[step] : was ? "Nova's home! That's the ropes: gather, sweep, repair. Now the town: press E at the Town Hall (the dome) to see its projects. Each one you fix makes room for more neighbors." : null;
+    if (text) this.time.delayedCall(step === 1 ? 2500 : 600, () => this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text }));
+  }
+
   /** After any progress: redraw what's gathered or dug, and celebrate any landmark that went up a stage. */
   private townChanged() {
     this.town.refresh();
+    this.tutorialLine();
     const now = store.progress.town.stages;
     for (const id of LANDMARK_IDS) {
       if (now[id] === this.townStages[id]) continue;
@@ -1521,7 +1543,7 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen && !this.near.typing) this.game.events.emit("toggle-shop");
+      if (!this.panelOpen && !this.near.typing && shopOpen(store.progress.town)) this.game.events.emit("toggle-shop");
     });
 
     // Talking happens right where you stand: E next to a neighbor opens the chat,

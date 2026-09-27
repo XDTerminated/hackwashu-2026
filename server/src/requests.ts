@@ -71,7 +71,9 @@ function pick(day: string): ColonyRequest[] {
   const seed = [...day].reduce((h, c) => h * 31 + c.charCodeAt(0), 7);
   // Only ask for what's still out there: shards left to find, rocks or rubble left to clear.
   const rocksLeft = rockSpots(decoRects(), world.clearedRocks).length + rubbleLeft();
-  const pool = POOL.filter((t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0));
+  // (and nothing about decorating until the Market is open)
+  const market = world.progress.town.stages.market >= 1;
+  const pool = POOL.filter((t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0) && (market || (t.kind !== "decorate" && t.kind !== "place")));
   const order = pool.map((t, i) => ({ t, r: seeded(seed + i * 17) })).sort((a, b) => a.r - b.r);
   const w = wish(seed);
   const picked = order.slice(0, w ? 2 : 3).map(({ t }, i) => {

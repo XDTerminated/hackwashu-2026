@@ -414,7 +414,7 @@ export class IntroScene extends Cutscene {
       at(sx, ground + 10, drawSign(this));
       const l1 = this.keep(ptext(this, 0, ground + 10 - 34, "MOON COLONY", C.ink, "pxb").setDepth(ground + 11));
       l1.setX(sx - Math.round(measure(l1).w / 2));
-      const l2 = this.keep(ptext(this, 0, ground + 10 - 25, "pop. 2 (and you)", C.inkSoft).setDepth(ground + 11));
+      const l2 = this.keep(ptext(this, 0, ground + 10 - 25, "pop. 1 (and you)", C.inkSoft).setDepth(ground + 11));
       l2.setX(sx - Math.round(measure(l2).w / 2));
       flame = this.keep(this.add.sprite(lx, -60, "intro_flame_0").setOrigin(0.5, 0).play("intro-flame").setDepth(ground - 2));
       rocket = this.keep(this.add.image(lx, -60, "ship").setOrigin(0.5, 1).setDepth(ground - 1));
@@ -428,7 +428,7 @@ export class IntroScene extends Cutscene {
     flame.setVisible(false);
     sfx.land();
     this.cameras.main.shake(260, 0.006);
-    await this.caption("The Moon. Population: one rabbit, one stargazer.", 1100);
+    await this.caption("The Moon. Population: one rabbit.", 1100);
     this.clearCaption();
 
     // Someone's home.
