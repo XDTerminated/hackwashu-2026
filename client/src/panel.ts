@@ -1077,7 +1077,11 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
         dialog?.add("sys", "OK - Echo will talk music with you until you connect Spotify (talk to Echo any time to connect).");
       },
     };
-    if (!store.connections.spotify.configured) {
+    if (!store.connections.spotify.configured && net.HOSTED) {
+      // (online, only whoever runs the site can turn Spotify on: no button that can't work)
+      dialog.add("sys", "Spotify isn't turned on for this site yet, so it can't be connected right now. Echo can still talk music with you.");
+      dialog.setButtons([{ ...chat, kind: "ok" }]);
+    } else if (!store.connections.spotify.configured) {
       dialog.add("sys", "Spotify isn't set up for this colony yet. If you're the one running it, SET UP SPOTIFY walks you through it once (about 3 minutes).");
       dialog.setButtons([{ label: "SET UP SPOTIFY", kind: "ok", onClick: () => (window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank"), dialog?.add("sys", "Follow the steps in the new tab, then come back and talk to Echo again.")) }, chat]);
     } else
@@ -1106,7 +1110,11 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
     );
     if (googleReady)
       dialog.add("sys", "Heads up: Google will say it \"hasn't verified this app\" (reading your mail needs Google's own review, which a new app hasn't had yet). Press Advanced, then Go to Fl-AI Me to the Moon, to continue.");
-    if (!googleReady) {
+    if (!googleReady && net.HOSTED) {
+      // (online, only whoever runs the site can turn Google on)
+      dialog.add("sys", "Google sign-in isn't turned on for this site yet, so Gmail and Calendar can't be connected right now. Sample data works the same way (clearly marked).");
+      dialog.setButtons([sampleButton]);
+    } else if (!googleReady) {
       // No dead-end button: say what's possible and make the working option the obvious one.
       dialog.add("sys", "Google sign-in isn't turned on for this colony yet. If you're the one running it, SET UP SIGN-IN walks you through it once (about 5 minutes); after that anyone can sign in with their own Google account. Or use sample data for now (it works the same way, clearly marked).");
       dialog.setButtons([{ label: "SET UP SIGN-IN", onClick: () => (window.open(`${net.SERVER_HTTP}/setup/google`, "_blank"), dialog?.add("sys", "Follow the steps in the new tab, then come back and press CONNECT GOOGLE.")) }, sampleButton]);

@@ -52,6 +52,12 @@ function page(res: ServerResponse, status: number, title: string, body: string) 
 <h2 style="color:#f2a3b8;margin-top:0">${title}</h2>${body}</div></body>`);
 }
 
+/** Online, a service the site's owner hasn't configured: say so (players can't set it up from a page). */
+function notTurnedOn(res: ServerResponse, service: string, vars: string) {
+  return page(res, 503, `${service} isn't turned on here yet`, `<p>This site's owner hasn't connected ${service} yet, so it can't be linked right now. Everything else in the game works.</p>
+<p style="opacity:.75">Running this site? Add <code>${vars}</code> to the server's environment (README, Deploying) and redeploy.</p>`);
+}
+
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   // On your computer: only when asked for by a name that means this computer (not a rebound one).
@@ -124,7 +130,7 @@ const httpServer = createServer(async (req, res) => {
 
   // Echo's Spotify: one-time host setup, then each player signs in (like Google).
   if (url.pathname === "/setup/spotify") {
-    if (HOSTED) return page(res, 404, "Not here", "<p>Nothing to set up here.</p>");
+    if (HOSTED) return notTurnedOn(res, "Spotify", "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET");
     if (!isLocal(req.socket.remoteAddress)) return page(res, 403, "Not here", "<p>Spotify can only be set up from the computer running the colony.</p>");
     if (req.method === "POST") {
       const origin = req.headers.origin;
@@ -158,6 +164,7 @@ ${step(4, `While the app is in Development mode, only people you add can sign in
 <p style="opacity:.7;font-size:.9em">Stored in <code>server/data/spotify-client.json</code> (only readable by you), never sent to the game.</p>`);
   }
   if (url.pathname === "/connect/spotify") {
+    if (!spotifyConfigured() && HOSTED) return notTurnedOn(res, "Spotify", "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET");
     res.writeHead(302, { location: spotifyConfigured() ? spotifyAuthUrl() : "/setup/spotify" });
     return res.end();
   }
@@ -193,7 +200,7 @@ ${step(4, `While the app is in Development mode, only people you add can sign in
   // One-time host setup for "Sign in with Google" (only from this computer).
   if (url.pathname === "/setup/google") {
     // The hosted game's Google app is set by whoever runs the site, not from a page.
-    if (HOSTED) return page(res, 404, "Not here", "<p>Nothing to set up here.</p>");
+    if (HOSTED) return notTurnedOn(res, "Google (Gmail + Calendar)", "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET");
     if (!isLocal(req.socket.remoteAddress)) return page(res, 403, "Not here", "<p>Google sign-in can only be set up from the computer running the colony.</p>");
     if (req.method === "POST") {
       const origin = req.headers.origin;
@@ -241,6 +248,7 @@ ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clien
   // Google sign-in: the game opens this in a new tab.
   if (url.pathname === "/connect/google") {
     if (!googleConfigured()) {
+      if (HOSTED) return notTurnedOn(res, "Google (Gmail + Calendar)", "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET");
       // Not set up yet: send the host to the setup page instead of a dead end.
       res.writeHead(302, { location: "/setup/google" });
       return res.end();

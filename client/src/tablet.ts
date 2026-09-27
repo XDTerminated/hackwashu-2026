@@ -428,9 +428,9 @@ class MoonPadView {
       {
         title: "Google",
         state: c.google.connected ? "ok" : sandbox.google ? "sample" : "off",
-        line: c.google.connected ? "Gmail + Calendar connected" : sandbox.google ? "on sample data" : "Gmail + Calendar (Hoot, Cog)",
+        line: c.google.connected ? "Gmail + Calendar connected" : sandbox.google ? "on sample data" : !c.google.configured && net.HOSTED ? "not turned on for this site yet" : "Gmail + Calendar (Hoot, Cog)",
         tests: result("Google permissions", "Gmail", "Calendar"),
-        btn: c.google.connected ? null : c.google.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/google`, "_blank") } : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
+        btn: c.google.connected ? null : c.google.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/google`, "_blank") } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
       },
       {
         title: "Canvas",
@@ -449,9 +449,9 @@ class MoonPadView {
       {
         title: "Spotify",
         state: c.spotify.connected ? "ok" : "off",
-        line: c.spotify.connected ? `connected${c.spotify.account ? `: ${c.spotify.account}` : ""}${c.spotify.premium === false ? " (needs Premium to play)" : ""}` : "music in the game (Echo)",
+        line: c.spotify.connected ? `connected${c.spotify.account ? `: ${c.spotify.account}` : ""}${c.spotify.premium === false ? " (needs Premium to play)" : ""}` : !c.spotify.configured && net.HOSTED ? "not turned on for this site yet" : "music in the game (Echo)",
         tests: [],
-        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/spotify`, "_blank") } : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
+        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/spotify`, "_blank") } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
       },
       {
         title: "Your phone",
