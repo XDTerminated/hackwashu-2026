@@ -1420,7 +1420,7 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen && !this.near.chatting) this.game.events.emit("toggle-shop");
+      if (!this.panelOpen && !this.near.typing) this.game.events.emit("toggle-shop");
     });
 
     // Talking happens right where you stand: E next to a neighbor opens the chat,
@@ -1430,6 +1430,12 @@ export class GameScene extends Phaser.Scene {
       player: () => this.player,
       actor: (v) => this.villagers.get(v),
       nearest: () => this.talkable(),
+      around: (r) =>
+        [...this.villagers.entries()]
+          .map(([v, a]) => [v, this.distTo(a.x, a.y - 8)] as const)
+          .filter(([v, d]) => d < r && !pendingApprovalFor(v) && !this.needsConnect(v))
+          .sort((x, y) => x[1] - y[1])
+          .map(([v]) => v),
       hold: (v) => this.holdForTalk(v),
       release: () => this.releaseTalk(),
       blocked: () => this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || this.arranging || isMoonPadOpen(),
@@ -2170,7 +2176,7 @@ export class GameScene extends Phaser.Scene {
     setListener(this.player.x, this.player.y); // (sounds in the colony are heard from where you stand)
     this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
 
-    this.target = this.panelOpen || this.arranging || this.near.chatting ? null : this.findTarget();
+    this.target = this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();
     if (this.panelOpen || this.arranging) this.doorCall = null;
     this.callBtn.setVisible(!!this.doorCall);
     if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
@@ -2190,8 +2196,8 @@ export class GameScene extends Phaser.Scene {
 
     this.near.update();
     // While you type, keys go to your words (not to walking or the toolbar).
-    if (this.near.chatting !== this.typingCapture) {
-      this.typingCapture = this.near.chatting;
+    if (this.near.typing !== this.typingCapture) {
+      this.typingCapture = this.near.typing;
       if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
       else if (!this.panelOpen) this.input.keyboard!.enableGlobalCapture();
     }
@@ -2223,7 +2229,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A dialog, the MoonPad or the shop is up: keys belong to it. */
   private windowOpen() {
-    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.chatting;
+    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.typing;
   }
 
   private updatePlayer(dt: number) {

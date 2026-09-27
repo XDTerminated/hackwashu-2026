@@ -253,19 +253,24 @@ running, who's stuck or waiting on you, what finished) and tells you how it's go
 
 ## Talking to villagers
 
-Talking happens right where you stand, and there's one way in: walk up to a villager and press **E**.
-The chat bar opens with your conversation so far, and the **mic comes on by itself**: just speak, or
-type and press **Enter**. **ESC** leaves. They stop, turn to you, think ("..."), and answer out loud
-in bubbles over their head, a sentence or two at a time. Pausing mid-sentence doesn't cut you off: what you
-say builds up and sends after about two seconds of quiet (a thin bar under the chat fills as it's
-about to go), or right away when you press Enter. The mic waits while you type and while they think
-and talk, so it never hears them or sends twice. They greet you once; come back within five
-minutes and they skip the hello, and the conversation so far is still there. (Letters to approve and
-account connections still open their own windows.)
+Talking happens right where you stand. **With the mic on, just talk:** near a neighbor, say their
+name ("Hey Hoot, what's in my inbox?"), or say hi while you're right beside one, and the conversation
+starts hands-free. You can keep walking; walk off (or press **ESC**) to leave. Or press **E** next to
+them (or **Enter** mid-conversation) to type instead. The chat bar shows the conversation so far.
 
+They stop, turn to you, think ("..."), and answer out loud in bubbles over their head, a sentence or
+two at a time. **Talk over them to interrupt:** they stop mid-sentence and listen (the mic ignores their
+own voice coming back through your speakers). Pausing mid-sentence doesn't cut you off: what you say
+builds up and sends after about two seconds of quiet (a thin bar under the chat fills as it's about to
+go), or right away when you press Enter. They greet you once; come back within five minutes and the
+conversation so far is still there. (Letters to approve and account connections still open their own
+windows.)
+
+- **Email addresses out loud**: say "jordan dot lee at gmail dot com", or spell it ("j o r d a n at
+  wustl dot edu"), and it arrives as jordan.lee@gmail.com; Hoot fixes up anything still garbled or asks
+  you to spell it.
 - **The mic button** (on the chat bar, and on the toolbar) turns voice off, and it stays off until you
-  turn it back on. With it off you just type. The mic only ever listens while a chat is open, never
-  because you walked past someone.
+  turn it back on. It only ever listens with a neighbor close by, never while you're off on your own.
 - **Sounds are spatial**: hammering, bells, meteors, finished jobs and villagers' voices are louder
   close up, fade with distance, and pan left or right toward where they happen.
 
