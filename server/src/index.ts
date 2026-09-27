@@ -15,7 +15,7 @@ import { denyAllPending, resolveApproval } from "./approvals.js";
 import { DEFAULT_CANVAS, canvasBase, connectCanvas, disconnectCanvas, initCanvas, searchSchools } from "./connectors/canvas.js";
 import { canvasSignIn } from "./connectors/canvasLogin.js";
 import { testConnections } from "./selftest.js";
-import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle, setGoogleClient } from "./connectors/google.js";
+import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, finishGoogleSignin, forgetSignin, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, googleSigninUrl, initGoogle, setGoogleClient } from "./connectors/google.js";
 import { connectGithub, connectGithubCli, disconnectGithub, initGithub } from "./connectors/github.js";
 import { accessToken as spotifyToken, disconnectSpotify, finishSpotifyAuth, initSpotify, setDevice as setSpotifyDevice, setSpotifyClient, SPOTIFY_REDIRECT, spotifyAuthUrl, spotifyConfigured } from "./connectors/spotify.js";
 import { onPhoneLinked, phoneLinked, photonReady, startLink, startPhoton, unlink } from "./photon.js";
@@ -180,6 +180,12 @@ ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clien
 <p style="opacity:.7;font-size:.9em">Stored in <code>server/data/google-client.json</code> (only readable by you), never sent to the game.</p>`);
   }
 
+  // The title screen's sign-in: just who you are (no Gmail or Calendar, so no "unverified app" warning).
+  if (url.pathname === "/signin/google") {
+    res.writeHead(302, { location: googleConfigured() ? googleSigninUrl() : "/setup/google" });
+    return res.end();
+  }
+
   // Google sign-in: the game opens this in a new tab.
   if (url.pathname === "/connect/google") {
     if (!googleConfigured()) {
@@ -196,6 +202,16 @@ ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clien
   if (url.pathname === "/oauth/google/callback") {
     const code = url.searchParams.get("code");
     if (!code) return page(res, 400, "Sign-in cancelled", `<p>${url.searchParams.get("error") ?? "No code from Google."} You can close this tab.</p>`);
+    if (url.searchParams.get("state") === "signin") {
+      try {
+        const me = await finishGoogleSignin(code);
+        services.announceConnections();
+        return page(res, 200, "Signed in! 🌙", `<p>Welcome, <b>${me.name.replace(/[<>&"]/g, "")}</b>. Close this tab and press PLAY.</p>`);
+      } catch (err) {
+        console.error("[google] sign-in failed:", err);
+        return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p>`);
+      }
+    }
     try {
       const account = await finishGoogleAuth(code);
       services.announceConnections();
@@ -483,6 +499,12 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
         break;
       }
+
+      case "forget_me":
+        if (!localClients.has(ws)) break;
+        forgetSignin();
+        services.announceConnections();
+        break;
 
       case "intro_seen":
         world.introSeen = true;

@@ -1094,6 +1094,8 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
           ? "Connect your Google account and Hoot works with your real Gmail: reading, summarizing and drafting replies. Nothing gets sent without your OK."
           : "Connect your Google account and Cog reads your real calendar and books events (you approve every booking)."),
     );
+    if (googleReady)
+      dialog.add("sys", "Heads up: Google will say it \"hasn't verified this app\" (reading your mail needs Google's own review, which a new app hasn't had yet). Press Advanced, then Go to Fl-AI Me to the Moon, to continue.");
     if (!googleReady) {
       // No dead-end button: say what's possible and make the working option the obvious one.
       dialog.add("sys", "Google sign-in isn't turned on for this colony yet. If you're the one running it, SET UP SIGN-IN walks you through it once (about 5 minutes); after that anyone can sign in with their own Google account. Or use sample data for now (it works the same way, clearly marked).");

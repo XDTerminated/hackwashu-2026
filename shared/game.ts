@@ -376,6 +376,8 @@ export interface LinkedPhone {
 
 /** Real accounts the colony is wired to. When one isn't connected, its villager uses labeled sandbox data. */
 export interface Connections {
+  /** Who signed in on the title screen (name and email only), on your own computer. */
+  me?: { name: string; email: string };
   google: { connected: boolean; account?: string; configured: boolean };
   /** Spotify: plays inside the game tab (Spotify only allows that for Premium accounts). */
   spotify: { connected: boolean; account?: string; configured: boolean; premium?: boolean };
@@ -576,6 +578,8 @@ export type ClientMessage =
   | { type: "toggle_deco"; id: string }
   /** Switch to (or back from) the dev showcase save. */
   | { type: "dev_mode"; on: boolean }
+  /** Sign out on the title screen (on your own computer). */
+  | { type: "forget_me" }
   /** The intro's been watched (it only plays the first time). */
   | { type: "intro_seen" }
   /** Testing: start this save over from scratch (the server keeps a copy of the old one). */

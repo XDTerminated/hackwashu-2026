@@ -49,7 +49,7 @@ export function setWebAvailable(v: boolean) {
 }
 
 export function connections(): Connections {
-  return { google: google.googleStatus(), spotify: spotify.spotifyStatus(), github: github.githubStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
+  return { me: google.signedInAs() ?? undefined, google: google.googleStatus(), spotify: spotify.spotifyStatus(), github: github.githubStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
 }
 
 function live(service: Service): boolean {

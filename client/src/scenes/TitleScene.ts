@@ -147,35 +147,34 @@ export class TitleScene extends Phaser.Scene {
       buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN OUT", act: () => net.signOut() }]);
       link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
     } else {
-      // On your own computer: sign in with Google (your Gmail and Calendar come along), or just play.
-      const google = store.connections.google;
-      if (google.connected) {
-        inside(9, `WELCOME BACK, ${(google.account ?? "traveler").split("@")[0].toUpperCase()}`, C.coral, "pxb");
-        inside(22, `Signed in with Google: ${google.account ?? ""}`, C.inkSoft, "sm");
+      // On your own computer: sign in with Google (just your name and email), or just play.
+      const me = store.connections.me;
+      if (me) {
+        inside(9, `WELCOME BACK, ${me.name.split(" ")[0].toUpperCase()}`, C.coral, "pxb");
+        inside(22, me.email, C.inkSoft, "sm");
         buttons([{ label: "PLAY", act: play, main: true }]);
+        link(6, H - 12, "sign out", () => net.send({ type: "forget_me" }));
       } else {
         inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
-        inside(22, "Sign in with Google and your Gmail and Calendar come along. (Online, each Google account gets its own village.)", C.inkSoft, "sm");
+        inside(22, "Sign in with Google (just your name and email). Your Gmail and Calendar are asked for later, when you connect Hoot or Cog.", C.inkSoft, "sm");
         buttons([
           {
             label: "SIGN IN WITH GOOGLE",
             main: true,
-            act: () => {
-              window.open(`${net.SERVER_HTTP}/connect/google`, "_blank");
-              // (the title updates by itself once you're signed in)
-            },
+            // (the title updates by itself once you're signed in)
+            act: () => window.open(`${net.SERVER_HTTP}/signin/google`, "_blank"),
           },
           { label: "PLAY", act: play },
         ]);
-        let was: boolean = google.connected;
-        const off = onStoreChange(() => {
-          if (store.connections.google.connected !== was) {
-            was = store.connections.google.connected;
-            if (!landing) this.scene.restart();
-          }
-        });
-        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
       }
+      let was = me?.email ?? "";
+      const off = onStoreChange(() => {
+        if ((store.connections.me?.email ?? "") !== was) {
+          was = store.connections.me?.email ?? "";
+          if (!landing) this.scene.restart();
+        }
+      });
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
     }
     below("SPACE or ENTER to play");
     for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, play);

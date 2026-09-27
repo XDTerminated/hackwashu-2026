@@ -144,6 +144,48 @@ export async function finishGoogleAuth(code: string): Promise<string | undefined
   return account;
 }
 
+// ---------------------------------------------------------------- just signing in
+// The title's SIGN IN WITH GOOGLE asks only who you are (your name and email),
+// and Google shows no "hasn't verified this app" warning for that. Gmail and
+// Calendar are asked for separately, when you connect Hoot or Cog: those are
+// the permissions Google reviews before it drops its warning.
+
+const PROFILE_FILE = join(DATA_DIR, "profile.json");
+let me: { name: string; email: string } | null = (() => {
+  try {
+    return existsSync(PROFILE_FILE) ? (JSON.parse(readFileSync(PROFILE_FILE, "utf8")) as { name: string; email: string }) : null;
+  } catch {
+    return null;
+  }
+})();
+
+/** Who signed in on the title screen (name and email), if anyone. */
+export const signedInAs = () => me;
+
+export function googleSigninUrl(): string {
+  return oauth().generateAuthUrl({ scope: ["openid", "email", "profile"], state: "signin", prompt: "select_account" });
+}
+
+/** Finish a title-screen sign-in: who you are, and nothing more. */
+export async function finishGoogleSignin(code: string): Promise<{ name: string; email: string }> {
+  // (a client of its own, so this never touches the Gmail and Calendar sign-in)
+  const c = clientCreds();
+  const g = new OAuth2Client(c.id, c.secret, GOOGLE_REDIRECT);
+  const { tokens } = await g.getToken(code);
+  const ticket = await g.verifyIdToken({ idToken: tokens.id_token ?? "", audience: c.id });
+  const info = ticket.getPayload();
+  if (!info?.email) throw new Error("Google didn't say who you are.");
+  me = { name: info.name ?? info.email.split("@")[0], email: info.email };
+  mkdirSync(dirname(PROFILE_FILE), { recursive: true });
+  writeFileSync(PROFILE_FILE, JSON.stringify(me), { mode: 0o600 });
+  return me;
+}
+
+export function forgetSignin() {
+  me = null;
+  rmSync(PROFILE_FILE, { force: true });
+}
+
 export function disconnectGoogle() {
   connected = false;
   account = undefined;
