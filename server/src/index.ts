@@ -316,7 +316,7 @@ onTeamChange((state) => {
 });
 whenPermsChange((ws) => send(ws, { type: "agents", state: seesOffice(ws) ? agentsState() : { watching: null, link: null, sessions: [] } }));
 // On your computer the Office watches your Claude Code directly; hosted, you link it (bridgeRoute).
-if (HOSTED) useLinking();
+if (HOSTED) useLinking(() => wss.clients.size > 0);
 else startAgentWatch();
 
 function send(ws: WebSocket, msg: ServerMessage) {

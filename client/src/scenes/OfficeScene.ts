@@ -19,7 +19,7 @@ import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard, openTeamBoard, op
 import { visiting } from "../multiplayer";
 import { sfx } from "../sfx";
 import { agents, focusedSession, team } from "../store";
-import { shadowKey } from "../textures";
+import { buildOfficeTextures, shadowKey } from "../textures";
 import { C, Label, ptext } from "../widgets";
 
 interface Spot {
@@ -114,6 +114,7 @@ export class OfficeScene extends Phaser.Scene {
     this.settled = false;
     this.lastAction = "";
 
+    buildOfficeTextures(this); // (drawn on the first visit; no-op after)
     this.add.image(0, 0, "office_room").setOrigin(0).setDepth(-10);
     // Walls and furniture you can't walk through.
     this.solids.push(new Phaser.Geom.Rectangle(0, 0, ROOM_W, 72), new Phaser.Geom.Rectangle(0, 0, 8, ROOM_H), new Phaser.Geom.Rectangle(ROOM_W - 8, 0, 8, ROOM_H), new Phaser.Geom.Rectangle(0, ROOM_H - 12, ROOM_W, 12));

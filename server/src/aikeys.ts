@@ -5,7 +5,6 @@
 // request, stored owner-only in this island's data folder (online, each
 // player's own), and never sent back to the game (only a masked hint).
 
-import Anthropic from "@anthropic-ai/sdk";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -86,9 +85,12 @@ async function check(p: TeamProvider, key: string): Promise<void> {
   };
   if (p === "claude") {
     try {
+      // (the SDK loads only when someone connects a Claude key)
+      const { default: Anthropic } = await import("@anthropic-ai/sdk");
       await new Anthropic({ apiKey: key }).models.list({ limit: 1 });
     } catch (err) {
-      throw new Error(err instanceof Anthropic.AuthenticationError ? "that key was rejected" : "the check failed");
+      const status = err && typeof err === "object" ? (err as { status?: unknown }).status : undefined;
+      throw new Error(status === 401 || status === 403 ? "that key was rejected" : "the check failed");
     }
   } else if (p === "openai") await get("https://api.openai.com/v1/models", { authorization: `Bearer ${key}` });
   else if (p === "groq") await get("https://api.groq.com/openai/v1/models", { authorization: `Bearer ${key}` });

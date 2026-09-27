@@ -2,7 +2,7 @@
 // summary, tool call, handoff and approval is emitted as a GameEvent so the
 // island can replay it. Agents never wait on animations — the client paces itself.
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import {
   BUILDINGS,
   GRAND_BONUS,
@@ -17,7 +17,7 @@ import { denyPendingFor, waitForApproval } from "./approvals.js";
 import * as github from "./connectors/github.js";
 import * as spotify from "./connectors/spotify.js";
 import { MOCK, mockVillager } from "./mock.js";
-import { Groq, runLookOnlyGroq, runVillagerGroq } from "./groq.js";
+import { runLookOnlyGroq, runVillagerGroq } from "./groq.js";
 import * as services from "./services.js";
 import { addFacts, befriend, memoryNote, remember } from "./memory.js";
 import { retell, splitNotes, tooLongToSay } from "./chat.js";
@@ -25,7 +25,15 @@ import { audienceNote, personaFor, nameOf, type Audience } from "./villagers.js"
 import { addLantern, emit, isGuest, newId, owns, putApproval, putClod, setVillager, world, worldGen } from "./world.js";
 import { agentsState } from "./agentwatch.js";
 
-const client = new Anthropic();
+/** Made on first use (the SDK is only loaded when Claude is the brain). */
+let client: Anthropic | null = null;
+async function claude(): Promise<Anthropic> {
+  if (!client) {
+    const { default: Sdk } = await import("@anthropic-ai/sdk");
+    client ??= new Sdk();
+  }
+  return client;
+}
 const MODEL = "claude-opus-5";
 const MAX_TURNS = 12;
 
@@ -746,7 +754,7 @@ async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string
     if (!taskLive(taskId)) break;
     setVillager(v, { status: "thinking", activity: "thinking…" });
 
-    const response = await client.beta.messages.create({
+    const response = await (await claude()).beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
       betas: ["server-side-fallback-2026-07-01"],
@@ -867,7 +875,7 @@ export async function askLookOnly(v: VillagerId, text: string, host: string, ask
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: text }];
     const defs: Tool[] = web ? [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }] : tools;
     for (let turn = 0; turn < 6; turn++) {
-      const res = await client.beta.messages.create({
+      const res = await (await claude()).beta.messages.create({
         model: MODEL,
         max_tokens: 8000,
         betas: ["server-side-fallback-2026-07-01"],
@@ -912,14 +920,19 @@ export async function askLookOnly(v: VillagerId, text: string, host: string, ask
 // ------------------------------------------------------------------ entry
 
 export function friendlyError(error: unknown): string {
-  if (error instanceof Anthropic.AuthenticationError) {
-    return "The colony's thinking-cap is missing its key crystal! (No valid ANTHROPIC_API_KEY on the server.)";
+  // An Anthropic or Groq SDK APIError (checked by shape, so neither SDK has to be loaded to tell).
+  // Both set status/headers/error; only Anthropic's has requestID.
+  if (error instanceof Error && "status" in error && "headers" in error && "error" in error) {
+    const status = (error as { status?: number }).status;
+    const anthropic = "requestID" in error;
+    if (status === 401) {
+      return anthropic
+        ? "The colony's thinking-cap is missing its key crystal! (No valid ANTHROPIC_API_KEY on the server.)"
+        : "The colony's thinking-cap rejected its key crystal (check GROQ_API in .env).";
+    }
+    if (status === 429) return "Too many moonbeams at once — give me a breath and ask again?";
+    return anthropic ? `The line to Earth crackled (API error ${status}). Try again?` : `The line to Earth crackled (Groq error ${status}). Try again?`;
   }
-  if (error instanceof Anthropic.RateLimitError) return "Too many moonbeams at once — give me a breath and ask again?";
-  if (error instanceof Anthropic.APIError) return `The line to Earth crackled (API error ${error.status}). Try again?`;
-  if (error instanceof Groq.RateLimitError) return "Too many moonbeams at once — give me a breath and ask again?";
-  if (error instanceof Groq.AuthenticationError) return "The colony's thinking-cap rejected its key crystal (check GROQ_API in .env).";
-  if (error instanceof Groq.APIError) return `The line to Earth crackled (Groq error ${error.status}). Try again?`;
   if (error instanceof Error && error.message.includes("authentication method")) {
     return "The colony's thinking-cap is missing its key crystal! (Put ANTHROPIC_API_KEY in server/.env.)";
   }

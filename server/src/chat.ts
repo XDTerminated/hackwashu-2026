@@ -3,7 +3,7 @@
 // and he checks it; small talk is just small talk. Replies come back as texts,
 // and every chat is remembered.
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { BUILDINGS, VILLAGER_HOME, type VillagerId } from "../../shared/game.js";
 import { BRAIN, friendlyError, startTask } from "./agents.js";
 import { chatGroq, clean } from "./groq.js";
@@ -15,7 +15,11 @@ const MODEL = "claude-opus-5";
 let client: Anthropic | null = null;
 
 async function askClaude(system: string, messages: { role: "user" | "assistant"; content: string }[]) {
-  client ??= new Anthropic();
+  if (!client) {
+    // Loaded on first use: only one brain is active, and hosted copies shouldn't pay for the others.
+    const { default: Sdk } = await import("@anthropic-ai/sdk");
+    client ??= new Sdk();
+  }
   const res = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 2000,

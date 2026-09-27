@@ -9,7 +9,8 @@
 // GPT / Groq / Gemini / OpenRouter through the OpenAI-compatible chat API
 // (Groq adds web search). Keys: see aikeys.ts.
 
-import Anthropic from "@anthropic-ai/sdk";
+// (the SDK loads the first time the team uses Claude: a small host needn't carry it otherwise)
+import type Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TeamProject, TeamProvider, TeamState, TeamWorker } from "../../shared/team.js";
@@ -210,7 +211,9 @@ async function runWorker(p: TeamProject, w: TeamWorker): Promise<string> {
 }
 
 function errorText(err: unknown) {
-  if (err instanceof Anthropic.APIError) return `API error ${err.status}`;
+  // (an SDK API error, told apart by its shape so the SDK needn't be loaded)
+  const status = err && typeof err === "object" && "status" in err ? (err as { status?: unknown }).status : undefined;
+  if (typeof status === "number" && "headers" in (err as object)) return `API error ${status}`;
   return err instanceof Error ? err.message.slice(0, 120) : String(err).slice(0, 120);
 }
 
@@ -225,9 +228,12 @@ function spawnInput(input: unknown): { role: string; task: string } | null {
 
 let anthropic: { key: string; client: Anthropic } | null = null;
 /** A Claude client for whichever key is connected (a player's, or the server's). */
-function claude(): Anthropic {
+async function claude(): Promise<Anthropic> {
   const key = keyFor("claude") ?? "";
-  if (anthropic?.key !== key) anthropic = { key, client: new Anthropic({ apiKey: key }) };
+  if (anthropic?.key !== key) {
+    const { default: Sdk } = await import("@anthropic-ai/sdk");
+    anthropic = { key, client: new Sdk({ apiKey: key }) };
+  }
   return anthropic.client;
 }
 
@@ -237,7 +243,7 @@ async function claudeLead(p: TeamProject): Promise<string> {
   let final = "";
   for (let turn = 0; turn < MAX_LEAD_TURNS; turn++) {
     let text = "";
-    const stream = claude().messages.stream({ model: p.model, max_tokens: 32000, system: LEAD_PROMPT, tools, messages });
+    const stream = (await claude()).messages.stream({ model: p.model, max_tokens: 32000, system: LEAD_PROMPT, tools, messages });
     stream.on("text", (d) => {
       text += d;
       p.lead = writing(text);
@@ -282,7 +288,7 @@ async function claudeWorker(w: TeamWorker): Promise<string> {
   for (let turn = 0; turn < MAX_WORKER_TURNS; turn++) {
     let text = "";
     let lastStep = 0;
-    const stream = claude().messages.stream({ model: PROVIDERS.claude.worker(), max_tokens: 32000, system: workerPrompt(w), tools, messages });
+    const stream = (await claude()).messages.stream({ model: PROVIDERS.claude.worker(), max_tokens: 32000, system: workerPrompt(w), tools, messages });
     stream.on("text", (d) => {
       text += d;
       if (Date.now() - lastStep > 900) {
@@ -568,7 +574,7 @@ ${w.steps.map((s) => `- ${s.text}`).join("\n")}
 ${w.result ? `\nYour finished work (excerpt):\n${w.result.slice(0, 3000)}` : ""}`;
   try {
     if (p.provider === "claude") {
-      const msg = await claude().messages.create({ model: PROVIDERS.claude.worker(), max_tokens: 1000, system: context, messages: [{ role: "user", content: question.slice(0, 1000) }] });
+      const msg = await (await claude()).messages.create({ model: PROVIDERS.claude.worker(), max_tokens: 1000, system: context, messages: [{ role: "user", content: question.slice(0, 1000) }] });
       return msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim() || "...";
     }
     const out = await chat(p.provider, { model: PROVIDERS[p.provider].worker(), messages: [{ role: "system", content: context }, { role: "user", content: question.slice(0, 1000) }] }, () => {});

@@ -2,7 +2,7 @@
 // handoffs and approval gate as the Claude brain — only the model differs.
 
 import type Anthropic from "@anthropic-ai/sdk";
-import Groq from "groq-sdk";
+import type Groq from "groq-sdk";
 import type { VillagerId } from "../../shared/game.js";
 import { isChoreTask, recordSearch, runDelegate, runLeafTool, taskLive, toolsFor, missingBuildingsNote } from "./agents.js";
 import { memoryNote } from "./memory.js";
@@ -18,12 +18,20 @@ let searchModel = SEARCH_MODEL;
 const MAX_TURNS = 12;
 
 let client: Groq | null = null;
-function groq(): Groq {
-  // Free tier is 8k tokens/min; a multi-villager task bumps into it. The SDK
-  // honors Groq's retry-after hints, so give it room to wait instead of failing.
-  client ??= new Groq({ apiKey: process.env.GROQ_API ?? process.env.GROQ_API_KEY, maxRetries: 2 });
+/** Made on first use (the SDK is only loaded when Groq is the brain). */
+async function groq(): Promise<Groq> {
+  if (!client) {
+    const { default: Sdk } = await import("groq-sdk");
+    // Free tier is 8k tokens/min; a multi-villager task bumps into it. The SDK
+    // honors Groq's retry-after hints, so give it room to wait instead of failing.
+    client ??= new Sdk({ apiKey: process.env.GROQ_API ?? process.env.GROQ_API_KEY, maxRetries: 2 });
+  }
   return client;
 }
+
+type ApiError = Error & { status?: number; headers?: { get?(name: string): string | null } };
+/** A Groq 429 (checked by shape, so the SDK needn't be loaded up front). */
+const rateLimited = (err: unknown): err is ApiError => err instanceof Error && "headers" in err && (err as ApiError).status === 429;
 
 type Msg = Groq.Chat.Completions.ChatCompletionMessageParam;
 type GroqTool = Groq.Chat.Completions.ChatCompletionTool;
@@ -59,7 +67,7 @@ async function withPatience<T>(v: VillagerId, fn: () => Promise<T>): Promise<T> 
     try {
       return await fn();
     } catch (err) {
-      if (!(err instanceof Groq.RateLimitError) || attempt >= 5) throw err;
+      if (!rateLimited(err) || attempt >= 5) throw err;
       // A spent daily allowance won't come back in a few retries.
       if (/per day|\bTPD\b|\bRPD\b/i.test(err.message)) throw err;
       const header = Number(err.headers?.get?.("retry-after") ?? NaN);
@@ -100,13 +108,13 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
     if (!taskLive(taskId)) break;
     setVillager(v, { status: "thinking", activity: "thinking…" });
     const ask = (model: string) =>
-      withPatience(v, () => groq().chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}), temperature: 0.3 }));
+      withPatience(v, async () => (await groq()).chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}), temperature: 0.3 }));
     let res: Awaited<ReturnType<typeof ask>>;
     try {
       res = await ask(v === "stargazer" ? searchModel : MODEL);
     } catch (err) {
       // Nova's search model can run out of its daily allowance: fall back to the main model (it can search too).
-      if (!(v === "stargazer" && searchModel !== MODEL && err instanceof Groq.RateLimitError && /per day|\bTPD\b/i.test(err.message))) throw err;
+      if (!(v === "stargazer" && searchModel !== MODEL && rateLimited(err) && /per day|\bTPD\b/i.test(err.message))) throw err;
       console.log(`[groq] ${searchModel} is out of daily quota; Nova switches to ${MODEL}`);
       searchModel = MODEL;
       res = await ask(MODEL);
@@ -165,7 +173,7 @@ export async function runLookOnlyGroq(v: VillagerId, system: string, text: strin
   ];
   let finalText = "";
   for (let turn = 0; turn < 6; turn++) {
-    const res = await withPatience(v, () => groq().chat.completions.create({ model: web ? searchModel : MODEL, messages, ...(defs.length ? { tools: defs } : {}), temperature: 0.3 }));
+    const res = await withPatience(v, async () => (await groq()).chat.completions.create({ model: web ? searchModel : MODEL, messages, ...(defs.length ? { tools: defs } : {}), temperature: 0.3 }));
     const msg = res.choices[0].message;
     if (msg.content?.trim()) finalText = clean(msg.content);
     const calls = msg.tool_calls ?? [];
@@ -187,8 +195,8 @@ export async function runLookOnlyGroq(v: VillagerId, system: string, text: strin
 
 /** A plain chat turn (no tools) — texting a villager. */
 export async function chatGroq(v: VillagerId, system: string, history: { role: "user" | "assistant"; content: string }[]): Promise<string> {
-  const res = await withPatience(v, () =>
-    groq().chat.completions.create({
+  const res = await withPatience(v, async () =>
+    (await groq()).chat.completions.create({
       model: MODEL,
       messages: [{ role: "system", content: system }, ...history],
       temperature: 0.8,
@@ -198,4 +206,4 @@ export async function chatGroq(v: VillagerId, system: string, history: { role: "
   return (res.choices[0].message.content ?? "").trim();
 }
 
-export { Groq, clean };
+export { clean };
