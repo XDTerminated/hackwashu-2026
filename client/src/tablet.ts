@@ -317,7 +317,7 @@ class MoonPadView {
 
     const title = this.showing === "phones" ? "LINK A PHONE" : this.showing === "connect" ? (this.welcome ? "WELCOME!" : "CONNECT") : this.showing ? VILLAGER_SHORT[this.showing].toUpperCase() : "MOONPAD";
     const t = ptext(this.scene, s.x + (this.showing ? 30 : 5), s.y + 3, title, 0xfff6e6, "pxb");
-    const close = ptext(this.scene, 0, s.y + 3, "x", 0xfff6e6, "pxb");
+    const close = ptext(this.scene, 0, s.y + 3, "x esc", 0xfff6e6);
     close.setX(s.x + s.w - 5 - measure(close).w).setInteractive({ useHandCursor: true }).on("pointerdown", () => closeMoonPad());
     this.root.add([t, close]);
     if (this.showing && this.showing !== "phones" && this.showing !== "connect") this.root.add(this.hearts(this.showing, t.x + measure(t).w + 6, s.y + 3, 0xffa3c0, 0x5e4591));

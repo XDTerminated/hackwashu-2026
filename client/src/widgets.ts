@@ -212,6 +212,8 @@ export interface ButtonLook {
   border?: number | null;
   edge?: number;
   hoverFill?: number;
+  /** The bottom band under the pointer (so the whole button changes, not just its face). */
+  hoverEdge?: number;
 }
 
 export class Button extends Phaser.GameObjects.Container {
@@ -281,7 +283,8 @@ export class Button extends Phaser.GameObjects.Container {
       const fill = this.hover && l.hoverFill !== undefined ? l.hoverFill : l.fill;
       if (l.border != null) pixBox(g, 0, 0, this.bw, this.bh, fill, l.border);
       else g.fillStyle(fill, 1).fillRect(1, 0, this.bw - 2, this.bh).fillRect(0, 1, this.bw, this.bh - 2);
-      if (l.edge !== undefined) g.fillStyle(l.edge, 1).fillRect(1, this.bh - 2, this.bw - 2, 2).fillRect(0, this.bh - 3, 1, 1).fillRect(this.bw - 1, this.bh - 3, 1, 1);
+      const edge = this.hover && l.hoverEdge !== undefined ? l.hoverEdge : l.edge;
+      if (edge !== undefined) g.fillStyle(edge, 1).fillRect(1, this.bh - 2, this.bw - 2, 2).fillRect(0, this.bh - 3, 1, 1).fillRect(this.bw - 1, this.bh - 3, 1, 1);
       return;
     }
     pixBox(g, 0, 0, this.bw, this.bh, this.fill, C.woodDark);
