@@ -1399,6 +1399,8 @@ export class UIScene extends Phaser.Scene {
       const draw = (hover: boolean) => {
         tile.clear();
         pixBox(tile, tx, ty, tw, th, sel ? 0xfff8e8 : hover ? 0xfdeccc : C.paperLight, sel ? C.coral : C.paperDark);
+        // (the one you've picked: a frame a pixel thicker)
+        if (sel) tile.fillStyle(C.coral, 1).fillRect(tx + 1, ty + 1, tw - 2, 1).fillRect(tx + 1, ty + th - 2, tw - 2, 1).fillRect(tx + 1, ty + 1, 1, th - 2).fillRect(tx + tw - 2, ty + 1, 1, th - 2);
       };
       draw(false);
       const icon = this.add.image(tx + tw / 2, ty + 59, item.texture).setOrigin(0.5, 1);
