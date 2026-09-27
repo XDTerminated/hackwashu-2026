@@ -33,7 +33,8 @@ function fitToWindow() {
 // ?fresh forgets this browser's "seen it" flags (intro, tips), for a brand-new start.
 if (new URLSearchParams(location.search).has("fresh")) {
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith("moon-") && !k.endsWith("-muted")) localStorage.removeItem(k);
+    // (every "seen it" flag, tip and the MoonPad's chat history; your mute settings stay)
+    for (const k of Object.keys(localStorage)) if ((k.startsWith("moon-") || k.startsWith("moonpad")) && !k.endsWith("-muted")) localStorage.removeItem(k);
   } catch {
     /* nothing stored */
   }
