@@ -8,7 +8,7 @@ import Phaser from "phaser";
 import { MATERIALS, MATERIAL_NAME, VILLAGER_NAMES, VILLAGER_SHORT, type Material, type VillagerId } from "../../shared/game";
 import type { SocialState, VisitPerms } from "../../shared/visit";
 import * as net from "./net";
-import { flyTo, hostName, loadSocial, mp, social, visiting } from "./multiplayer";
+import { flyTo, hostName, isMe, loadSocial, mp, social, visiting } from "./multiplayer";
 import { sfx } from "./sfx";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import { Button, C, TOOLBAR_H, measure, pixBox, ptext, woodFrame } from "./widgets";
@@ -296,7 +296,7 @@ export class FriendsPanel implements InputOwner {
     }
 
     // Visitors: who's here now, then who came by.
-    const here = [...mp.peers.values()].filter((p) => !p.owner);
+    const here = [...mp.peers.values()].filter((p) => !p.owner && !isMe(p.id));
     const log = mp.session?.log ?? [];
     let y = top;
     this.line(box.x + 2, y, here.length ? "ON YOUR ISLAND NOW" : "Nobody's visiting right now.", C.inkSoft, "sm");

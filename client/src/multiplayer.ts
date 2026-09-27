@@ -11,6 +11,11 @@ export { VISIT_ID };
 
 export const mp: { session: Session | null; peers: Map<string, Peer> } = { session: null, peers: new Map() };
 
+/** The account behind a player on the island ("<account>~<connection>"). */
+export const accountOf = (peerId: string) => peerId.split("~")[0];
+/** Another tab of yours (same account): not someone else. */
+export const isMe = (peerId: string) => !!mp.session && accountOf(peerId) === accountOf(mp.session.you.id);
+
 /** On a friend's island (not your own). */
 export const visiting = () => !!VISIT_ID || mp.session?.role === "visitor";
 /** The island's owner's first name (while visiting). */

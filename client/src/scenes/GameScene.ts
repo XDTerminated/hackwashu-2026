@@ -43,7 +43,7 @@ import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawStreet, lampSpots } from "../
 import { drawPaths, redrawTile } from "../pathart";
 import { fromKey, pathDef, pathKey, pathTileOk, type PathStyle } from "../../../shared/paths";
 import { inTutorial, pendingApprovalFor, store } from "../store";
-import { hostName, mayAsk, mp, onPeers, onSession, perms, visiting } from "../multiplayer";
+import { hostName, isMe, mayAsk, mp, onPeers, onSession, perms, visiting } from "../multiplayer";
 import { PeerActor } from "../peerview";
 import type { Peer } from "../../../shared/visit";
 
@@ -2731,7 +2731,8 @@ export class GameScene extends Phaser.Scene {
     tintSelf();
     const mine = () => mp.session?.you.id;
     const put = (p: Peer) => {
-      if (p.id === mine()) return;
+      // (you, or you in another tab: not a second player)
+      if (p.id === mine() || isMe(p.id)) return;
       const v = this.peerViews.get(p.id);
       if (v) v.apply(p);
       else this.peerViews.set(p.id, new PeerActor(this, p));

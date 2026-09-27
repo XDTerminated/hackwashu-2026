@@ -52,7 +52,31 @@ const SIGNIN_NOTES: Record<string, string> = {
   ended: "You were signed out. Sign in to get back to your village.",
   deleted: "Your village and account are deleted.",
   busy: "Lots of guests right now. Try again in a few minutes, or sign in.",
+  switched: "You signed in as someone else in another tab, so this tab switched too.",
 };
+
+/**
+ * Online, who you are is kept by the browser, not the tab: signing in as someone
+ * else in another tab switches every tab. Catch that (coming back to this tab, or
+ * reconnecting) and start over as whoever it is now, instead of carrying on as the
+ * old player on the new account.
+ */
+async function stillMe(): Promise<boolean> {
+  try {
+    const me = (await (await fetch("/auth/me", { cache: "no-store" })).json()) as { signedIn?: boolean; email?: string; guest?: boolean };
+    if (me.signedIn === false) {
+      location.href = "/?signin=ended";
+      return false;
+    }
+    if (auth.state === "in" && ((me.email ?? "") !== auth.email || !!me.guest !== auth.guest)) {
+      location.href = "/?signin=switched";
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
 
 /** Connect to the colony: right away on your computer; online, once we know you're signed in. */
 export function start() {
@@ -74,6 +98,9 @@ export function start() {
         auth.name = me.name ?? "";
         auth.email = me.email ?? "";
         connect();
+        // (back to this tab: still the same player?)
+        addEventListener("focus", () => void stillMe());
+        document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && void stillMe());
       } else auth.state = "out";
     })
     .catch(() => {
@@ -209,14 +236,7 @@ export function connect() {
     if (VISIT_ID && (ev.code !== 1000 || !ev.wasClean) && ++refused >= 3) return backHome("Couldn't land on that island: it's closed to visitors, or you're not friends any more.");
     // Online, a dropped connection might mean you were signed out (it expired, or you signed
     // out in another tab): then it's back to the title's sign-in, not retrying forever.
-    if (HOSTED)
-      void fetch("/auth/me", { cache: "no-store" })
-        .then((r) => r.json() as Promise<{ signedIn?: boolean }>)
-        .then((me) => {
-          if (me.signedIn === false) location.href = "/?signin=ended";
-          else setTimeout(connect, 3000);
-        })
-        .catch(() => setTimeout(connect, 3000));
+    if (HOSTED) void stillMe().then((ok) => ok && setTimeout(connect, 3000));
     else setTimeout(connect, 3000);
   };
   ws.onerror = () => ws?.close();

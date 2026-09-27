@@ -204,7 +204,7 @@ export class TitleScene extends Phaser.Scene {
     }
     // (on your own computer, signed out: SPACE plays as a guest)
     const go = auth.state === "local" ? () => enter(!store.connections.me) : play;
-    below(auth.state === "local" && !store.connections.me ? "SPACE or ENTER to play as a guest" : "SPACE or ENTER to play");
+    below(auth.note || (auth.state === "local" && !store.connections.me ? "SPACE or ENTER to play as a guest" : "SPACE or ENTER to play"), auth.note ? 0xf2a3b8 : 0x8a8fa8);
     for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, go);
   }
 }
