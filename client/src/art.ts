@@ -299,8 +299,8 @@ const CHAT_BODY = [
   "..KcCCCccccCCCcK..",
   "..KccOOOOOOOOccK..",
   "..KccOOOOOOOOccK..",
-  "..KcccccccccccK...",
-  "...KccccccccK.....",
+  "...KccccccccccK...",
+  "....KccccccccK....",
   "....KccK..KccK....",
   "....KWWK..KWWK....",
 ];
