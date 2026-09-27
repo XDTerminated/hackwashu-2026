@@ -11,7 +11,8 @@ import * as net from "./net";
 import { flyTo, hostName, isMe, loadSocial, mp, social, visiting } from "./multiplayer";
 import { sfx } from "./sfx";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
-import { Button, C, TOOLBAR_H, measure, pixBox, ptext, woodFrame } from "./widgets";
+import { Button, C, TOOLBAR_H, matIcons, measure, pixBox, ptext, woodFrame } from "./widgets";
+import { MAT_GLYPH } from "./font";
 
 export type FriendsSpec = { kind: "board"; tab?: "friends" | "requests" | "visitors" } | { kind: "travel" } | { kind: "perms"; id: string } | { kind: "gift" };
 
@@ -403,7 +404,7 @@ export class FriendsPanel implements InputOwner {
     this.line(box.x + 2, box.y, `From your own coins and materials (back home). ${hostName()} finds it in their stockpile.`, C.inkSoft, "sm").setMaxWidth(box.w - 4);
     const rows: { label: string; have: number; get: () => number; set: (n: number) => void; step: number }[] = [
       { label: "coins", have: w.coins, get: () => this.gift.coins, set: (n) => (this.gift.coins = n), step: 5 },
-      ...MATERIALS.filter((m) => w.materials[m] > 0).map((m) => ({ label: MATERIAL_NAME[m], have: w.materials[m], get: () => this.gift.materials[m] ?? 0, set: (n: number) => (this.gift.materials[m] = n), step: 1 })),
+      ...MATERIALS.filter((m) => w.materials[m] > 0).map((m) => ({ label: `${MAT_GLYPH[m]} ${MATERIAL_NAME[m]}`, have: w.materials[m], get: () => this.gift.materials[m] ?? 0, set: (n: number) => (this.gift.materials[m] = n), step: 1 })),
     ];
     const cols = 2;
     const cw = Math.floor((box.w - 4) / cols);
@@ -413,7 +414,8 @@ export class FriendsPanel implements InputOwner {
       this.button(x, y, "-", C.woodMid, () => (r.set(Math.max(0, r.get() - r.step)), sfx.blip(), this.draw()), 16);
       const n = this.line(x + 22, y + 4, `${r.get()}`, C.ink, "pxb");
       this.button(x + 26 + Math.max(18, measure(n).w), y, "+", C.woodMid, () => (r.set(Math.min(r.have, r.get() + r.step)), sfx.blip(), this.draw()), 16);
-      this.line(x + 50 + Math.max(18, measure(n).w), y + 4, `${r.label} (have ${r.have})`, C.inkSoft, "sm");
+      const t = this.line(x + 50 + Math.max(18, measure(n).w), y + 4, `${r.label} (have ${r.have})`, C.inkSoft, "sm");
+      for (const i of matIcons(t)) this.root.add(this.scene.add.image(t.x + i.x, t.y + i.y, i.key).setOrigin(0));
     });
     const any = this.gift.coins > 0 || Object.values(this.gift.materials).some((n) => (n ?? 0) > 0);
     this.button(box.x + box.w - 90, box.y + box.h - 18, "GIVE", any ? C.greenBtn : 0x9a93a8, () => {

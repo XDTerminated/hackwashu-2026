@@ -243,6 +243,21 @@ const S: Record<string, string> = {
 export const PHONE = "\u{E001}";
 export const ROCKET = "\u{E002}";
 
+/**
+ * A material's icon, inline in any text: "+3" + MAT_GLYPH.moonstone. In the font it's a
+ * blank the width of the icon; Label (and matIcons) draw the icon over it, in color.
+ */
+export const MAT_GLYPH = {
+  moonstone: "\u{E010}",
+  stardust: "\u{E011}",
+  shard: "\u{E012}",
+  ore: "\u{E013}",
+  ice: "\u{E014}",
+  scrap: "\u{E015}",
+  helium: "\u{E016}",
+} as const;
+export const GLYPH_MAT = new Map(Object.entries(MAT_GLYPH).map(([m, g]) => [g.codePointAt(0)!, m]));
+
 const ROWS = 9;
 export const LINE_HEIGHT = 11;
 const SMALL_ROWS = 7;
@@ -278,7 +293,7 @@ export function sanitize(text: string): string {
     .replace(/[✔✅]/gu, "✓")
     .replace(/[✗❌]/gu, "✕")
     .replace(/(?![♥✉])\p{Extended_Pictographic}/gu, "")
-    .replace(/[^\n\x20-\x7e¢…•·★●○✉→←✕✓♥☾\u{E001}\u{E002}]/gu, "")
+    .replace(/[^\n\x20-\x7e¢…•·★●○✉→←✕✓♥☾\u{E001}\u{E002}\u{E010}-\u{E016}]/gu, "")
     .replace(/ {2,}/g, " ");
 }
 
@@ -355,6 +370,11 @@ export function buildFonts(scene: Phaser.Scene) {
     bold[ch] = bolden(regular[ch]);
   }
   for (const [ch, rows] of Object.entries(S)) small[ch] = parse(rows, SMALL_ROWS);
+  // (the materials' icons: blanks as wide as the icon, drawn over by whoever shows the text)
+  for (const ch of Object.values(MAT_GLYPH)) {
+    regular[ch] = bold[ch] = parse(".......");
+    small[ch] = parse(".......", SMALL_ROWS);
+  }
   register(scene, "px", regular);
   register(scene, "pxb", bold);
   register(scene, "sm", small, SMALL_ROWS, 2);

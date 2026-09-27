@@ -2,7 +2,7 @@
 // integer coordinates — no scaling, no rounded vector shapes, no hi-res text.
 
 import Phaser from "phaser";
-import { FONT_METRICS, sanitize } from "./font";
+import { FONT_METRICS, GLYPH_MAT, MAT_GLYPH, sanitize } from "./font";
 
 export const C = {
   ink: 0x4a2e19,
@@ -86,9 +86,33 @@ export interface LabelOpts {
 }
 
 /** Text on an optional pixel box — name tags, speech bubbles, prompts. */
+/** "3" + the moonstone icon, "2" + stardust... (a cost, or what you got), for any text. */
+export function needsIcons(needs: Partial<Record<keyof typeof MAT_GLYPH, number>>, sep = " ") {
+  return (Object.keys(MAT_GLYPH) as (keyof typeof MAT_GLYPH)[])
+    .filter((m) => needs[m])
+    .map((m) => `${needs[m]}${MAT_GLYPH[m]}`)
+    .join(sep);
+}
+
+/** Where a text's material icons go (relative to the text), for the blanks MAT_GLYPH leaves. */
+export function matIcons(t: Phaser.GameObjects.BitmapText) {
+  if (![...t.text].some((ch) => GLYPH_MAT.has(ch.codePointAt(0)!))) return [];
+  const up = t.font === "sm" ? 1 : 0;
+  return t
+    .getTextBounds(false)
+    .characters.filter((c) => GLYPH_MAT.has(c.code))
+    .map((c) => ({ key: `mat_${GLYPH_MAT.get(c.code)}_0`, x: Math.round(c.x), y: Math.round(c.y) - up }));
+}
+
+/** Draw a ptext's material icons over it (as images beside it in the scene); returns them. */
+export function drawMatIcons(scene: Phaser.Scene, t: Phaser.GameObjects.BitmapText) {
+  return matIcons(t).map((i) => scene.add.image(t.x + i.x * t.scaleX, t.y + i.y * t.scaleY, i.key).setOrigin(0).setScale(t.scaleX).setDepth(t.depth));
+}
+
 export class Label extends Phaser.GameObjects.Container {
   private g: Phaser.GameObjects.Graphics;
   private t: Phaser.GameObjects.BitmapText;
+  private icons: Phaser.GameObjects.Image[] = [];
   readonly opts: Required<LabelOpts>;
   boxW = 0;
   boxH = 0;
@@ -144,6 +168,10 @@ export class Label extends Phaser.GameObjects.Container {
       }
     }
     this.t.setPosition(ox + b + o.padX, oy + b + 2);
+    // (material icons, over their blanks in the text)
+    this.icons.forEach((i) => i.destroy());
+    this.icons = matIcons(this.t).map((i) => this.scene.make.image({ key: i.key, x: this.t.x + i.x, y: this.t.y + i.y }, false).setOrigin(0));
+    this.add(this.icons);
     this.boxW = W;
     this.boxH = H;
     this.setSize(W, H);

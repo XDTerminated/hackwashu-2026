@@ -31,7 +31,8 @@ import { DECOR, LOVED_POINTS, decorFootprint, happinessFor, sellPrice, yardOf } 
 import type { Deco } from "../../../shared/game";
 import { itemById, type ShopItem } from "../items";
 import { shadowKey } from "../textures";
-import { Button, C, Label } from "../widgets";
+import { Button, C, Label, needsIcons } from "../widgets";
+import { MAT_GLYPH } from "../font";
 import { LANDING, PLAZA_R, SPOTS, STREET, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
@@ -406,7 +407,7 @@ export class GameScene extends Phaser.Scene {
     const near = <T extends { x: number; y: number }>(list: T[]) => list.sort((a, b) => this.distTo(a.x, a.y) - this.distTo(b.x, b.y))[0];
     const town = store.progress.town;
     const node = NODES.find((n) => NODE_MATERIAL[n.kind] === m) ? near(NODES.filter((n) => NODE_MATERIAL[n.kind] === m && openAt(town, n.x, n.y) && !town.harvested.includes(n.id))) : undefined;
-    if (node) return { x: node.x, y: node.y - 16, label: `${MATERIAL_NAME[m]}` };
+    if (node) return { x: node.x, y: node.y - 16, label: `${MAT_GLYPH[m]} ${MATERIAL_NAME[m]}` };
     if (m === "ice" || m === "scrap" || m === "helium") return { ...this.landmarkAt("roads"), label: "Fix the roads to reach it" };
     if (m === "ore") {
       const met = near([...this.choreViews.values()].filter((c) => c.chore.kind === "meteor").map((c) => ({ x: c.chore.x, y: c.chore.y })));
@@ -791,7 +792,7 @@ export class GameScene extends Phaser.Scene {
     this.rockViews.delete(key);
     this.rocks = this.rocks.filter((r) => rockKey(r) !== key);
     for (let i = 0; i < 10; i++) this.time.delayedCall(i * 40, () => puff(this, x + Phaser.Math.Between(-12, 12), y - Phaser.Math.Between(0, 8)));
-    this.floatText(x, y - 24, `+${stone} moonstone`, 0xc8c1d6);
+    this.floatText(x, y - 24, `+${stone}${MAT_GLYPH.moonstone}`, 0xc8c1d6);
     sfx.thunk();
     if (loot) {
       // Something under the rock!
@@ -871,9 +872,9 @@ export class GameScene extends Phaser.Scene {
       // The sign says what it's for (and, for a neighbor's lot, what's left to do).
       const purpose = PLOT_PURPOSE[b];
       const text = move
-        ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name} (${move.app})\nBuild it: ${needsText(move.build[0])} (E)`
+        ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name} (${move.app})\nBuild it: ${needsIcons(move.build[0])} (E)`
         : EXTENSIONS[b]
-          ? `${def.name}${purpose ? `\n${purpose}` : ""}\nBuild it: ${needsText(EXTENSIONS[b]!.needs)} (E)`
+          ? `${def.name}${purpose ? `\n${purpose}` : ""}\nBuild it: ${needsIcons(EXTENSIONS[b]!.needs)} (E)`
           : `${def.name}${purpose ? `\n${purpose}` : ""}\n${def.price ? `${def.price}¢ - ` : ""}E to build`;
       // A neighbor's sign hangs above the plot (clear of you and the rocks around it); other plots' signs sit below.
       const top = s.y - buildingTiles(b).h * TILE - 18;
@@ -1550,7 +1551,7 @@ export class GameScene extends Phaser.Scene {
         this.townChanged();
         if (e.gained) {
           const at = e.at ?? { x: this.player.x, y: this.player.y };
-          const text = (Object.entries(e.gained) as [Material, number][]).filter(([, n]) => n).map(([m, n]) => `+${n} ${MATERIAL_NAME[m]}`).join("  ");
+          const text = (Object.entries(e.gained) as [Material, number][]).filter(([, n]) => n).map(([m, n]) => `+${n}${MAT_GLYPH[m]}`).join("  ");
           if (text) this.floatText(at.x, at.y - 34, text, 0xc8e8ff, 1600);
         }
         break;
@@ -1954,7 +1955,7 @@ export class GameScene extends Phaser.Scene {
       const f = this.rockViews.get(rockKey(r))?.solid;
       if (!f) continue;
       const edge = Math.hypot(this.player.x - Phaser.Math.Clamp(this.player.x, f.left, f.right), this.player.y - Phaser.Math.Clamp(this.player.y, f.top, f.bottom));
-      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]} moonstone)`, x: r.x, y: r.y - 30, d: edge + 8, act: () => this.clearRockNow(r), tut: true }, 24);
+      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]}${MAT_GLYPH.moonstone})`, x: r.x, y: r.y - 30, d: edge + 8, act: () => this.clearRockNow(r), tut: true }, 24);
     }
     // Things you stand on: prompts float above the player's head.
     const head = this.player.y - 30;

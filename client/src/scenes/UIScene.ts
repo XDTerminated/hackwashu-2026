@@ -3,7 +3,7 @@ import { inStock } from "../../../shared/town";
 import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, maxStage, neighborCap, shopOpen, stageName } from "../../../shared/town";
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, plotsTaken, type VillagerId, type VillagerStatus } from "../../../shared/game";
-import { PHONE } from "../font";
+import { MAT_GLYPH, PHONE } from "../font";
 import { DECOR_CATEGORIES, type DecorCategory } from "../../../shared/decor";
 import { SHOP_ITEMS } from "../items";
 import { SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, WORLD_H, WORLD_W } from "../layout";
@@ -13,13 +13,13 @@ import { mountMoonPad, onUnreadChange, openMoonPad, unreadTotal } from "../table
 import { isSfxMuted, onSfxToggle, sfx, toggleSfx } from "../sfx";
 import { agents, focusedSession, inTutorial, onStoreChange, store } from "../store";
 import { MINIMAP_H, MINIMAP_W } from "../terrain";
-import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
+import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, needsIcons, pixBox, ptext, woodFrame } from "../widgets";
 import { VERB_ICON } from "../icons";
 import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 import { isMicOn, onMicToggle, toggleMic } from "../neartalk";
 import { micSupported } from "../mic";
 import { CHAPTER_AFTER, FINALE_AT, newNeighbors, pending, setFinalePending, type Chapter } from "../story";
-import { materialUses, needsText, nextStep } from "../../../shared/movein";
+import { materialUses, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
 type ArrangeState = { paint: { name: string; price: number; erase: boolean } | null; edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
@@ -1066,19 +1066,19 @@ export class UIScene extends Phaser.Scene {
       const plot = store.progress.plots[m.home];
       const home = BUILDINGS[m.home].name;
       if (plot?.stage === 2) return `✓ ${who} (${m.app}): a grand ${home}`;
-      if (plot?.stage === 1) return `✓ ${who} (${m.app}) moved in (make the ${home} grand: ${needsText(m.build[1])})`;
-      if (plot?.placed) return `○ ${who}: build the ${home} on their plot (${needsText(m.build[0])})`;
+      if (plot?.stage === 1) return `✓ ${who} (${m.app}) moved in (make the ${home} grand: ${needsIcons(m.build[1])})`;
+      if (plot?.placed) return `○ ${who}: build the ${home} on their plot (${needsIcons(m.build[0])})`;
       if (plot) return `○ ${who}: set their plot down (PLACE at the Town Hall)`;
       return `○ ${who} (${m.app}): their plot is for sale at the Town Hall (${m.price}¢)`;
     });
     const held = town.items.map((i) => `${ITEMS[i].name}: "${ITEMS[i].line}"`);
     const lines = [
-      `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
+      `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.title}${next.needs ? `: ${needsIcons(next.needs)}` : next.price ? ` (${next.price}¢)` : ""}${next.how ? ` (${next.how})` : ""}` : ""}`,
       ...townLines,
       `MOONFOLK (the Town Hall has room for ${cap}, ${Math.min(taken, cap)} taken)`,
       ...neighborLines,
       ...(held.length ? ["STORY ITEMS", ...held] : []),
-      `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
+      `Materials: ${MATERIALS.map((m) => `${store.materials[m]}${MAT_GLYPH[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
     ];
     const finished = !next;
     const story = finished ? [...lines, "Every line home is open, and the town is grand."] : lines;
@@ -1128,7 +1128,7 @@ export class UIScene extends Phaser.Scene {
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new moonfolk, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
       "MOONFOLK: each one helps with something real (Hoot: Gmail, Cog: Google Calendar, Mabel: Canvas, Nova: web search, Echo: Spotify, Ada: Claude Code). Buy their plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. Each Town Hall level makes room for one more moonfolk: take it up a level for every new one.",
-      "MATERIALS: moonstone (boulders and meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a moonfolk's gift), and a couple need a real job done by a moonfolk.",
+      `MATERIALS: ${MAT_GLYPH.moonstone} moonstone (boulders and meteors), ${MAT_GLYPH.stardust} stardust (sweep moondust), ${MAT_GLYPH.shard} moon shards (the wilds), ${MAT_GLYPH.ore} glow ore (meteors, old glowing craters), ${MAT_GLYPH.ice} ice crystals (the north), ${MAT_GLYPH.scrap} scrap metal and ${MAT_GLYPH.helium} helium-3 (the south). The grand stages also need a story item (dug up, or a moonfolk's gift), and a couple need a real job done by a moonfolk.`,
       "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a moonfolk and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
