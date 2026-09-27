@@ -481,7 +481,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         if (r.ok) {
           emit({ type: "chore_cleared", id: msg.id, kind: r.kind, reward: r.reward, coins: world.coins });
           // Sweeping turns up stardust; a fallen meteor is a chunk of moonstone with a vein of glow ore.
-          services.gain(r.kind === "dust" ? { stardust: 1 } : { moonstone: 1, ore: 1 }, { x: r.x, y: r.y });
+          services.gain(r.kind === "dust" ? { stardust: 2 } : { moonstone: 1, ore: 1 }, { x: r.x, y: r.y });
         }
         break;
       }

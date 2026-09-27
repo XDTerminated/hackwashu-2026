@@ -132,7 +132,7 @@ in**: the first time you talk to them they ask for it (or try them on sample dat
 | Cog the Timekeeper | Clock Tower | 3 moonstone, 2 stardust, 1 glow ore |
 | Mabel the Scholar | Library | 3 moonstone, 2 stardust, 1 moon shard |
 
-**Materials:** moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust; moon shards
+**Materials:** moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust (2 a drift); moon shards
 (12 glint around the crater); **glow ore** from meteors and three old glowing craters; **ice crystals** in the
 shadowed north; **scrap metal** from wrecks and **helium-3** from shimmering dust in the south. Gathering spots
 grow back each day. **Story items** (one line of flavor each): the Old Colony Charter is dug up at the Town Hall

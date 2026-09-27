@@ -51,13 +51,13 @@ function tick() {
   const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
   if (now >= nextDust) {
     if (dust < MAX_DUST) spawnDust();
-    nextDust = now + rand(40_000, 80_000);
+    nextDust = now + rand(25_000, 45_000);
   }
   if (now >= nextMeteor) {
     // Now and then a proper shower.
     const count = Math.random() < 0.15 ? 3 + Math.floor(Math.random() * 2) : 1;
     for (let i = 0; i < count; i++) spawnMeteor(i * 2500);
-    nextMeteor = now + rand(90_000, 180_000);
+    nextMeteor = now + rand(60_000, 110_000);
   }
   for (const c of Object.values(world.chores)) {
     if (c.expires && now > c.expires) {
@@ -118,7 +118,7 @@ function villagerChores() {
 export function startChores() {
   // A few drifts to sweep from the start (stardust for the first repair).
   const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
-  for (let i = dust; i < 3; i++) spawnDust();
+  for (let i = dust; i < 4; i++) spawnDust();
   setInterval(tick, 5_000);
   setInterval(villagerChores, 30_000);
 }
