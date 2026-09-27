@@ -28,7 +28,7 @@ export class ChoreView {
   ) {
     if (chore.kind === "dust") {
       const variant = Math.abs([...chore.id].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7)) % 3;
-      this.objs.push(scene.add.image(chore.x, chore.y, `dust_${variant}`).setDepth(-7.5));
+      this.objs.push(scene.add.sprite(chore.x, chore.y, `dust_${variant}_0`).play({ key: `dust-${variant}`, startFrame: variant % 2 }).setDepth(-7.5));
       return;
     }
     if (Date.now() >= (chore.landsAt ?? 0)) {

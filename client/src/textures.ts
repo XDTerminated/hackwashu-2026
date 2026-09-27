@@ -736,20 +736,30 @@ export function buildTextures(scene: Phaser.Scene) {
     rect(ctx, "#2f4f6f", 1, 1, 5, 1);
   });
 
-  // Moondust drifts: soft lavender piles in three shapes.
-  for (let v = 0; v < 3; v++) {
-    canvasTex(scene, `dust_${v}`, 20, 9, (ctx) => {
-      const blobs = [
-        [[6, 6, 6, 3], [13, 5, 5, 3.4], [10, 7, 8, 2.2]],
-        [[5, 6, 4.5, 2.6], [11, 5, 6.5, 3.6], [16, 7, 3.5, 1.8]],
-        [[8, 6, 7, 3], [15, 6, 4, 2.4], [4, 7, 3, 1.6]],
-      ][v];
-      for (const [x, y, rx, ry] of blobs) disc(ctx, "#9d95b0", x, y + 0.6, rx + 0.6, ry + 0.6);
-      for (const [x, y, rx, ry] of blobs) disc(ctx, "#c4bcd6", x, y, rx, ry);
-      for (const [x, y, rx, ry] of blobs) disc(ctx, "#ddd6ea", x - 1, y - 1, rx * 0.5, ry * 0.45);
-      for (let i = 0; i < 6; i++) rect(ctx, "#8a8199", 3 + ((i * 7 + v * 3) % 14), 5 + (i % 3), 1, 1);
-    });
-  }
+  // Moondust drifts: silvery piles in three shapes, outlined so they stand out
+  // from the ground, with glints that twinkle (two frames) so you spot them.
+  for (let v = 0; v < 3; v++)
+    for (const f of [0, 1])
+      canvasTex(scene, `dust_${v}_${f}`, 28, 13, (ctx) => {
+        const blobs = [
+          [[8, 8, 7.5, 3.8], [17, 7, 6.5, 4.4], [13, 9, 10, 2.8]],
+          [[7, 8, 6, 3.4], [14, 7, 8.5, 4.6], [21, 9, 4.5, 2.4]],
+          [[11, 8, 9, 3.8], [20, 8, 5, 3], [5, 9, 4, 2.2]],
+        ][v];
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#5e5872", x, y + 0.8, rx + 1.2, ry + 1.2);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#8f88a6", x, y + 0.6, rx + 0.2, ry + 0.3);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#e6e0f2", x, y - 0.4, rx - 0.4, ry - 0.5);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#faf8ff", x - 1.5, y - 1.5, rx * 0.45, ry * 0.4);
+        for (let i = 0; i < 5; i++) rect(ctx, "#a39bb8", 5 + ((i * 7 + v * 3) % 18), 7 + (i % 3), 1, 1);
+        // glints: a cross on one frame, dots on the other, never in the same place
+        const glints = [[[9, 5], [19, 4]], [[13, 5], [7, 6]], [[16, 4], [22, 7]]][v];
+        glints.forEach(([gx, gy], i) => {
+          if ((i + f) % 2 === 0) {
+            rect(ctx, "#ffffff", gx - 1, gy, 3, 1);
+            rect(ctx, "#ffffff", gx, gy - 1, 1, 3);
+          } else rect(ctx, "#ffffff", gx, gy, 1, 1);
+        });
+      });
   // Doorbell on a little post; frame 1 is mid-swing.
   for (const swing of [0, 1]) {
     canvasTex(scene, `bell_${swing}`, 9, 16, (ctx) => {
@@ -858,6 +868,7 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("walk-up", ["astro_4", "astro_3", "astro_5", "astro_3"], 8);
   mk("walk-side", ["astro_7", "astro_6", "astro_8", "astro_6"], 8);
   mk("clod-twinkle", ["clod_0", "clod_1"], 4);
+  for (let v = 0; v < 3; v++) mk(`dust-${v}`, [`dust_${v}_0`, `dust_${v}_1`], 2);
   mk("desk-coding", ["desk_code0", "desk_code1", "desk_code2"], 3);
   mk("desk-thinking", ["desk_think0", "desk_think1", "desk_think2"], 2);
   for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
