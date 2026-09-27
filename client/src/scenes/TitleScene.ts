@@ -1,12 +1,17 @@
 import Phaser from "phaser";
 import * as net from "../net";
 import { startMusic } from "../music";
-import { Button, C, measure, ptext } from "../widgets";
+import { Button, C, measure, ptext, woodFrame } from "../widgets";
 import { introSeen } from "./IntroScene";
 
 // One line: the intro cutscene tells the story; the title just sets the mood.
 const STORY = ["Every home you build brings back a line to Earth."];
 
+/**
+ * The front door. Online, everyone signs in (with Google) for their own
+ * private village; then PLAY. On your own computer there are no accounts: just
+ * PLAY. Either way there's the intro to watch again, and who you're signed in as.
+ */
 export class TitleScene extends Phaser.Scene {
   constructor() {
     super("Title");
@@ -42,56 +47,77 @@ export class TitleScene extends Phaser.Scene {
 
     const story = ptext(this, 0, 0, STORY.join("\n"), 0xe8e4d8).setCenterAlign();
     const sm = measure(story);
-    story.setPosition(cx - Math.round(sm.w / 2), Math.round(H * 0.34 - sm.h / 2));
+    story.setPosition(cx - Math.round(sm.w / 2), Math.round(sub.y + 20));
 
     const fine = ptext(this, 0, H - 12, "*terms and conditions apply", 0x555c78);
     fine.setX(W - 6 - measure(fine).w);
-    const centered = (y: number, text: string, color: number, font: "px" | "pxb" = "px") => {
-      const t = ptext(this, 0, y, text, color, font);
-      const m = measure(t);
-      t.setX(cx - Math.round(m.w / 2));
-      // clear the stars behind it, so none reads as punctuation
-      this.add.rectangle(t.x - 2, y - 1, m.w + 4, m.h + 2, 0x0b0a1a).setOrigin(0).setDepth(1);
-      return t.setDepth(2);
-    };
-    /** A little text link (privacy, sign out). */
+    /** A little text link (privacy). */
     const link = (x: number, y: number, text: string, act: () => void) => {
       const t = ptext(this, x, y, text, 0x8a8fa8).setInteractive({ useHandCursor: true });
       t.on("pointerover", () => t.setTint(0xf5c542)).on("pointerout", () => t.setTint(0x8a8fa8)).on("pointerdown", (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => (e.stopPropagation(), act()));
       return t;
     };
 
-    // Online, everyone signs in first: their own village, their own accounts.
+    // ---------------------------------------------------------------- the panel
     const auth = net.auth;
+    const panelW = Math.min(W - 24, 250);
+    const px = cx - Math.round(panelW / 2);
+    const py = Math.round(story.y + sm.h + 12);
+    const panelH = Math.min(H - py - 22, 104);
+    woodFrame(this.add.graphics(), px, py, panelW, panelH, C.paper);
+    const inside = (y: number, text: string, color: number, font: "px" | "pxb" | "sm" = "px") => {
+      const t = ptext(this, 0, py + y, text, color, font).setMaxWidth(panelW - 24).setCenterAlign();
+      t.setX(cx - Math.round(measure(t).w / 2));
+      return t;
+    };
+    /** The panel's buttons, from the bottom up; the first is the big one. */
+    const buttons = (specs: { label: string; act: () => void; main?: boolean }[]) => {
+      let y = py + panelH - 8 - specs.length * 19;
+      for (const s of specs) {
+        const b = new Button(this, 0, y, s.label, s.main ? C.greenBtn : C.woodMid, s.act, s.main ? 150 : 110);
+        b.setX(cx - Math.round(b.width_ / 2));
+        this.add.existing(b);
+        y += 19;
+      }
+    };
+    const below = (text: string, color = 0x8a8fa8) => {
+      const t = ptext(this, 0, py + panelH + 7, text, color);
+      t.setX(cx - Math.round(measure(t).w / 2));
+    };
+
     if (auth.state === "checking") {
-      centered(Math.round(H * 0.88), "...", 0x8a8fa8, "pxb");
+      inside(Math.round(panelH / 2) - 5, "Checking who you are...", C.inkSoft, "pxb");
       const off = net.onAuth(() => this.scene.restart());
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
       return;
     }
+
+    // Online, signed out: sign in first (your own private village).
     if (auth.state === "out") {
-      if (auth.note) centered(Math.round(H * 0.72), auth.note, 0xf2a3b8);
-      const btn = new Button(this, 0, Math.round(H * 0.78), "SIGN IN WITH GOOGLE", C.greenBtn, () => net.signIn(), 120);
-      btn.setX(cx - Math.round(btn.width_ / 2));
-      this.add.existing(btn);
-      centered(Math.round(H * 0.78) + 24, "Sign in for your own private village.", 0xe8e4d8);
-      centered(Math.round(H * 0.78) + 36, "Your Gmail, Calendar, Canvas and Claude Code stay yours alone.", 0x8a8fa8);
+      inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
+      inside(22, "Sign in for your own private village. Your Gmail, Calendar, Canvas, Spotify, GitHub and Claude Code stay yours alone.", C.inkSoft, "sm");
+      buttons([
+        { label: "SIGN IN WITH GOOGLE", act: () => net.signIn(), main: true },
+        // (a test server lets you sign in as anyone, to try out several accounts)
+        ...(auth.devLogin
+          ? [
+              {
+                label: "TEST PLAYER",
+                act: () => {
+                  const email = window.prompt("Sign in as (any email, for testing):", "tester@example.com");
+                  if (email?.trim()) location.href = `/auth/dev?email=${encodeURIComponent(email.trim())}`;
+                },
+              },
+            ]
+          : []),
+      ]);
+      below(auth.note || "SPACE or ENTER to sign in", auth.note ? 0xf2a3b8 : 0x8a8fa8);
       link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
-      this.input.keyboard!.once("keydown-SPACE", () => net.signIn());
-      this.input.keyboard!.once("keydown-E", () => net.signIn());
+      for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, () => net.signIn());
       return;
     }
 
-    const press = ptext(this, 0, Math.round(H * 0.88), "- PRESS SPACE OR CLICK TO LAND -", 0xf5c542, "pxb");
-    press.setX(cx - Math.round(measure(press).w / 2));
-    this.time.addEvent({ delay: 550, loop: true, callback: () => press.setVisible(!press.visible) });
-    if (auth.state === "in") {
-      // Who's playing, and a way out (bottom left).
-      const who = ptext(this, 6, H - 12, `signed in as ${auth.name || auth.email} ·`, 0x555c78);
-      link(6 + measure(who).w + 4, H - 12, "sign out", () => net.signOut());
-      if (introSeen()) ptext(this, 6, H - 24, "press I to watch the intro again", 0x555c78);
-    } else if (introSeen()) ptext(this, 6, H - 12, "press I to watch the intro again", 0x555c78);
-
+    // Signed in (online), or on your own computer: play.
     let landing = false;
     const intro = () => {
       if (landing) return;
@@ -100,8 +126,7 @@ export class TitleScene extends Phaser.Scene {
       this.cameras.main.fadeOut(400, 7, 6, 15);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start("Intro"));
     };
-    this.input.keyboard!.once("keydown-I", intro);
-    const land = () => {
+    const play = () => {
       if (landing) return;
       // First time: the story of how you got here.
       if (!introSeen()) return intro();
@@ -113,8 +138,19 @@ export class TitleScene extends Phaser.Scene {
         this.scene.launch("UI");
       });
     };
-    this.input.keyboard!.once("keydown-SPACE", land);
-    this.input.keyboard!.once("keydown-E", land);
-    this.input.once("pointerdown", land);
+    const seen = introSeen();
+    if (auth.state === "in") {
+      inside(9, `WELCOME BACK, ${(auth.name || auth.email.split("@")[0]).toUpperCase()}`, C.coral, "pxb");
+      inside(22, auth.email, C.inkSoft, "sm");
+      buttons([{ label: seen ? "PLAY" : "START", act: play, main: true }, ...(seen ? [{ label: "WATCH INTRO", act: intro }] : []), { label: "SIGN OUT", act: () => net.signOut() }]);
+      link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
+    } else {
+      inside(9, "YOUR COLONY", C.coral, "pxb");
+      inside(22, "Saved on this computer. (Online, every player signs in for their own village.)", C.inkSoft, "sm");
+      buttons([{ label: seen ? "PLAY" : "START", act: play, main: true }, ...(seen ? [{ label: "WATCH INTRO", act: intro }] : [])]);
+    }
+    below("SPACE or ENTER to play");
+    for (const key of ["keydown-SPACE", "keydown-ENTER", "keydown-E"]) this.input.keyboard!.once(key, play);
+    this.input.keyboard!.once("keydown-I", intro);
   }
 }

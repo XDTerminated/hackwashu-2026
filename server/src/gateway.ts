@@ -409,7 +409,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === "/auth/me") {
     const p = whoIs(req);
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    return res.end(JSON.stringify(p ? { signedIn: true, name: p.name, email: p.email } : { signedIn: false }));
+    return res.end(JSON.stringify(p ? { signedIn: true, name: p.name, email: p.email } : { signedIn: false, devLogin: DEV_LOGIN }));
   }
   if (url.pathname === "/auth/delete" && req.method === "POST") {
     // Same-site form posts only (the game's DELETE MY DATA button).

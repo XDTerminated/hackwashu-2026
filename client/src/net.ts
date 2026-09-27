@@ -27,7 +27,7 @@ let ws: WebSocket | null = null;
 // ---------------------------------------------------------------- signing in (online)
 
 /** Online, everyone signs in first (on the title screen). On your computer there are no accounts: "local". */
-export const auth = { state: (HOSTED ? "checking" : "local") as "local" | "checking" | "in" | "out", name: "", email: "", note: "" };
+export const auth = { state: (HOSTED ? "checking" : "local") as "local" | "checking" | "in" | "out", name: "", email: "", note: "", devLogin: false };
 const authListeners = new Set<() => void>();
 
 export function onAuth(fn: () => void) {
@@ -57,8 +57,9 @@ export function start() {
     history.replaceState(null, "", `${location.pathname}${q.size ? `?${q}` : ""}`);
   }
   fetch("/auth/me", { cache: "no-store" })
-    .then((r) => r.json() as Promise<{ signedIn?: boolean; name?: string; email?: string }>)
+    .then((r) => r.json() as Promise<{ signedIn?: boolean; name?: string; email?: string; devLogin?: boolean }>)
     .then((me) => {
+      auth.devLogin = !!me.devLogin;
       if (me.signedIn) {
         auth.state = "in";
         auth.name = me.name ?? "";
