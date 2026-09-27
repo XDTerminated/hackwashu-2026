@@ -24,7 +24,7 @@ import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { SHARD_COUNT, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { currentRequests, startRequests } from "./requests.js";
-import { build, clearRock, regrowRocks, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
+import { build, clearRock, regrowRocks, resetWorld, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj"];
@@ -460,6 +460,16 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         // Open letters belong to the save being left: answer them "no" so nobody waits forever.
         denyAllPending();
         if (!switchWorld(!!msg.on)) break;
+        services.initResidents();
+        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        break;
+      }
+
+      case "reset_world": {
+        // (only from the game on this computer, or your own copy online)
+        if (!localClients.has(ws)) break;
+        denyAllPending();
+        resetWorld();
         services.initResidents();
         for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
         break;

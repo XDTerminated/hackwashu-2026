@@ -2,7 +2,7 @@
 // so agents keep working (and their results keep waiting) while the game is closed.
 
 import { DATA_DIR, HOSTED } from "./env.js";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -256,6 +256,20 @@ export function switchWorld(dev: boolean): boolean {
   flushSave();
   console.log(`[world] now on the ${dev ? "dev showcase" : "real"} save`);
   return true;
+}
+
+/** Start this save over from scratch (for testing). The old one is kept beside it, just in case. */
+export function resetWorld(): string {
+  flushSave();
+  const backup = `${saveFile}.before-reset-${Date.now()}`;
+  if (existsSync(saveFile)) copyFileSync(saveFile, backup);
+  const w = freshWorld();
+  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
+  Object.assign(world, w);
+  applyLayout(world.layout);
+  flushSave();
+  console.log(`[world] reset to a fresh colony (the old save is kept as ${backup})`);
+  return backup;
 }
 
 /** Write to a temp file and rename, so a crash mid-write can't leave half a save. */

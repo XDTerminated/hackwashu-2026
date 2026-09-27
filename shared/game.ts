@@ -548,6 +548,8 @@ export type ClientMessage =
   | { type: "toggle_deco"; id: string }
   /** Switch to (or back from) the dev showcase save. */
   | { type: "dev_mode"; on: boolean }
+  /** Testing: start this save over from scratch (the server keeps a copy of the old one). */
+  | { type: "reset_world" }
   | { type: "move_lantern"; id: string; x: number; y: number }
   | { type: "clear_rock"; x: number; y: number }
   | { type: "collect_shard"; x: number; y: number }

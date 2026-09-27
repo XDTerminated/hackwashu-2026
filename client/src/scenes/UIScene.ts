@@ -935,6 +935,33 @@ export class UIScene extends Phaser.Scene {
     openInfo("QUESTS", [...story, "TODAY'S REQUESTS", ...requests, shards], buttons);
   }
 
+  /** Testing: wipe the colony and start from the very beginning (after a second press to be sure). */
+  private confirmReset() {
+    openInfo("RESET SAVE?", [
+      "This wipes your colony and starts over from the very beginning: the intro, the tutorial, everything. Your signed-in accounts (Google, Spotify, Canvas) stay connected.",
+      "The server keeps a copy of the old save next to it, just in case.",
+    ], [
+      {
+        label: "YES, START OVER",
+        kind: "ok",
+        onClick: () => {
+          net.send({ type: "reset_world" });
+          closePanel();
+          // (and this browser forgets its "seen it" flags, so the intro plays again)
+          window.setTimeout(() => {
+            try {
+              for (const k of Object.keys(localStorage)) if ((k.startsWith("moon-") || k.startsWith("moonpad")) && !k.endsWith("-muted")) localStorage.removeItem(k);
+            } catch {
+              /* nothing stored */
+            }
+            location.reload();
+          }, 1200);
+        },
+      },
+      { label: "CANCEL", onClick: () => this.showHelp() },
+    ]);
+  }
+
   private showHelp() {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
@@ -957,6 +984,7 @@ export class UIScene extends Phaser.Scene {
     ], [
       ...(store.account ? [{ label: "MY ACCOUNT", onClick: () => this.showAccount() }] : []),
       { label: "ACCOUNTS", onClick: () => openAccounts() },
+      { label: "RESET SAVE", onClick: () => this.confirmReset() },
       store.devMode
         ? { label: "LEAVE DEV MODE", kind: "ok", onClick: () => (closePanel(), net.send({ type: "dev_mode", on: false })) }
         : { label: "DEV MODE", kind: "ok", onClick: () => (closePanel(), net.send({ type: "dev_mode", on: true })) },
