@@ -368,7 +368,7 @@ export class FriendsPanel implements InputOwner {
     const f = this.state!.friends.find((x) => x.id === id);
     if (!f || !this.draft) return void this.line(box.x + 4, box.y + 4, "They're not on your friends list any more.", C.inkSoft, "sm");
     const d = this.draft;
-    this.line(box.x + 2, box.y, `${f.name} can always walk around, chat, help gather and leave gifts. Let them ask these neighbors for real help too? It uses ${f.name}'s OWN accounts, and they can only look things up (never send, book or change anything).`, C.inkSoft, "sm").setMaxWidth(box.w - 4);
+    this.line(box.x + 2, box.y, `${f.name} can always walk around, chat, help gather and leave gifts. Let them ask these moonfolk for real help too? It uses ${f.name}'s OWN accounts, and they can only look things up (never send, book or change anything).`, C.inkSoft, "sm").setMaxWidth(box.w - 4);
     const cols = 2;
     const cw = Math.floor((box.w - 4) / cols);
     let y = box.y + 38;

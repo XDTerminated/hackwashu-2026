@@ -93,7 +93,7 @@ const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6,
 const MOVE_INS_HOMES = () => MOVE_INS.map((m) => m.home);
 
 const GREETINGS: Record<VillagerId, string> = {
-  jade_rabbit: "Ah, my favorite exile! Tell me what you need done on Earth and I'll get the neighbors on it.",
+  jade_rabbit: "Ah, my favorite exile! Tell me what you need done on Earth and I'll get the moonfolk on it.",
   postmaster: "Hoo! Postmaster here. Letters in, letters out — what shall we do with your mail?",
   timekeeper: "Tick, tock. The Clock Tower keeps your days. Need a slot found or something booked?",
   scholar: "Ahem! The Library has your courses on file. Deadlines, announcements, grades — ask away.",
@@ -343,7 +343,7 @@ export class GameScene extends Phaser.Scene {
       const ready = store.clods.filter((c) => c.status === "ready").length;
       this.time.delayedCall(900, () => {
         const text = ready
-          ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
+          ? `Welcome back! The moonfolk finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
           : "Welcome back to the Moon! The gold ★ points at what's next.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
@@ -440,7 +440,7 @@ export class GameScene extends Phaser.Scene {
     const n = nextStep(this.moveState());
     if (!n) return null;
     if (n.kind === "dig") return { x: n.spot.x, y: n.spot.y - 14, label: "Dig here" };
-    if (n.kind === "choose") return { ...this.landmarkAt("town_hall"), label: "Pick your first neighbor" };
+    if (n.kind === "choose") return { ...this.landmarkAt("town_hall"), label: "Pick your first moonfolk" };
     if (n.kind === "landmark") {
       const up = LANDMARKS[n.id].up[store.progress.town.stages[n.id]];
       const short = !n.ready && MATERIALS.find((m) => (up.needs[m] ?? 0) > store.materials[m]);
@@ -626,14 +626,14 @@ export class GameScene extends Phaser.Scene {
     const first = MOVE_INS.find((m) => store.progress.plots[m.home]);
     const who = first ? VILLAGER_SHORT[first.villager] : "";
     const LINES: Record<number, string> = {
-      1: "Let's get you started! The Town Hall (the glass dome) is a ruin, and it's where neighbors from Earth buy their plots. Fixing it takes a little moonstone and stardust: press E by a boulder to break it up, then stand on a moondust drift and hold E to sweep it.",
+      1: "Let's get you started! The Town Hall (the glass dome) is a ruin, and it's where moonfolk from Earth buy their plots. Fixing it takes a little moonstone and stardust: press E by a boulder to break it up, then stand on a moondust drift and hold E to sweep it.",
       2: "That's enough! Walk over to the Town Hall (follow the gold ★) and press E to repair it.",
-      3: "The Town Hall's open, with room for one neighbor! Who moves in first is up to you: each one helps with something real, like Hoot with your Gmail, Cog with your calendar or Echo with your Spotify. Press E at the Town Hall and buy their plot.",
+      3: "The Town Hall's open, with room for one moonfolk! Who moves in first is up to you: each one helps with something real, like Hoot with your Gmail, Cog with your calendar or Echo with your Spotify. Press E at the Town Hall and buy their plot.",
       4: "It's yours! Now pick a spot for it: move it around and click to set it down. Anywhere with room will do.",
       5: `Now build ${who}'s ${first ? BUILDINGS[first.home].name : "house"}. It takes a little moonstone and stardust: gather what you need (follow the ★), then press E at the plot to build it.`,
     };
-    const home = store.progress.movedIn[0] ? VILLAGER_SHORT[store.progress.movedIn[0]] : "Your neighbor";
-    const text = step ? LINES[step] : was ? `${home}'s home, and that's the ropes! Each new neighbor needs room: take the Town Hall up a level (E at the Town Hall), then buy their plot. Fix up the Market for a Shop, too. The town's all yours now!` : null;
+    const home = store.progress.movedIn[0] ? VILLAGER_SHORT[store.progress.movedIn[0]] : "Your moonfolk";
+    const text = step ? LINES[step] : was ? `${home}'s home, and that's the ropes! Each new moonfolk needs room: take the Town Hall up a level (E at the Town Hall), then buy their plot. Fix up the Market for a Shop, too. The town's all yours now!` : null;
     if (!text) return;
     const done = !step;
     // Yutu's window, with her portrait: once whatever's on screen now is out of the way.
@@ -1497,7 +1497,7 @@ export class GameScene extends Phaser.Scene {
         const rabbit = actor("jade_rabbit");
         if (e.rabbitTeamwork && e.villager !== "jade_rabbit" && e.residents.filter((r) => r !== "jade_rabbit").length === 2) {
           rabbit?.enqueue(async () => {
-            rabbit.say("Two neighbors! Now I can coordinate - give me jobs that need a team.", 5000);
+            rabbit.say("Two moonfolk! Now I can coordinate - give me jobs that need a team.", 5000);
             await rabbit.wait(800);
           });
         }
@@ -1926,7 +1926,7 @@ export class GameScene extends Phaser.Scene {
           y: s.y - 36,
           d: dist(s.x, s.y),
           act: () =>
-            openInfo(`BUILD: ${def.name.toUpperCase()}`, [`Unlocks: ${def.unlocks}.`, def.price ? `Cost: ${def.price}¢ (you have ${store.coins}¢).${store.coins < def.price ? " Earn coins: pop stars after your neighbors finish work, sweep moondust, grab meteor rocks, and do today's requests." : ""}` : "Free: a gift from the colony."], [
+            openInfo(`BUILD: ${def.name.toUpperCase()}`, [`Unlocks: ${def.unlocks}.`, def.price ? `Cost: ${def.price}¢ (you have ${store.coins}¢).${store.coins < def.price ? " Earn coins: pop stars after your moonfolk finish work, sweep moondust, grab meteor rocks, and do today's requests." : ""}` : "Free: a gift from the colony."], [
               {
                 label: store.coins >= def.price ? (def.price ? `BUILD (${def.price}¢)` : "BUILD") : "NOT ENOUGH COINS",
                 kind: store.coins >= def.price ? "ok" : "",

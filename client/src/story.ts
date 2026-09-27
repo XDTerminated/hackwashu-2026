@@ -21,12 +21,12 @@ export const CHAPTER_AFTER: Record<number, Chapter> = {
   1: {
     n: 2,
     title: "A TOWN AGAIN",
-    line: "A new neighbor is home. Mayor Yutu has plans: the Town Hall, the Fountain, the Roads, the Market.",
+    line: "A new moonfolk is home. Mayor Yutu has plans: the Town Hall, the Fountain, the Roads, the Market.",
   },
   2: {
     n: 3,
     title: "THE LAST PLOTS",
-    line: "Two new neighbors home. Make the Town Hall grand and there's room for everyone else.",
+    line: "Two new moonfolk home. Make the Town Hall grand and there's room for everyone else.",
   },
 };
 

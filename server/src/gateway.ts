@@ -466,7 +466,7 @@ function privacyPage(res: ServerResponse) {
   <li><b>If you connect Gmail, Calendar or Canvas</b> in the game, the access Google or Canvas grants is stored on the game's server, only for your village, and used only when you ask a villager to do something. Sending an email or creating an event always waits for your OK.</li>
   <li><b>If you link Claude Code</b>, a script on your computer sends what your agents are doing to your village while it runs. It isn't saved.</li>
   <li>Villagers think using an AI service (Groq), which receives the text of what you ask them.</li>
-  <li><b>Friends</b>: your friends see your first name, and can visit your island while it's open (even when you're away) and chat with whoever's there. They never see your letters, texts, connected accounts or what your neighbors do for you. A neighbor you let a friend ask uses <i>their</i> accounts, never yours. Your Office is only shown to friends you allow.</li>
+  <li><b>Friends</b>: your friends see your first name, and can visit your island while it's open (even when you're away) and chat with whoever's there. They never see your letters, texts, connected accounts or what your moonfolk do for you. A moonfolk you let a friend ask uses <i>their</i> accounts, never yours. Your Office is only shown to friends you allow.</li>
   <li><b>Delete everything</b> any time: in the game, Help → DELETE MY DATA. That removes your village, your connections and your account.</li>
 </ul>
 <p><a href="/">Back to the game</a></p>`,

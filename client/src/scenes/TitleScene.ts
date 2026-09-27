@@ -8,7 +8,7 @@ import { LANDING_HOME, VISIT_ID } from "../visitparam";
 import { fitLogo } from "../logoart";
 
 // One line: the intro cutscene tells the story; the title just sets the mood.
-const STORY = ["Every home you build brings back a line to Earth."];
+const STORY = ["Build the moonfolk a town.", "They'll handle your life on Earth."];
 
 /**
  * The front door. Sign in with Google for a village that's kept (online, your

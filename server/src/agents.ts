@@ -519,7 +519,7 @@ export function toolsFor(v: VillagerId, readOnly = false): Tool[] {
       {
         name: "delegate",
         description:
-          "Hand a self-contained task to a neighbor and get their report back. " +
+          "Hand a self-contained task to a moonfolk and get their report back. " +
           "postmaster = Gmail (read inbox, draft, send with the player's OK). " +
           "timekeeper = Google Calendar (check free time, book events with the player's OK). " +
           "scholar = Canvas (courses, grades, due dates, announcements). " +
@@ -556,13 +556,13 @@ export function makesStars(v: VillagerId): boolean {
 
 export function missingBuildingsNote(v: VillagerId): string {
   if (v === "jade_rabbit") {
-    const quest = `\n\n${services.townNote()} The player's next goal: ${services.nextStep()} (Neighbors' plots are bought at the Town Hall, set down anywhere, and built with materials. Materials: moonstone from boulders and fallen meteors; stardust from sweeping moondust; moon shards from the wilds; glow ore from meteors and the old glowing craters; ice crystals in the north and scrap metal and helium-3 in the south, once the roads are fixed. Coins from popping the stars neighbors leave after real work, sweeping, meteors and requests.)`;
+    const quest = `\n\n${services.townNote()} The player's next goal: ${services.nextStep()} (The moonfolk's plots are bought at the Town Hall, set down anywhere, and built with materials. Materials: moonstone from boulders and fallen meteors; stardust from sweeping moondust; moon shards from the wilds; glow ore from meteors and the old glowing craters; ice crystals in the north and scrap metal and helium-3 in the south, once the roads are fixed. Coins from popping the stars moonfolk leave after real work, sweeping, meteors and requests.)`;
     const guide = services.rabbitTeamwork()
       ? ""
-      : "\n\nRight now you're just the guide: you can't hand out work until two neighbors live here. Point the player at their current goal instead.";
+      : "\n\nRight now you're just the guide: you can't hand out work until two moonfolk live here. Point the player at their current goal instead.";
     const home = WORKERS.filter(movedIn).map(nameOf);
     const away = WORKERS.filter((w) => !movedIn(w)).map(nameOf);
-    return `${guide}${quest}\n\nNeighbors who live here now: ${home.join(", ") || "none"}.${away.length ? ` Not here yet: ${away.join(", ")}.` : ""}`;
+    return `${guide}${quest}\n\nMoonfolk who live here now: ${home.join(", ") || "none"}.${away.length ? ` Not here yet: ${away.join(", ")}.` : ""}`;
   }
   const missing = [...new Set(Object.values(LEAF_TOOLS).filter((t) => t.owner === v && !owns(t.building)).map((t) => BUILDINGS[t.building].name))];
   return services.accountNote(v) + (missing.length ? `\n\nNot built yet (so you can't do these): ${missing.join(", ")}.` : "");

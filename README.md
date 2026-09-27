@@ -105,13 +105,13 @@ of the art) shows how you got here:
 3. **The vote.** 4 to 1. A one-way ticket slides in and gets stamped APPROVED.
 4. **Launch.** The family waves a BYE!! banner; countdown, liftoff.
 5. **The trip.** Day 2, the snacks run out; day 3, the Wi-Fi. Your texts home come back "Not Delivered".
-6. **The Moon.** Population: one rabbit, one stargazer. Yutu tells you every line home went quiet, but each neighbor who moves in brings one back... and the neighbors are AI agents. "This is the BEST DAY OF MY LIFE."
+6. **The Moon.** Population: one rabbit, one stargazer. Yutu tells you every line home went quiet, but each moonfolk who moves in brings one back... and the moonfolk are AI agents. "This is the BEST DAY OF MY LIFE."
 
 SPACE hurries it along, ESC skips. Replay it from the title screen (I) or from the Quests dialog (WATCH INTRO).
 
-Each neighbor who moves in opens the next chapter, and a card announces it (Chapter 2: Keeping Time when
-Hoot arrives, 3: The Scholar when Cog does). When the last neighbor moves in, the **finale** plays: a night on the Moon
-with every neighbor home and fireworks overhead, then four bars of signal and a video call from the
+Each moonfolk who moves in opens the next chapter, and a card announces it (Chapter 2: Keeping Time when
+Hoot arrives, 3: The Scholar when Cog does). When the last moonfolk moves in, the **finale** plays: a night on the Moon
+with every moonfolk home and fireworks overhead, then four bars of signal and a video call from the
 family at the same dinner table ("...Every. Single. Call."). Rewatch it from the Quests dialog.
 
 ## The town
@@ -124,7 +124,7 @@ The town is laid out along **Main Street**, which runs east-west across the crat
 down to the Office. The Library, Market, Town Hall, Clock Tower and Post Office stand in a row facing it; the
 fountain square opens off its south side across from the Town Hall; the Observatory sits up on the hill behind
 the row, and Yutu's burrow and your house are out in the south-west and south-east. Every door has its own path,
-lamps line the street, and the neighbors mostly stroll the town (the street, the square, each other's doors).
+lamps line the street, and the moonfolk mostly stroll the town (the street, the square, each other's doors).
 
 **The tutorial: Nova's Observatory.** You start with just Yutu in the ruins of an old colony. Nova the
 Stargazer wants to move up, and her Observatory is the first lot, with Yutu walking you through it in four
@@ -135,13 +135,13 @@ Then, Stardew-style, you bring the **town** back:
 four landmarks, each going **ruined → repaired → grand**. E at the Town Hall for the projects board (or E at
 the Fountain or the Market): a card per landmark with its stage, what the next stage gives, and what it takes
 as chips (each resource's sprite and a bold have/need count, green when you've got enough; hover one to see
-where to get it), with the UPGRADE button on the card. Neighbors' lots get the same card. The gold ★ always
+where to get it), with the UPGRADE button on the card. The moonfolk's lots get the same card. The gold ★ always
 points at what's next.
 
 | Landmark | Ruined (start) | Repaired | Grand |
 |---|---|---|---|
-| **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new neighbor | room for 2, and the Office can be built | room for all 3 |
-| **Fountain** | dry and cracked | water again: neighbors make daily wishes | the star turns: friendships grow faster |
+| **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new moonfolk | room for 2, and the Office can be built | room for all 3 |
+| **Fountain** | dry and cracked | water again: moonfolk make daily wishes | the star turns: friendships grow faster |
 | **Roads & Lamps** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
 | **Market** | a collapsed cart: no shop yet (the Shop button appears once it's repaired) | a striped stall: all Garden and Cozy | a real shop: everything |
 
@@ -152,12 +152,12 @@ points at what's next.
 | Roads & Lamps | 3 moonstone, 2 stardust | 2 ice, 1 glow ore, the Lamp Lens |
 | Market | 2 moonstone, 2 stardust, 1 moon shard | 2 scrap, 2 helium-3, the Shop Bell |
 
-**New neighbors:** Hoot, Cog and Mabel each have a ruined lot. Clear its rubble (2 piles) and repair it with
+**New moonfolk:** Hoot, Cog and Mabel each have a ruined lot. Clear its rubble (2 piles) and repair it with
 materials, and they move right in, up to the Town Hall's room; you pick the order. Decorating their yard with
 things they love is optional and grows your friendship. **Connecting your real account comes after they move
 in**: the first time you talk to them they ask for it (or try them on sample data).
 
-| Neighbor | Lot | Repair needs |
+| Moonfolk | Lot | Repair needs |
 |---|---|---|
 | Hoot the Postmaster | Post Office | 3 moonstone, 2 stardust |
 | Cog the Timekeeper | Clock Tower | 3 moonstone, 2 stardust, 1 glow ore |
@@ -168,8 +168,8 @@ in**: the first time you talk to them they ask for it (or try them on sample dat
 shadowed north; **scrap metal** from wrecks and **helium-3** from shimmering dust in the south. Gathering spots
 grow back each day. **Story items** (one line of flavor each): the Old Colony Charter is dug up at the Town Hall
 once it's repaired, the Lamp Lens is out in the north, Yutu gives you the Fountain Valve when your first new
-neighbor moves in, and your second new neighbor brings the Shop Bell. **Coins** come from popping the stars
-your neighbors leave after real work, sweeping, meteors, requests and shards.
+moonfolk moves in, and your second new moonfolk brings the Shop Bell. **Coins** come from popping the stars
+your moonfolk leave after real work, sweeping, meteors, requests and shards.
 
 Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), which lets him send your
 replies, with your OK. The town came in with save version 3: older saves start fresh.
@@ -215,7 +215,7 @@ and the work takes a while, walk in and watch them.
 ## Accounts
 
 **Connections live in the MoonPad.** It's a phone (status bar, notch, home bar) with two tabs: **CHATS**
-(text your neighbors) and **CONNECT**: Google (Gmail + Calendar), Canvas (any school), your phone
+(text your moonfolk) and **CONNECT**: Google (Gmail + Calendar), Canvas (any school), your phone
 (iMessage) and Claude Code (for the Office), each ✓ / ● sample / ○ with a button where there's something
 to do, plus **TEST CONNECTIONS**, whose results appear on each row. The very first time you land, the
 MoonPad opens on this screen as a **WELCOME** setup (skip anything, then START PLAYING). Help → ACCOUNTS
@@ -275,7 +275,7 @@ always pay out, arches usually do, pebbles rarely.
 - **Pop stars**: every real tool call a villager makes leaves a star worth a few coins.
 - **Moondust**: drifts pile up by the solar lamps and dim them, even while you're away. Hold E (or SPACE) by one to sweep it (3¢).
 - **Meteors**: a shadow and a whistle, then a glowing moon-rock. Grab it (E) before it cools (8¢). Sometimes a shower comes.
-- **Colony requests**: three small goals a day from the neighbors who live here (sweep drifts, catch a meteor, clear a rock, decorate a yard, find a shard, text someone, ask for help in person, pop stars), paid when done. New ones each day; the gold badge on the Quests button counts what's left, and the Quests list shows them first.
+- **Colony requests**: three small goals a day from the moonfolk who live here (sweep drifts, catch a meteor, clear a rock, decorate a yard, find a shard, text someone, ask for help in person, pop stars), paid when done. New ones each day; the gold badge on the Quests button counts what's left, and the Quests list shows them first.
 - **Moon Shards**: 12 glowing pieces of the old colony's broken beacon are hidden across the wilds. Walk over one to pick it up (15¢); find all 12 and Nova relights the beacon (+200¢). The first shard you find, Nova explains all this; halfway she cheers you on, and the Quests list tracks them.
 - **Villager chores** (opt-in, per villager): tick **[ ] CHORES** in their dialog and, when idle, they do a small real check every 15 minutes (unread mail, next 24h, what's due, space news). Each round uses real API calls. Chores never count toward quests.
 
@@ -300,14 +300,14 @@ what they actually fetched for you (no extra API calls).
 
 ### Ada the Team Lead
 
-Build the Office and **Ada 💼** sets up there. She's a neighbor like the rest (hearts, texts on the
+Build the Office and **Ada 💼** sets up there. She's a moonfolk like the rest (hearts, texts on the
 MoonPad and your phone, "Ada: ..." to reach her), but she works in the Office instead of wandering the
 island. Walk up to her there and press E, or text her: she checks on your coding agents (what's
 running, who's stuck or waiting on you, what finished) and tells you how it's going.
 
 ## Talking to villagers
 
-Talking happens right where you stand. **With the mic on, just talk:** near a neighbor, say their
+Talking happens right where you stand. **With the mic on, just talk:** near a moonfolk, say their
 name ("Hey Hoot, what's in my inbox?"), or say hi while you're right beside one, and the conversation
 starts hands-free. You can keep walking; walk off (or press **ESC**) to leave. Or press **E** next to
 them (or **Enter** mid-conversation) to type instead. The chat bar shows the conversation so far.
@@ -324,7 +324,7 @@ windows.)
   wustl dot edu"), and it arrives as jordan.lee@gmail.com; Hoot fixes up anything still garbled or asks
   you to spell it.
 - **The mic button** (on the chat bar, and on the toolbar) turns voice off, and it stays off until you
-  turn it back on. It only ever listens with a neighbor close by, never while you're off on your own.
+  turn it back on. It only ever listens with a moonfolk close by, never while you're off on your own.
 - **Sounds are spatial**: hammering, bells, meteors, finished jobs and villagers' voices are louder
   close up, fade with distance, and pan left or right toward where they happen.
 
@@ -356,7 +356,7 @@ Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at t
 - **Edit layout** (pencil): drag any building, plot, decoration or task lantern (the stone lanterns planted when villagers finish real work) anywhere on the island, or click a decoration to sell it. Task lanterns can be moved but not sold. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
 - **Action button** (right end): does exactly what E would, and its icon shows what that is: calling a villager home from their door (also a CALL button at the door itself), talk, read a letter, build, pop a star, grab a moon-rock, hold to sweep, or switch a light on or off. Lights (the Glow Lamp and the Habitat Dome) are the only decorations you interact with outside edit mode; moving and selling happen in edit mode.
 
-**Decorations are part of the daily requests.** Every day one neighbor who lives here makes a **wish**
+**Decorations are part of the daily requests.** Every day one moonfolk who lives here makes a **wish**
 for a decoration they love that isn't in their yard yet ("Hoot: I'd love an Owl Birdbath by my home!").
 Put it in their yard and the wish pays out (20¢ + half the item's price) on top of the happiness. There's
 also a "place 3 new decorations" request in the mix. In the Shop every tile shows the little heads of

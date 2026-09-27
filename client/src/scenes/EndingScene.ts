@@ -87,7 +87,7 @@ export class EndingScene extends Cutscene {
     });
 
     await this.caption("A few weeks later.", 1400);
-    await this.caption("Every neighbor is home. The colony throws a party.", 1500);
+    await this.caption("All the moonfolk are home. The colony throws a party.", 1500);
     this.clearCaption();
     const talk = (v: VillagerId, s: string) => this.dialog([`portrait_${v}_0`, `portrait_${v}_1`, `portrait_${v}_2`], VILLAGER_NAMES[v], s, PITCH[v]);
     await talk("jade_rabbit", "Look at them all! Every line home is open. I told you they'd come.");
@@ -184,7 +184,7 @@ export class EndingScene extends Cutscene {
     sibling.set({ pose: "cheer" });
     await this.famSay(sibling, "Did you get me a moon rock??");
     sibling.set({ pose: "rest" });
-    await this.say(pip.x + 27, pip.y - 4, "Better! I've got NEIGHBORS. One reads my mail, one plans my week, one-", VOICE.you);
+    await this.say(pip.x + 27, pip.y - 4, "Better! I've got MOONFOLK. One reads my mail, one plans my week, one-", VOICE.you);
     dad.set({ pose: "facepalm", mouth: "closed" });
     await this.famSay(dad, "...Every. Single. Call.");
     dad.set({ pose: "rest", mouth: "smile" });

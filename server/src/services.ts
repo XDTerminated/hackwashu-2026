@@ -340,7 +340,7 @@ export function townNote(): string {
   const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${stageName(id, town.stages[id])}`).join(", ");
   const cap = neighborCap(town);
   const held = town.items.map((i) => ITEMS[i].name);
-  return `The town (you're its mayor): ${stages}. The Town Hall sells neighbors' plots and has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${plotsTaken(world.progress)} plot${plotsTaken(world.progress) === 1 ? "" : "s"} bought).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
+  return `The town (you're its mayor): ${stages}. The Town Hall sells the moonfolk's plots and has room for ${cap} new moonfolk (${plotsTaken(world.progress)} plot${plotsTaken(world.progress) === 1 ? "" : "s"} bought).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
 }
 
 /** Different things this neighbor loves, in their yard. */

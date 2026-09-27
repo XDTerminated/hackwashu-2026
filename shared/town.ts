@@ -38,7 +38,7 @@ export interface LandmarkDef {
 export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   town_hall: {
     name: "Town Hall",
-    perks: ["A ruin: no room for neighbors yet", "Room for 1 neighbor", "Room for 2 neighbors", "Room for 3 neighbors", "Room for 4 neighbors", "Room for 5 neighbors", "Room for all 6 neighbors"],
+    perks: ["A ruin: no room for moonfolk yet", "Room for 1 moonfolk", "Room for 2 moonfolk", "Room for 3 moonfolk", "Room for 4 moonfolk", "Room for 5 moonfolk", "Room for all 6 moonfolk"],
     // (one level per new neighbor; the later ones need the north and south of the crater open)
     up: [
       { needs: { moonstone: 2, stardust: 2 } },
@@ -51,7 +51,7 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   },
   fountain: {
     name: "Fountain",
-    perks: ["Dry and cracked", "Water flows again: neighbors make daily wishes", "The star turns: friendships grow faster"],
+    perks: ["Dry and cracked", "Water flows again: moonfolk make daily wishes", "The star turns: friendships grow faster"],
     up: [{ needs: { moonstone: 3, stardust: 2 } }, { needs: { shard: 2, ice: 2, helium: 1 }, item: "valve", task: "nova_search" }],
   },
   roads: {
@@ -69,9 +69,9 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
 
 export const ITEMS: Record<TownItem, { name: string; line: string; from: string }> = {
   charter: { name: "Old Colony Charter", line: "Article 1: no bouncing indoors.", from: "dig it up at the Town Hall once it's repaired" },
-  valve: { name: "Fountain Valve", line: "Still a little damp. Somehow.", from: "a gift from Yutu when your first new neighbor moves in" },
+  valve: { name: "Fountain Valve", line: "Still a little damp. Somehow.", from: "a gift from Yutu when your first new moonfolk moves in" },
   lens: { name: "Lamp Lens", line: "Makes everything look 12% more romantic.", from: "out in the north, once the roads are fixed" },
-  bell: { name: "Shop Bell", line: "Ding! (It only knows the one word.)", from: "a housewarming gift from your second new neighbor" },
+  bell: { name: "Shop Bell", line: "Ding! (It only knows the one word.)", from: "a housewarming gift from your second new moonfolk" },
 };
 
 export const TASKS: Record<TownTask, string> = {
@@ -222,6 +222,6 @@ export function digSpots(townHall: { x: number; y: number }): DigSpot[] {
 
 /** Who gives what, when neighbors move in (the Nth new neighbor, counting from 1). */
 export const ARRIVAL_GIFTS: { nth: number; item: TownItem; by: VillagerId | "newcomer"; text: string }[] = [
-  { nth: 1, item: "valve", by: "jade_rabbit", text: "A new neighbor! Here, I found this Fountain Valve in my burrow. It might get the fountain going properly." },
+  { nth: 1, item: "valve", by: "jade_rabbit", text: "A new moonfolk! Here, I found this Fountain Valve in my burrow. It might get the fountain going properly." },
   { nth: 2, item: "bell", by: "newcomer", text: "A little housewarming gift for the town: the old Shop Bell. The Market could use it." },
 ];

@@ -138,7 +138,7 @@ export function nextStep(s: MoveInState): Goal | null {
         : { kind: "landmark", id: "town_hall", ready, tutorial: 1, text, title: "Gather for the Town Hall", needs, how: "Break a boulder (E), sweep moondust (hold E)" };
     }
     const first = MOVE_INS.find((m) => plots[m.home]);
-    if (!first) return { kind: "choose", tutorial: 3, title: "Pick your first neighbor", how: "E at the Town Hall: you buy their plot there", text: "Tutorial 3/5: pick your first neighbor and buy their plot (E at the Town Hall)" };
+    if (!first) return { kind: "choose", tutorial: 3, title: "Pick your first moonfolk", how: "E at the Town Hall: you buy their plot there", text: "Tutorial 3/5: pick your first moonfolk and buy their plot (E at the Town Hall)" };
     return plotGoal(first, s, !plots[first.home]!.placed ? 4 : 5);
   }
   const waiting = MOVE_INS.filter((m) => !s.progress.movedIn.includes(m.villager));

@@ -387,7 +387,7 @@ class MoonPadView {
       y += rowH;
     }
     if (rows.length <= 2) {
-      const tip = ptext(this.scene, s.x + 6, y + 6, "More neighbors will show up here as they move in.", C.inkSoft).setMaxWidth(s.w - 12);
+      const tip = ptext(this.scene, s.x + 6, y + 6, "More moonfolk will show up here as they move in.", C.inkSoft).setMaxWidth(s.w - 12);
       this.root.add(tip);
     }
 
@@ -415,7 +415,7 @@ class MoonPadView {
     const c = store.connections;
     const sandbox = store.progress.sandbox;
     if (this.welcome) {
-      const hi = ptext(this.scene, s.x + 6, y, "Link your accounts so your neighbors can help with your real life. Skip anything you like; it's all here in the MoonPad later.", C.ink).setMaxWidth(s.w - 12);
+      const hi = ptext(this.scene, s.x + 6, y, "Link your accounts so your moonfolk can help with your real life. Skip anything you like; it's all here in the MoonPad later.", C.ink).setMaxWidth(s.w - 12);
       this.root.add(hi);
       y += measure(hi).h + 6;
     }

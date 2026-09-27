@@ -276,7 +276,7 @@ export class UIScene extends Phaser.Scene {
         .catch(() => null);
     const note = takeNote();
     if (note) this.time.delayedCall(800, () => this.toast("Back home", note, C.coral));
-    if (visiting()) this.time.delayedCall(900, () => this.toast(`${hostName()}'s island`, `Welcome! Walk around, talk to the neighbors, help gather (you keep the coins) or leave ${hostName()} a gift at their door. T to chat, the rocket flies you home.`, C.green));
+    if (visiting()) this.time.delayedCall(900, () => this.toast(`${hostName()}'s island`, `Welcome! Walk around, talk to the moonfolk, help gather (you keep the coins) or leave ${hostName()} a gift at their door. T to chat, the rocket flies you home.`, C.green));
     // T: say something to everyone on the island (online).
     this.input.keyboard!.on("keydown-T", (e: KeyboardEvent) => {
       if (!net.HOSTED || this.chatBar || document.activeElement === typeInput || isPanelOpen() || isMoonPadOpen() || this.friendsPanel.isOpen || this.shopOpen) return;
@@ -873,7 +873,7 @@ export class UIScene extends Phaser.Scene {
 
   private buildToolbar() {
     const MIC_TIP = (on: boolean) =>
-      !micSupported ? "Talking out loud needs Chrome, Edge or Safari (you can still type)" : on ? "Mic: ON - when you talk to a neighbor (E), just speak. Click to mute." : "Mic: OFF - you type to neighbors. Click to talk out loud.";
+      !micSupported ? "Talking out loud needs Chrome, Edge or Safari (you can still type)" : on ? "Mic: ON - when you talk to a moonfolk (E), just speak. Click to mute." : "Mic: OFF - you type to moonfolk. Click to talk out loud.";
     const W = this.scale.width;
     const H = this.scale.height;
     // Each button: its icon with a word underneath.
@@ -883,7 +883,7 @@ export class UIScene extends Phaser.Scene {
       fn();
     };
     // (during Yutu's tutorial, the MoonPad, Quests, edit mode and the mic wait till it's done)
-    const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first neighbor moved in, then it's all yours.", C.coral) : fn());
+    const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first moonfolk moved in, then it's all yours.", C.coral) : fn());
     type Spec = [string, string, string, () => void];
     // (online, with a Google account: friends; on a friend's island, only what's yours to use there)
     const social = net.auth.state === "in" && !net.auth.guest;
@@ -1075,7 +1075,7 @@ export class UIScene extends Phaser.Scene {
     const lines = [
       `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
       ...townLines,
-      `NEIGHBORS (the Town Hall has room for ${cap}, ${Math.min(taken, cap)} taken)`,
+      `MOONFOLK (the Town Hall has room for ${cap}, ${Math.min(taken, cap)} taken)`,
       ...neighborLines,
       ...(held.length ? ["STORY ITEMS", ...held] : []),
       `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
@@ -1126,10 +1126,10 @@ export class UIScene extends Phaser.Scene {
   private showHelp() {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
-      "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new neighbors, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
-      "NEIGHBORS: each one helps with something real (Hoot: Gmail, Cog: Google Calendar, Mabel: Canvas, Nova: web search, Echo: Spotify, Ada: Claude Code). Buy their plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. Each Town Hall level makes room for one more neighbor: take it up a level for every new one.",
-      "MATERIALS: moonstone (boulders and meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a neighbor's gift), and a couple need a real job done by a neighbor.",
-      "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
+      "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new moonfolk, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
+      "MOONFOLK: each one helps with something real (Hoot: Gmail, Cog: Google Calendar, Mabel: Canvas, Nova: web search, Echo: Spotify, Ada: Claude Code). Buy their plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. Each Town Hall level makes room for one more moonfolk: take it up a level for every new one.",
+      "MATERIALS: moonstone (boulders and meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a moonfolk's gift), and a couple need a real job done by a moonfolk.",
+      "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a moonfolk and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Lamps and doorbells follow the building.",
@@ -1138,9 +1138,9 @@ export class UIScene extends Phaser.Scene {
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
       "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
       ...(net.auth.state === "in" && !net.auth.guest
-        ? ["FRIENDS: the FRIENDS button shows your friend code; add friends by their code or email. Fly to a friend's island from the rocket by the landing pad (they needn't be online). Visitors can walk around, chat (T), help gather (the materials stay, the coins go home with them) and leave gifts. You choose, per friend, which neighbors they may ask for help: with their OWN accounts, and only to look things up. FRIENDS → VISITORS shows who's here (SEND HOME, BLOCK) and who came by; CLOSE IT keeps everyone out."]
+        ? ["FRIENDS: the FRIENDS button shows your friend code; add friends by their code or email. Fly to a friend's island from the rocket by the landing pad (they needn't be online). Visitors can walk around, chat (T), help gather (the materials stay, the coins go home with them) and leave gifts. You choose, per friend, which moonfolk they may ask for help: with their OWN accounts, and only to look things up. FRIENDS → VISITORS shows who's here (SEND HOME, BLOCK) and who came by; CLOSE IT keeps everyone out."]
         : []),
-      "Every day the neighbors post three COLONY REQUESTS (the gold badge on Quests) that pay coins. 12 MOON SHARDS (pieces of the old colony's beacon) glint out in the wilds: walk over one to pick it up (15¢), and find all 12 to relight the beacon (+200¢). Clearing a rock sometimes turns up treasure.",
+      "Every day the moonfolk post three COLONY REQUESTS (the gold badge on Quests) that pay coins. 12 MOON SHARDS (pieces of the old colony's beacon) glint out in the wilds: walk over one to pick it up (15¢), and find all 12 to relight the beacon (+200¢). Clearing a rock sometimes turns up treasure.",
       this.accountSummary(),
       "Villager not home? Walk up to their door and press CALL (the green button, the button at the door, or E) - they'll walk back.",
       "Text villagers on the MoonPad (or your real phone via iMessage) to get to know them. They remember what you tell them, and every chat and visit fills their hearts.",
@@ -1443,7 +1443,7 @@ export class UIScene extends Phaser.Scene {
   private toggleShop() {
     // (the B key too: the Shop waits till the tutorial's done, so Nova's plot money stays put)
     if (!this.shopOpen && inTutorial()) {
-      this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first neighbor moved in, then it's all yours.", C.coral);
+      this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first moonfolk moved in, then it's all yours.", C.coral);
       return;
     }
     if (!this.shopOpen && !shopOpen(store.progress.town)) {

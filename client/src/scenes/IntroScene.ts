@@ -145,7 +145,7 @@ export class IntroScene extends Cutscene {
     grandma.set({ pose: "sip" });
     await this.wait(200);
     you.set({ pose: "cheer" });
-    await this.famSay(you, "...and it texts me back! It's basically a NEIGHBOR!");
+    await this.famSay(you, "...and it texts me back! It's basically a FRIEND!");
     dad.set({ pose: "facepalm", mouth: "frown" });
     await this.famSay(dad, "Every. Single. Dinner.");
     you.set({ pose: "point", eyes: "up", mouth: "smile" });
@@ -459,7 +459,7 @@ export class IntroScene extends Cutscene {
     const you = (s: string) => this.dialog(YOU, "You", s, VOICE.you);
     await yutu("A visitor! It's been AGES since anybody landed here.");
     await you("Hi! Um... is there Wi-Fi?");
-    await yutu("Hee! Not since the old colony left. Fix up the old homes and new neighbors will move in. Fair warning: they're AI agents.");
+    await yutu("Hee! Not since the old colony left. Fix up the old homes and new moonfolk will move in. Fair warning: they're AI agents.");
     this.tweens.add({ targets: astro, y: ground - 8, duration: 160, yoyo: true, repeat: 2, ease: "quad.out" });
     sfx.buy();
     await you("This is the BEST DAY OF MY LIFE.");

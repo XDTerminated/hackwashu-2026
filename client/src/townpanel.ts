@@ -93,7 +93,7 @@ export class TownPanel {
       spec.kind === "lot" ? `${VILLAGER_SHORT[moveInAt(spec.home)!.villager].toUpperCase()}'S HOME` : spec.kind === "extension" ? BUILDINGS[spec.b].name.toUpperCase() : spec.kind === "board" ? "THE TOWN HALL" : LANDMARKS[spec.id].name.toUpperCase();
     const t = ptext(s, x0 + 12, y0 + 9, `★ ${title}`, C.coral, "pxb");
     const subText =
-      spec.kind === "lot" ? "build it, and they move right in" : spec.kind === "extension" ? `an extension of ${VILLAGER_SHORT[EXTENSIONS[spec.b]!.by]}'s ${BUILDINGS[EXTENSIONS[spec.b]!.of].name}` : homes ? `Room for ${cap} neighbor${cap === 1 ? "" : "s"}: ${Math.min(plotsTaken(store.progress), cap)} taken` : spec.kind === "landmark" && spec.id === "town_hall" ? "each level makes room for one more neighbor" : "Mayor Yutu's town: ruined, repaired, grand";
+      spec.kind === "lot" ? "build it, and they move right in" : spec.kind === "extension" ? `an extension of ${VILLAGER_SHORT[EXTENSIONS[spec.b]!.by]}'s ${BUILDINGS[EXTENSIONS[spec.b]!.of].name}` : homes ? `Room for ${cap} moonfolk: ${Math.min(plotsTaken(store.progress), cap)} taken` : spec.kind === "landmark" && spec.id === "town_hall" ? "each level makes room for one more moonfolk" : "Mayor Yutu's town: ruined, repaired, grand";
     const sub = ptext(s, 0, y0 + 11, subText, C.inkSoft, "sm");
     sub.setX(Math.max(t.x + measure(t).w + 10, x0 + pw - 30 - measure(sub).w));
     const x = ptext(s, x0 + pw - 16, y0 + 8, "x", C.ink, "pxb").setInteractive({ useHandCursor: true });
