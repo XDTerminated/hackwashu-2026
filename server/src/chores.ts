@@ -2,6 +2,7 @@
 // closed); meteors thunk down every so often and leave a moon-rock that cools.
 // Also the opt-in villager chores: small real checks every CHORE_EVERY_MIN.
 
+import { openAt } from "../../shared/town.js";
 import { CHORE_EVERY_MIN, type Chore, type VillagerId } from "../../shared/game.js";
 import { PLAZA, WORLD_H, WORLD_W, inIslandXY, lampSpots, nearBuilding } from "../../shared/layout.js";
 import { isBusy, startTask } from "./agents.js";
@@ -31,7 +32,7 @@ function spawnDust() {
     const x = Math.round(l.x + rand(-22, 22));
     const y = Math.round(l.y + rand(4, 20));
     const crowded = Object.values(world.chores).some((c) => Math.hypot(c.x - x, c.y - y) < 18);
-    if (inIslandXY(x, y) && !nearBuilding(x, y, 6) && !crowded) return add({ id: newId("dust"), kind: "dust", x, y, reward: DUST_REWARD });
+    if (inIslandXY(x, y) && openAt(world.progress.town, x, y) && !nearBuilding(x, y, 6) && !crowded) return add({ id: newId("dust"), kind: "dust", x, y, reward: DUST_REWARD });
   }
 }
 
@@ -39,7 +40,7 @@ function spawnMeteor(delay = 0) {
   for (let tries = 0; tries < 40; tries++) {
     const x = Math.round(rand(80, WORLD_W - 80));
     const y = Math.round(rand(80, WORLD_H - 80));
-    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 50) continue;
+    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || !openAt(world.progress.town, x, y) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 170) continue;
     const landsAt = Date.now() + delay + WARNING_MS;
     return add({ id: newId("meteor"), kind: "meteor", x, y, reward: METEOR_REWARD, landsAt, expires: landsAt + COOL_MS });
   }
@@ -50,13 +51,13 @@ function tick() {
   const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
   if (now >= nextDust) {
     if (dust < MAX_DUST) spawnDust();
-    nextDust = now + rand(40_000, 80_000);
+    nextDust = now + rand(25_000, 45_000);
   }
   if (now >= nextMeteor) {
     // Now and then a proper shower.
     const count = Math.random() < 0.15 ? 3 + Math.floor(Math.random() * 2) : 1;
     for (let i = 0; i < count; i++) spawnMeteor(i * 2500);
-    nextMeteor = now + rand(90_000, 180_000);
+    nextMeteor = now + rand(60_000, 110_000);
   }
   for (const c of Object.values(world.chores)) {
     if (c.expires && now > c.expires) {
@@ -73,14 +74,15 @@ export function devSpawn(kind: "meteor" | "dust") {
   for (let i = 0; i < 3; i++) spawnMeteor(i * 2500);
 }
 
-export function clearChore(id: string): { ok: true; reward: number; kind: "dust" | "meteor" } | { ok: false; reason: string } {
-  const c = world.chores[id];
-  if (!c) return { ok: false, reason: "already gone" };
-  if (c.landsAt && Date.now() < c.landsAt) return { ok: false, reason: "it hasn't landed yet!" };
+export function clearChore(id: string): { ok: true; reward: number; kind: "dust" | "meteor"; x: number; y: number } | { ok: false; reason: string } {
+  // Own keys only: "__proto__" or "constructor" must not look like a chore.
+  const c = typeof id === "string" && Object.hasOwn(world.chores, id) ? world.chores[id] : undefined;
+  if (!c || !Number.isFinite(c.reward)) return { ok: false, reason: "already gone" };
+  if (c.landsAt && Date.now() < c.landsAt - 3000) return { ok: false, reason: "it hasn't landed yet!" };
   delete world.chores[id];
   world.coins += c.reward;
   savePersist();
-  return { ok: true, reward: c.reward, kind: c.kind };
+  return { ok: true, reward: c.reward, kind: c.kind, x: c.x, y: c.y };
 }
 
 // ---------------------------------------------------------------- villager chores
@@ -102,7 +104,14 @@ export function setChoreOptIn(v: VillagerId, enabled: boolean) {
   emit({ type: "chore_optin", optIn: world.choreOptIn });
 }
 
+/** Game tabs open right now: villager chores (real model calls) only run while someone's playing. */
+let present = 0;
+export function setPresence(connected: number): void {
+  present = Math.max(0, connected);
+}
+
 function villagerChores() {
+  if (present <= 0) return;
   const now = Date.now();
   for (const [v, on] of Object.entries(world.choreOptIn) as [VillagerId, boolean][]) {
     if (!on || !isResident(v) || isBusy(v)) continue;
@@ -114,6 +123,9 @@ function villagerChores() {
 }
 
 export function startChores() {
+  // A few drifts to sweep from the start (stardust for the first repair).
+  const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
+  for (let i = dust; i < 4; i++) spawnDust();
   setInterval(tick, 5_000);
   setInterval(villagerChores, 30_000);
 }

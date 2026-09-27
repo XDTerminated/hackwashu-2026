@@ -121,11 +121,138 @@ const G: Record<string, string> = {
   "\u{E002}": "..#..|.###.|.#.#.|.###.|##.##|#.#.#|.....", // rocket
 };
 
+// "sm": a compact face for the talk dialog. Capitals are 5 rows, lowercase 4,
+// with 2 descender rows; most glyphs are 3 wide.
+const S: Record<string, string> = {
+  A: ".#.|#.#|###|#.#|#.#",
+  B: "##.|#.#|##.|#.#|##.",
+  C: ".##|#..|#..|#..|.##",
+  D: "##.|#.#|#.#|#.#|##.",
+  E: "###|#..|##.|#..|###",
+  F: "###|#..|##.|#..|#..",
+  G: ".##|#..|#.#|#.#|.##",
+  H: "#.#|#.#|###|#.#|#.#",
+  I: "###|.#.|.#.|.#.|###",
+  J: "..#|..#|..#|#.#|.#.",
+  K: "#.#|#.#|##.|#.#|#.#",
+  L: "#..|#..|#..|#..|###",
+  M: "#...#|##.##|#.#.#|#...#|#...#",
+  N: "#..#|##.#|#.##|#..#|#..#",
+  O: ".#.|#.#|#.#|#.#|.#.",
+  P: "##.|#.#|##.|#..|#..",
+  Q: ".#..|#.#.|#.#.|#.#.|.#.#",
+  R: "##.|#.#|##.|#.#|#.#",
+  S: ".##|#..|.#.|..#|##.",
+  T: "###|.#.|.#.|.#.|.#.",
+  U: "#.#|#.#|#.#|#.#|###",
+  V: "#.#|#.#|#.#|.#.|.#.",
+  W: "#...#|#...#|#.#.#|#.#.#|.#.#.",
+  X: "#.#|#.#|.#.|#.#|#.#",
+  Y: "#.#|#.#|.#.|.#.|.#.",
+  Z: "###|..#|.#.|#..|###",
+
+  a: "...|.##|#.#|#.#|.##",
+  b: "#..|##.|#.#|#.#|##.",
+  c: "...|.##|#..|#..|.##",
+  d: "..#|.##|#.#|#.#|.##",
+  e: "...|.#.|###|#..|.##",
+  f: ".##|#..|##.|#..|#..",
+  g: "...|.##|#.#|#.#|.##|..#|##.",
+  h: "#..|##.|#.#|#.#|#.#",
+  i: "#|.|#|#|#",
+  j: ".#|..|.#|.#|.#|.#|#.",
+  k: "#..|#.#|##.|##.|#.#",
+  l: "#.|#.|#.|#.|.#",
+  m: ".....|####.|#.#.#|#.#.#|#.#.#",
+  n: "...|##.|#.#|#.#|#.#",
+  o: "...|.#.|#.#|#.#|.#.",
+  p: "...|##.|#.#|#.#|##.|#..|#..",
+  q: "...|.##|#.#|#.#|.##|..#|..#",
+  r: "...|#.#|##.|#..|#..",
+  s: "...|.##|##.|..#|##.",
+  t: ".#.|###|.#.|.#.|..#",
+  u: "...|#.#|#.#|#.#|.##",
+  v: "...|#.#|#.#|.#.|.#.",
+  w: ".....|#...#|#.#.#|#.#.#|.#.#.",
+  x: "...|#.#|.#.|.#.|#.#",
+  y: "...|#.#|#.#|#.#|.##|..#|##.",
+  z: "...|###|.#.|#..|###",
+
+  "0": "###|#.#|#.#|#.#|###",
+  "1": ".#.|##.|.#.|.#.|###",
+  "2": "##.|..#|.#.|#..|###",
+  "3": "##.|..#|.#.|..#|##.",
+  "4": "#.#|#.#|###|..#|..#",
+  "5": "###|#..|##.|..#|##.",
+  "6": ".##|#..|###|#.#|###",
+  "7": "###|..#|.#.|.#.|.#.",
+  "8": ".#.|#.#|.#.|#.#|.#.",
+  "9": "###|#.#|###|..#|##.",
+
+  "!": "#|#|#|.|#",
+  '"': "#.#|#.#",
+  "#": ".#.#.|#####|.#.#.|#####|.#.#.",
+  $: ".##|##.|.#.|.##|##.",
+  "%": "#.#|..#|.#.|#..|#.#",
+  "&": ".#.|#.#|.#.|#.#|.##",
+  "'": "#|#",
+  "(": ".#|#.|#.|#.|.#",
+  ")": "#.|.#|.#|.#|#.",
+  "*": "...|#.#|.#.|#.#",
+  "+": "...|.#.|###|.#.",
+  ",": ".|.|.|.|#|#",
+  "-": "...|...|###",
+  ".": ".|.|.|.|#",
+  "/": "..#|..#|.#.|#..|#..",
+  ":": ".|#|.|.|#",
+  ";": ".|#|.|.|#|#",
+  "<": "..#|.#.|#..|.#.|..#",
+  "=": "...|###|...|###",
+  ">": "#..|.#.|..#|.#.|#..",
+  "?": "##.|..#|.#.|...|.#.",
+  "@": ".##.|#..#|#.##|#...|.###",
+  "[": "##|#.|#.|#.|##",
+  "\\": "#..|#..|.#.|..#|..#",
+  "]": "##|.#|.#|.#|##",
+  "^": ".#.|#.#",
+  _: "...|...|...|...|...|###",
+  "`": "#.|.#",
+  "{": ".##|.#.|#..|.#.|.##",
+  "|": "#|#|#|#|#|#",
+  "}": "##.|.#.|..#|.#.|##.",
+  "~": "....|.#.#|#.#.",
+
+  "¢": ".#.|.##|#..|.##|.#.",
+  "…": ".....|.....|.....|.....|#.#.#",
+  "•": "...|.#.|###|.#.",
+  "·": ".|.|#",
+  "★": "..#..|#####|.###.|.#.#.",
+  "●": ".###.|#####|#####|.###.",
+  "○": ".###.|#...#|#...#|.###.",
+  "✉": "#####|##.##|#.#.#|#...#|#####",
+  "→": "....|..#.|####|..#.",
+  "←": "....|.#..|####|.#..",
+  "✕": "...|#.#|.#.|#.#",
+  "✓": "....|...#|..#.|#.#.|.#..",
+  "♥": "##.##|#####|.###.|..#..",
+  "☾": ".##|#..|#..|#..|.##",
+  "\u{E001}": "###|#.#|#.#|###|###", // phone
+  "\u{E002}": ".#.|###|###|###|#.#", // rocket
+};
+
 export const PHONE = "\u{E001}";
 export const ROCKET = "\u{E002}";
 
 const ROWS = 9;
 export const LINE_HEIGHT = 11;
+const SMALL_ROWS = 7;
+
+/** Per font: pixels between lines, and the drawn height of one line (for layout). */
+export const FONT_METRICS: Record<string, { line: number; height: number }> = {
+  px: { line: LINE_HEIGHT, height: 8 },
+  pxb: { line: LINE_HEIGHT, height: 8 },
+  sm: { line: 8, height: 6 },
+};
 
 /** Map anything the font can't draw onto something it can. */
 export function sanitize(text: string): string {
@@ -134,7 +261,11 @@ export function sanitize(text: string): string {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[‘’ʼ]/g, "'")
     .replace(/[“”]/g, '"')
-    .replace(/[–—−]/g, "-")
+    .replace(/[–—−‐‑‒―]/g, "-")
+    .replace(/×/g, "x")
+    .replace(/≈/g, "~")
+    .replace(/[≤]/g, "<=")
+    .replace(/[≥]/g, ">=")
     .replace(/\p{Zs}/gu, " ")
     .replace(/[\u200B-\u200D\u2060]/g, "")
     .replace(/️/g, "")
@@ -151,9 +282,9 @@ export function sanitize(text: string): string {
     .replace(/ {2,}/g, " ");
 }
 
-function parse(rows: string): string[] {
+function parse(rows: string, height = ROWS): string[] {
   const r = rows.split("|");
-  while (r.length < ROWS) r.push(".".repeat(r[0].length));
+  while (r.length < height) r.push(".".repeat(r[0].length));
   return r;
 }
 
@@ -165,10 +296,10 @@ function bolden(rows: string[]): string[] {
   });
 }
 
-function register(scene: Phaser.Scene, key: string, glyphs: Record<string, string[]>) {
+function register(scene: Phaser.Scene, key: string, glyphs: Record<string, string[]>, height = ROWS, space = 3) {
   const entries = Object.entries(glyphs);
   const texW = entries.reduce((w, [, rows]) => w + rows[0].length + 1, 1);
-  const tex = scene.textures.createCanvas(key, texW, ROWS)!;
+  const tex = scene.textures.createCanvas(key, texW, height)!;
   const ctx = tex.getContext();
   ctx.fillStyle = "#ffffff";
 
@@ -176,14 +307,14 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
   let x = 1;
   for (const [ch, rows] of entries) {
     const w = rows[0].length;
-    for (let y = 0; y < ROWS; y++) for (let i = 0; i < w; i++) if (rows[y][i] === "#") ctx.fillRect(x + i, y, 1, 1);
+    for (let y = 0; y < height; y++) for (let i = 0; i < w; i++) if (rows[y][i] === "#") ctx.fillRect(x + i, y, 1, 1);
     chars[ch.codePointAt(0)!] = {
       x,
       y: 0,
       width: w,
-      height: ROWS,
+      height,
       centerX: Math.floor(w / 2),
-      centerY: Math.floor(ROWS / 2),
+      centerY: Math.floor(height / 2),
       xOffset: 0,
       yOffset: 0,
       xAdvance: w + 1,
@@ -197,7 +328,7 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
     x += w + 1;
   }
   // space
-  chars[32] = { x: 0, y: 0, width: 0, height: 0, centerX: 0, centerY: 0, xOffset: 0, yOffset: 0, xAdvance: 3, data: {}, kerning: {}, u0: 0, v0: 0, u1: 0, v1: 0 };
+  chars[32] = { x: 0, y: 0, width: 0, height: 0, centerX: 0, centerY: 0, xOffset: 0, yOffset: 0, xAdvance: space, data: {}, kerning: {}, u0: 0, v0: 0, u1: 0, v1: 0 };
   tex.refresh();
 
   const frame = tex.get();
@@ -207,39 +338,36 @@ function register(scene: Phaser.Scene, key: string, glyphs: Record<string, strin
     f?.setUVs(c.width, c.height, c.u0, c.v0, c.u1, c.v1);
   }
   scene.cache.bitmapFont.add(key, {
-    data: { font: key, size: ROWS, lineHeight: LINE_HEIGHT, chars },
+    data: { font: key, size: height, lineHeight: FONT_METRICS[key].line, chars },
     texture: key,
     frame: null,
   });
 }
 
-/** Registers "px" (regular) and "pxb" (bold). */
+/** Registers "px" (regular), "pxb" (bold) and "sm" (compact, for the talk dialog). */
 export function buildFonts(scene: Phaser.Scene) {
   if (scene.cache.bitmapFont.exists("px")) return;
   const regular: Record<string, string[]> = {};
   const bold: Record<string, string[]> = {};
+  const small: Record<string, string[]> = {};
   for (const [ch, rows] of Object.entries(G)) {
     regular[ch] = parse(rows);
     bold[ch] = bolden(regular[ch]);
   }
+  for (const [ch, rows] of Object.entries(S)) small[ch] = parse(rows, SMALL_ROWS);
   register(scene, "px", regular);
   register(scene, "pxb", bold);
+  register(scene, "sm", small, SMALL_ROWS, 2);
 }
 
 /**
- * A big display logo: bold glyphs upscaled with Scale2x twice, which rounds
- * the diagonals while keeping every output pixel one art pixel.
+ * A big display logo: bold glyphs upscaled with Scale2x, which rounds the
+ * diagonals while keeping every output pixel one art pixel. "\n" stacks
+ * centered lines; `sizes` says how many Scale2x passes each line gets
+ * (2 = four times the glyph size, 1 = twice).
  */
-export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: string, outline: string, shadow: string) {
+export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: string, outline: string, shadow: string, sizes: number[] = []) {
   if (scene.textures.exists(key)) return;
-  let mask: boolean[][] = Array.from({ length: 7 }, () => [] as boolean[]);
-  for (const ch of text) {
-    const rows = ch === " " ? Array(7).fill("...") : bolden(parse(G[ch] ?? G["?"])).slice(0, 7);
-    for (let y = 0; y < 7; y++) {
-      for (const c of rows[y]) mask[y].push(c === "#");
-      mask[y].push(false);
-    }
-  }
   const scale2x = (m: boolean[][]) => {
     const h = m.length;
     const w = m[0].length;
@@ -255,7 +383,29 @@ export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: 
       }
     return out;
   };
-  mask = scale2x(scale2x(mask));
+  const lines = text.split("\n").map((line, i) => {
+    let m: boolean[][] = Array.from({ length: 7 }, () => [] as boolean[]);
+    for (const ch of line) {
+      const rows = ch === " " ? Array(7).fill("...") : bolden(parse(G[ch] ?? G["?"])).slice(0, 7);
+      for (let y = 0; y < 7; y++) {
+        for (const c of rows[y]) m[y].push(c === "#");
+        m[y].push(false);
+      }
+    }
+    for (let k = 0; k < (sizes[i] ?? 2); k++) m = scale2x(m);
+    return m;
+  });
+  // stack the lines, centered, with a little air between them
+  const GAP = 5;
+  const width = Math.max(...lines.map((m) => m[0].length));
+  const mask: boolean[][] = [];
+  const bands: [number, number][] = [];
+  lines.forEach((m, i) => {
+    if (i) for (let g = 0; g < GAP; g++) mask.push(new Array<boolean>(width).fill(false));
+    bands.push([mask.length, m.length]);
+    const pad = Math.floor((width - m[0].length) / 2);
+    for (const row of m) mask.push([...new Array<boolean>(pad).fill(false), ...row, ...new Array<boolean>(width - pad - row.length).fill(false)]);
+  });
   const h = mask.length;
   const w = mask[0].length;
   const tex = scene.textures.createCanvas(key, w + 4, h + 5)!;
@@ -272,8 +422,8 @@ export function buildLogo(scene: Phaser.Scene, key: string, text: string, fill: 
   paint(shadow, 0, 3, true);
   paint(outline, 0, 0, true);
   paint(fill, 0, 0, false);
-  // light band across the top of each letter
+  // light band across the top of each letter (each line gets its own)
   ctx.fillStyle = "rgba(255,255,255,0.25)";
-  for (let y = 0; y < Math.floor(h / 3); y++) for (let x = 0; x < w; x++) if (on(x, y)) ctx.fillRect(x + 2, y + 2, 1, 1);
+  for (const [top, lh] of bands) for (let y = top; y < top + Math.floor(lh / 3); y++) for (let x = 0; x < w; x++) if (on(x, y)) ctx.fillRect(x + 2, y + 2, 1, 1);
   tex.refresh();
 }

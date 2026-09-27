@@ -2,7 +2,7 @@
 // integer coordinates — no scaling, no rounded vector shapes, no hi-res text.
 
 import Phaser from "phaser";
-import { LINE_HEIGHT, sanitize } from "./font";
+import { FONT_METRICS, sanitize } from "./font";
 
 export const C = {
   ink: 0x4a2e19,
@@ -24,7 +24,7 @@ export const C = {
   blue: 0x2f5f9a,
 };
 
-export type Font = "px" | "pxb";
+export type Font = "px" | "pxb" | "sm";
 
 export function ptext(scene: Phaser.Scene, x: number, y: number, text: string, color: number = C.ink, font: Font = "px") {
   return scene.add.bitmapText(Math.round(x), Math.round(y), font, sanitize(text)).setTint(color);
@@ -34,7 +34,8 @@ export function ptext(scene: Phaser.Scene, x: number, y: number, text: string, c
 export function measure(t: Phaser.GameObjects.BitmapText) {
   const b = t.getTextBounds(false);
   const lines = Math.max(1, b.lines.lengths.length);
-  return { w: Math.ceil(b.local.width), h: (lines - 1) * LINE_HEIGHT + 8 };
+  const m = FONT_METRICS[t.font] ?? FONT_METRICS.px;
+  return { w: Math.ceil(b.local.width), h: (lines - 1) * m.line + m.height };
 }
 
 /** Clip a string (with "..") so it fits a pixel width in the given font. */
@@ -91,6 +92,8 @@ export class Label extends Phaser.GameObjects.Container {
   readonly opts: Required<LabelOpts>;
   boxW = 0;
   boxH = 0;
+  /** The text as laid out (line breaks included), for typewriter reveals. */
+  private laidOut = "";
 
   constructor(scene: Phaser.Scene, x: number, y: number, text: string, opts: LabelOpts = {}) {
     super(scene, Math.round(x), Math.round(y));
@@ -121,6 +124,7 @@ export class Label extends Phaser.GameObjects.Container {
     if (o.align === "center") this.t.setCenterAlign();
     else this.t.setLeftAlign();
     const { w, h } = measure(this.t);
+    this.laidOut = this.t.getTextBounds(false).wrappedText || this.t.text;
     const b = o.border !== null ? 1 : 0;
     const W = w + o.padX * 2 + b * 2;
     const H = h + 3 + b * 2;
@@ -132,7 +136,8 @@ export class Label extends Phaser.GameObjects.Container {
       if (o.border !== null) pixBox(this.g, ox, oy, W, H, o.bg, o.border);
       else this.g.fillStyle(o.bg, 1).fillRect(ox, oy, W, H);
       if (o.tail) {
-        const cx = ox + Math.round(W / 2);
+        // (off-center bubbles keep the tail over whoever's talking)
+        const cx = o.originX === 0.5 ? ox + Math.round(W / 2) : Math.min(ox + W - 5, Math.max(ox + 5, 0));
         const border = o.border ?? o.bg;
         this.g.fillStyle(border, 1).fillRect(cx - 3, oy + H - 1, 6, 1).fillRect(cx - 2, oy + H, 4, 1).fillRect(cx - 1, oy + H + 1, 2, 1);
         this.g.fillStyle(o.bg, 1).fillRect(cx - 2, oy + H - 1, 4, 1).fillRect(cx - 1, oy + H, 2, 1);
@@ -147,6 +152,22 @@ export class Label extends Phaser.GameObjects.Container {
 
   setColor(color: number) {
     this.t.setTint(color);
+    return this;
+  }
+
+  /** Characters in the laid-out text. */
+  get textLength() {
+    return this.laidOut.length;
+  }
+
+  /** How many lines the first `n` characters take up. */
+  linesUpTo(n: number) {
+    return this.laidOut.slice(0, Math.max(0, n)).split("\n").length;
+  }
+
+  /** Typewriter: the box stays sized for the whole text; only the first `n` characters show. */
+  reveal(n: number) {
+    this.t.setText(n >= this.laidOut.length ? this.laidOut : this.laidOut.slice(0, Math.max(0, n)));
     return this;
   }
 
@@ -183,7 +204,11 @@ export class Button extends Phaser.GameObjects.Container {
     this.setSize(this.bw, this.bh);
     // Phaser measures a Container's hit area from its center (displayOrigin = half its
     // size), so shift the rectangle by half to line it up with what's drawn.
-    this.setInteractive(new Phaser.Geom.Rectangle(this.bw / 2, this.bh / 2, this.bw, this.bh), Phaser.Geom.Rectangle.Contains);
+    this.setInteractive({
+      hitArea: new Phaser.Geom.Rectangle(this.bw / 2, this.bh / 2, this.bw, this.bh),
+      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+      useHandCursor: true,
+    });
     this.on("pointerover", () => ((this.hover = true), this.draw()));
     this.on("pointerout", () => ((this.hover = false), this.draw()));
     this.on("pointerdown", onClick);
@@ -213,9 +238,14 @@ export class Button extends Phaser.GameObjects.Container {
 }
 
 /** A square pixel button with an icon; its name shows as a tooltip on hover. */
+/** Height of the toolbar along the bottom (windows and hints keep clear of it). */
+export const TOOLBAR_H = 34;
+
 export class IconButton extends Phaser.GameObjects.Container {
   private g: Phaser.GameObjects.Graphics;
   private icon: Phaser.GameObjects.Image;
+  /** A word under the icon (the toolbar's buttons), so nobody has to guess what it is. */
+  private caption: Phaser.GameObjects.BitmapText | null = null;
   private tip: Label | null = null;
   private hover = false;
   private pressed = false;
@@ -237,7 +267,7 @@ export class IconButton extends Phaser.GameObjects.Container {
     this.add([this.g, this.icon]);
     this.placeIcon();
     this.setSize(bw, bh);
-    this.setInteractive(new Phaser.Geom.Rectangle(bw / 2, bh / 2, bw, bh), Phaser.Geom.Rectangle.Contains);
+    this.setInteractive({ hitArea: new Phaser.Geom.Rectangle(bw / 2, bh / 2, bw, bh), hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     this.on("pointerover", () => {
       this.hover = true;
       this.draw();
@@ -265,6 +295,16 @@ export class IconButton extends Phaser.GameObjects.Container {
     return this;
   }
 
+  setLabel(text: string, color: number = C.cream) {
+    if (!this.caption) {
+      this.caption = this.scene.make.bitmapText({ font: "sm", text: "" }, false);
+      this.add(this.caption);
+    }
+    this.caption.setText(text.toUpperCase()).setTint(color);
+    this.placeIcon();
+    return this;
+  }
+
   setTooltip(text: string) {
     this.tooltip = text;
     if (this.tip) this.tip.setText(text);
@@ -281,6 +321,13 @@ export class IconButton extends Phaser.GameObjects.Container {
 
   private placeIcon() {
     const push = this.pressed ? 1 : 0;
+    if (this.caption) {
+      // icon on top, its word underneath
+      const cw = this.caption.getTextBounds(false).global.width;
+      this.icon.setPosition(Math.floor((this.bw - this.icon.width) / 2), 2 + push);
+      this.caption.setPosition(Math.floor((this.bw - cw) / 2), this.bh - 8 + push);
+      return;
+    }
     this.icon.setPosition(Math.floor((this.bw - this.icon.width) / 2), Math.floor((this.bh - this.icon.height) / 2) + push);
   }
 

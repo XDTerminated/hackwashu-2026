@@ -3,4 +3,5 @@ dist/
 .env
 .DS_Store
 *.log
-server/data/
+server/data
+server/data-hosted/

@@ -3,16 +3,18 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import Groq from "groq-sdk";
-import type { Clod, VillagerId } from "../../shared/game.js";
-import { runDelegate, runLeafTool, toolsFor, missingBuildingsNote } from "./agents.js";
+import type { VillagerId } from "../../shared/game.js";
+import { isChoreTask, recordSearch, runDelegate, runLeafTool, taskLive, toolsFor, missingBuildingsNote } from "./agents.js";
 import { memoryNote } from "./memory.js";
-import { personaFor } from "./villagers.js";
-import { emit, newId, putClod, setVillager } from "./world.js";
+import { audienceNote, personaFor, type Audience } from "./villagers.js";
+import { emit, setVillager } from "./world.js";
 
 const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
 // Web searches pull in big pages; Groq rate-limits per model, so the Stargazer
 // gets her own model (and her own tokens-per-minute budget).
 const SEARCH_MODEL = process.env.GROQ_SEARCH_MODEL ?? "openai/gpt-oss-20b";
+/** Falls back to the main model for the rest of the day once the search model's quota is spent. */
+let searchModel = SEARCH_MODEL;
 const MAX_TURNS = 12;
 
 let client: Groq | null = null;
@@ -27,9 +29,9 @@ type Msg = Groq.Chat.Completions.ChatCompletionMessageParam;
 type GroqTool = Groq.Chat.Completions.ChatCompletionTool;
 
 /** Our tool defs are Anthropic-shaped; Groq speaks OpenAI function-calling. */
-function groqTools(v: VillagerId): GroqTool[] {
+function groqTools(v: VillagerId, readOnly: boolean): GroqTool[] {
   if (v === "stargazer") return [{ type: "browser_search" } as unknown as GroqTool];
-  return toolsFor(v).flatMap((t) => {
+  return toolsFor(v, readOnly).flatMap((t) => {
     if (!("input_schema" in t)) return [];
     const def = t as Anthropic.Beta.BetaTool;
     return [{ type: "function", function: { name: def.name, description: def.description ?? "", parameters: def.input_schema as Record<string, unknown> } }];
@@ -58,6 +60,8 @@ async function withPatience<T>(v: VillagerId, fn: () => Promise<T>): Promise<T> 
       return await fn();
     } catch (err) {
       if (!(err instanceof Groq.RateLimitError) || attempt >= 5) throw err;
+      // A spent daily allowance won't come back in a few retries.
+      if (/per day|\bTPD\b|\bRPD\b/i.test(err.message)) throw err;
       const header = Number(err.headers?.get?.("retry-after") ?? NaN);
       const hinted = /try again in ([\d.]+)(ms|s)/.exec(err.message);
       const hintMs = hinted ? Number(hinted[1]) * (hinted[2] === "ms" ? 1 : 1000) : NaN;
@@ -79,38 +83,35 @@ function surfaceSearches(v: VillagerId, taskId: string, executed: unknown) {
     } catch {
       /* keep empty */
     }
-    const clod: Clod = {
-      id: newId("clod"),
-      taskId,
-      villager: v,
-      building: "observatory",
-      label: `searching "${q.slice(0, 30)}"`,
-      status: "ready",
-      reward: 6,
-      result: `searched Earth for "${q}"`,
-    };
-    putClod({ ...clod });
-    emit({ type: "tool_start", villager: v, clod: { ...clod, status: "working" } });
-    emit({ type: "tool_end", villager: v, clodId: clod.id, ok: true, result: clod.result! });
+    recordSearch(v, taskId, q);
   }
 }
 
-export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string): Promise<string> {
-  const tools = groqTools(v);
+export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
+  const tools = groqTools(v, isChoreTask(taskId));
   const messages: Msg[] = [
-    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) },
+    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience) },
     { role: "user", content: taskText },
   ];
   let finalText = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // (the save changed under this task: stop, and leave the new one alone)
+    if (!taskLive(taskId)) break;
     setVillager(v, { status: "thinking", activity: "thinking…" });
-    const res = await withPatience(v, () => groq().chat.completions.create({
-      model: v === "stargazer" ? SEARCH_MODEL : MODEL,
-      messages,
-      ...(tools.length ? { tools } : {}),
-      temperature: 0.3,
-    }));
+    const ask = (model: string) =>
+      withPatience(v, () => groq().chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}), temperature: 0.3 }));
+    let res: Awaited<ReturnType<typeof ask>>;
+    try {
+      res = await ask(v === "stargazer" ? searchModel : MODEL);
+    } catch (err) {
+      // Nova's search model can run out of its daily allowance: fall back to the main model (it can search too).
+      if (!(v === "stargazer" && searchModel !== MODEL && err instanceof Groq.RateLimitError && /per day|\bTPD\b/i.test(err.message))) throw err;
+      console.log(`[groq] ${searchModel} is out of daily quota; Nova switches to ${MODEL}`);
+      searchModel = MODEL;
+      res = await ask(MODEL);
+    }
+    if (!taskLive(taskId)) break;
     const choice = res.choices[0];
     const msg = choice.message as Groq.Chat.Completions.ChatCompletionMessage & { reasoning?: string; executed_tools?: unknown };
 
@@ -137,12 +138,49 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
           return { role: "tool" as const, tool_call_id: c.id, content: "ERROR: arguments were not valid JSON — try again." };
         }
         const block = { type: "tool_use", id: c.id, name: c.function.name, input } as Anthropic.Beta.BetaToolUseBlock;
-        const r = c.function.name === "delegate" ? await runDelegate(v, taskId, block) : await runLeafTool(v, taskId, block);
+        // (each settles on its own, so one failing can't strand the others mid-approval)
+        const r = await (c.function.name === "delegate" ? runDelegate(v, taskId, block) : runLeafTool(v, taskId, block)).catch(
+          (err): Anthropic.Beta.BetaToolResultBlockParam => ({ type: "tool_result", tool_use_id: c.id, is_error: true, content: err instanceof Error ? err.message : String(err) }),
+        );
         const content = typeof r.content === "string" ? r.content : JSON.stringify(r.content);
         return { role: "tool" as const, tool_call_id: c.id, content: r.is_error ? `ERROR: ${content}` : content };
       }),
     );
     messages.push(...results);
+  }
+  return finalText;
+}
+
+/**
+ * A friend's question on someone else's island: the same kind of loop, but it only
+ * ever looks (the tools given are read-only) and nothing shows up on this island.
+ */
+export async function runLookOnlyGroq(v: VillagerId, system: string, text: string, tools: Anthropic.Beta.BetaTool[], web: boolean, run: (name: string, input: Record<string, unknown>) => Promise<string>): Promise<string> {
+  const defs: GroqTool[] = web
+    ? [{ type: "browser_search" } as unknown as GroqTool]
+    : tools.map((def) => ({ type: "function", function: { name: def.name, description: def.description ?? "", parameters: def.input_schema as Record<string, unknown> } }));
+  const messages: Msg[] = [
+    { role: "system", content: system },
+    { role: "user", content: text },
+  ];
+  let finalText = "";
+  for (let turn = 0; turn < 6; turn++) {
+    const res = await withPatience(v, () => groq().chat.completions.create({ model: web ? searchModel : MODEL, messages, ...(defs.length ? { tools: defs } : {}), temperature: 0.3 }));
+    const msg = res.choices[0].message;
+    if (msg.content?.trim()) finalText = clean(msg.content);
+    const calls = msg.tool_calls ?? [];
+    if (calls.length === 0) break;
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+    for (const c of calls) {
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(c.function.arguments || "{}");
+      } catch {
+        messages.push({ role: "tool", tool_call_id: c.id, content: "ERROR: arguments were not valid JSON." });
+        continue;
+      }
+      messages.push({ role: "tool", tool_call_id: c.id, content: await run(c.function.name, input).catch((err) => `ERROR: ${err instanceof Error ? err.message : err}`) });
+    }
   }
   return finalText;
 }

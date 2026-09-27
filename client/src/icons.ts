@@ -22,6 +22,55 @@ const PALETTE: Record<string, string> = {
 };
 
 const ICONS: Record<string, string[]> = {
+  // two helmets side by side
+  friends: [
+    "..............",
+    "..KKKK........",
+    ".KWWWWK.KKKK..",
+    "KWDDDWWKWWWWK.",
+    "KWDCDWKWDDDWWK",
+    "KWDDDWKWDCDWWK",
+    "KWWWWWKWDDDWWK",
+    ".KWWWK.KWWWWK.",
+    "KSWWWSKKSWWWSK",
+    "KSSSSSKSSSSSSK",
+    "KSSSSSKSSSSSSK",
+    "KKKKKKKKKKKKKK",
+    "..............",
+    "..............",
+  ],
+  rocket: [
+    "......KK......",
+    ".....KWWK.....",
+    "....KWWWWK....",
+    "....KWCCWK....",
+    "....KWCCWK....",
+    "....KWWWWK....",
+    "....KWWWWK....",
+    "...KRWWWWRK...",
+    "..KRRWWWWRRK..",
+    "..KRKKKKKKRK..",
+    "....KYYYYK....",
+    ".....KYYK.....",
+    "......KK......",
+    "..............",
+  ],
+  gift: [
+    "...KK..KK.....",
+    "..KYYKKYYK....",
+    "...KKYYKK.....",
+    ".KKKKKKKKKKKK.",
+    ".KPPPPYYPPPPK.",
+    ".KPPPPYYPPPPK.",
+    ".KKKKKKKKKKKK.",
+    "..KPPPYYPPPK..",
+    "..KPPPYYPPPK..",
+    "..KPPPYYPPPK..",
+    "..KPPPYYPPPK..",
+    "..KKKKKKKKKK..",
+    "..............",
+    "..............",
+  ],
   moonpad: [
     "..KKKKKKKKKK..",
     "..KggggggggK..",
@@ -184,21 +233,19 @@ const ICONS: Record<string, string[]> = {
     "KYyYyYK.......",
     ".KKKKK........",
   ],
-  arrange: [
-    "......KK......",
-    ".....KWWK.....",
-    "....KWWWWK....",
-    "...KKKWWKKK...",
-    "..KK..WW..KK..",
-    ".KWK..WW..KWK.",
-    "KWWWWWWWWWWWWK",
-    "KWWWWWWWWWWWWK",
-    ".KWK..WW..KWK.",
-    "..KK..WW..KK..",
-    "...KKKWWKKK...",
-    "....KWWWWK....",
-    ".....KWWK.....",
-    "......KK......",
+  light: [
+    ".....KKKK.....",
+    "....KYYYYK....",
+    "...KYWWYYyK...",
+    "...KYWYYYyK...",
+    "...KYYYYYyK...",
+    "...KYYYYYyK...",
+    "....KYYYyK....",
+    ".....KYyK.....",
+    ".....KGGK.....",
+    ".....KssK.....",
+    ".....KGGK.....",
+    ".....KKKK.....",
   ],
   pickaxe: [
     "..KKKKKKKK....",
@@ -260,6 +307,36 @@ const ICONS: Record<string, string[]> = {
     ".KKKKK...KK...",
     ".........KK...",
   ],
+  sfx: [
+    "..............",
+    "......KK......",
+    ".....KWK..K...",
+    "....KWWK...K..",
+    "KKKKWWWK.K..K.",
+    "KWWWWWWK..K.K.",
+    "KWWWWWWK..K.K.",
+    "KWWWWWWK..K.K.",
+    "KKKKWWWK.K..K.",
+    "....KWWK...K..",
+    ".....KWK..K...",
+    "......KK......",
+    "..............",
+  ],
+  sfx_off: [
+    "..............",
+    "......KK......",
+    ".....KsK......",
+    "....KssK......",
+    "KKKKsssK......",
+    "KssssssK.KK.KK",
+    "KssssssK..KKK.",
+    "KssssssK..KKK.",
+    "KKKKsssK.KK.KK",
+    "....KssK......",
+    ".....KsK......",
+    "......KK......",
+    "..............",
+  ],
   idle: [
     "..............",
     "..............",
@@ -271,6 +348,53 @@ const ICONS: Record<string, string[]> = {
     ".....KssK.....",
     ".....KssK.....",
     ".....KKKK.....",
+  ],
+  // Talk-dialog controls: push-to-talk mic (red while listening) and the voice toggle.
+  mic: [
+    "...KKK...",
+    "..KWWWK..",
+    "..KWsWK..",
+    "..KWWWK..",
+    "..KWsWK..",
+    "..KWWWK..",
+    "K.KKKKK.K",
+    "K.......K",
+    ".K.....K.",
+    "..KKKKK..",
+    "....K....",
+    "..KKKKK..",
+  ],
+  mic_on: [
+    "...KKK...",
+    "..KRRRK..",
+    "..KRWRK..",
+    "..KRRRK..",
+    "..KRWRK..",
+    "..KRRRK..",
+    "K.KKKKK.K",
+    "K.......K",
+    ".K.....K.",
+    "..KKKKK..",
+    "....K....",
+    "..KKKKK..",
+  ],
+  sound_on: [
+    "...W......",
+    "..WW...W..",
+    "WWWW.W..W.",
+    "WWWW.W..W.",
+    "WWWW.W..W.",
+    "..WW...W..",
+    "...W......",
+  ],
+  sound_off: [
+    "...W......",
+    "..WW.W...W",
+    "WWWW..W.W.",
+    "WWWW...W..",
+    "WWWW..W.W.",
+    "..WW.W...W",
+    "...W......",
   ],
 };
 
@@ -284,24 +408,30 @@ export const VERB_ICON: Record<string, string> = {
   TALK: "icon_talk_0",
   "READ LETTER": "icon_letter_0",
   BUILD: "icon_build_0",
+  UPGRADE: "icon_build_0",
   POP: "clod_icon",
   GRAB: "icon_grab_0",
   SWEEP: "icon_sweep_0",
-<<<<<<< Updated upstream
-  ARRANGE: "icon_arrange_0",
-=======
   CALL: "icon_call_0",
   CLEAR: "icon_pickaxe_0",
   ENTER: "icon_door_0",
   LEAVE: "icon_door_0",
   BOARD: "icon_quests_0",
-  "CHECK IN": "icon_talk_0",
+  ROCKET: "icon_rocket_0",
+  GIFT: "icon_gift_0",
+  WATCH: "icon_talk_0",
+  CHECK: "icon_quests_0",
   "TURN ON": "icon_light_0",
   "TURN OFF": "icon_light_0",
 };
 
 /** Tiny 7x7 villager heads, for the minimap and the roster (texture `vicon_<id>_0`). */
 export const VILLAGER_ICONS: Record<string, PixelSprite> = {
+  // you: your helmet, for your lines in a conversation
+  you: {
+    palette: { K: "#3b2a3a", W: "#f6efe2", V: "#1f3a4d", L: "#8fd0f0" },
+    frames: [[".KKKKK.", "KWWWWWK", "KWVVVWK", "KWVLVWK", "KWVVVWK", "KWWWWWK", ".KKKKK."]],
+  },
   jade_rabbit: {
     palette: { K: "#3b2a3a", W: "#fff6e6", P: "#e89aa8", G: "#7fd0ad" },
     frames: [[".K...K.", "KWK.KWK", "KWKKKWK", "KWWWWWK", "KWKWKWK", "KGWPWGK", ".KKKKK."]],
@@ -322,5 +452,80 @@ export const VILLAGER_ICONS: Record<string, PixelSprite> = {
     palette: { K: "#3b2a3a", V: "#9a7ff0", W: "#fff6e6", Y: "#f5c542" },
     frames: [["Y.....Y", ".K...K.", ".KKKKK.", "KVVVVVK", "KVWVWVK", "KVVVVVK", ".KKKKK."]],
   },
->>>>>>> Stashed changes
+  manager: {
+    palette: { K: "#3b2a3a", H: "#3b2a2a", S: "#f0c09a", B: "#3f4f8a" },
+    frames: [[".KKKKK.", "KHHHHHK", "KHSSSHK", "KHKSKHK", "KHSSSHK", ".KBBBK.", ".KKKKK."]],
+  },
+  mechanic: {
+    palette: { K: "#3b2a3a", F: "#e8894a", G: "#d9a441", k: "#241a16", W: "#fff6e6", N: "#3b2a3a" },
+    frames: [[".K...K.", "KFK.KFK", "KFFFFFK", "KGFFFGK", "KFkFkFK", "KFWNWFK", ".KKKKK."]],
+  },
+  dj: {
+    palette: { K: "#3b2a3a", H: "#e0708a", M: "#c3cbe0", S: "#1f2a44", E: "#7ff0e8" },
+    frames: [[".HHHHH.", "HKKKKKH", "HKSSSKH", "HKESEKH", "HKSSSKH", ".KMMMK.", ".KKKKK."]],
+  },
+};
+
+/** Tiny 7x7 story items and jobs, for the town's requirement lists (texture `item_<id>_0`). */
+export const ITEM_ICONS: Record<string, PixelSprite> = {
+  charter: {
+    palette: { K: "#3b2a3a", P: "#f4e2b8", D: "#c9a96a", R: "#c0392b" },
+    frames: [[".KKKKK.", "KPPPPPK", ".KDDDPK", ".KPPPPK", ".KDDPPK", "KPPPPRK", ".KKKKK."]],
+  },
+  valve: {
+    palette: { K: "#3b2a3a", R: "#d9503f", L: "#f08a7a", M: "#8e97a8" },
+    frames: [["..KKK..", ".KRLRK.", "KRKMKRK", "KLMMMLK", "KRKMKRK", ".KRRRK.", "..KKK.."]],
+  },
+  lens: {
+    palette: { K: "#3b2a3a", G: "#c99a3e", B: "#8fd0f0", W: "#e8f7ff" },
+    frames: [["..KKK..", ".KGGGK.", "KGWBBGK", "KGBBBGK", "KGBBBGK", ".KGGGK.", "..KKK.."]],
+  },
+  bell: {
+    palette: { K: "#3b2a3a", Y: "#f5c542", L: "#fff0a8", D: "#c99a3e" },
+    frames: [["...K...", "..KYK..", ".KLYYK.", ".KYYYK.", "KYYYYDK", "KKKKKKK", "...K..."]],
+  },
+  search: {
+    palette: { K: "#3b2a3a", B: "#8fd0f0", W: "#e8f7ff", H: "#8a5a3b" },
+    frames: [[".KKK...", "KWBBK..", "KBBBK..", "KBBBK..", ".KKKHK.", "....KHK", ".....KK"]],
+  },
+  job: {
+    palette: { K: "#3b2a3a", Y: "#f5c542", L: "#fff0a8" },
+    frames: [["...K...", "..KYK..", "KKKLKKK", "KYYYYYK", ".KYYYK.", ".KYKYK.", "KK...KK"]],
+  },
+  room: {
+    palette: { K: "#3b2a3a", R: "#e0708a", W: "#fff2d6", D: "#8a4b1f" },
+    frames: [["...K...", "..KRK..", ".KRRRK.", "KRRRRRK", ".KWWWK.", ".KWDWK.", ".KKKKK."]],
+  },
+};
+
+/** Tiny 7x7 materials for the HUD and pickups (texture `mat_<material>_0`). */
+export const MATERIAL_ICONS: Record<string, PixelSprite> = {
+  moonstone: {
+    palette: { K: "#3b2a3a", G: "#9a93a8", L: "#c8c1d6", D: "#6f6880" },
+    frames: [[".......", "..KKK..", ".KLLGK.", "KLGGGDK", "KGGGDDK", ".KDDDK.", "..KKK.."]],
+  },
+  stardust: {
+    palette: { K: "#3b2a3a", Y: "#f5c542", W: "#fff6c8" },
+    frames: [["...Y...", "...W...", "YWWWWWY", "...W...", ".Y.Y.Y.", "Y.....Y", "...Y..."]],
+  },
+  ore: {
+    palette: { K: "#3b2a3a", O: "#ffb347", Y: "#ffe7a0", D: "#6f6886" },
+    frames: [[".......", "..KKK..", ".KOYOK.", "KDOYOOK", "KDDOODK", ".KDDDK.", "..KKK.."]],
+  },
+  ice: {
+    palette: { K: "#2f4f6f", I: "#8fd0f0", W: "#e8f7ff", B: "#5aa0c8" },
+    frames: [["...K...", "..KWK..", ".KWIIK.", ".KWIBK.", "KWIIIBK", "KIIBBBK", ".KKKKK."]],
+  },
+  scrap: {
+    palette: { K: "#3b2a3a", M: "#8e97a8", L: "#c3cad6", R: "#a0583a" },
+    frames: [[".......", ".KKKK..", ".KLMMK.", "KKKMRRK", "KLMMRRK", "KMMMMK.", ".KKKK.."]],
+  },
+  helium: {
+    palette: { K: "#2f5f58", G: "#a8e8d0", W: "#ffffff", L: "#e4fff4" },
+    frames: [["...W...", ".......", "..KKK..", ".KLGGK.", "KLGGGGK", "KGGGGGK", ".KKKKK."]],
+  },
+  shard: {
+    palette: { K: "#1f4a5a", C: "#8ff0f0", W: "#e8fbff", B: "#4fb8c8" },
+    frames: [["...K...", "..KWK..", "..KCK..", ".KWCBK.", ".KCCBK.", "..KBK..", "...K..."]],
+  },
 };

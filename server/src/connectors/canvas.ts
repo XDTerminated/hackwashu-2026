@@ -4,13 +4,16 @@
 // Settings → "+ New Access Token" → paste it into the game at the Library.
 // Or set CANVAS_TOKEN (and optionally CANVAS_BASE_URL) in .env.
 
+import { DATA_DIR, HOSTED } from "../env.js";
+import { lookup } from "node:dns/promises";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { BlockList, isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { htmlToText } from "./google.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CRED_FILE = join(here, "..", "..", "data", "canvas.json");
+const CRED_FILE = join(DATA_DIR, "canvas.json");
 export const DEFAULT_CANVAS = "https://wustl.instructure.com";
 
 let cred: { baseUrl: string; token: string; account?: string } | null = null;
@@ -34,23 +37,73 @@ export async function initCanvas() {
     if (existsSync(CRED_FILE)) cred = JSON.parse(readFileSync(CRED_FILE, "utf8"));
     else if (process.env.CANVAS_TOKEN) cred = { baseUrl: (process.env.CANVAS_BASE_URL ?? DEFAULT_CANVAS).replace(/\/$/, ""), token: process.env.CANVAS_TOKEN };
     if (cred && !cred.account) cred.account = (await api<{ name: string }>("/users/self")).name;
-    if (cred) console.log(`[canvas] connected${cred.account ? ` as ${cred.account}` : ""} (${cred.baseUrl})`);
+    if (cred) console.log(`[canvas] connected${cred.account && !HOSTED ? ` as ${cred.account}` : ""} (${cred.baseUrl})`);
   } catch (err) {
     console.error("[canvas] saved token didn't work:", err instanceof Error ? err.message : err);
     cred = null;
   }
 }
 
+// Addresses a Canvas school never lives at (this machine, the private network, the cloud's metadata service).
+const PRIVATE = new BlockList();
+for (const [net, bits] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3]] as const) PRIVATE.addSubnet(net, bits, "ipv4");
+for (const [net, bits] of [["::", 128], ["::1", 128], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) PRIVATE.addSubnet(net, bits, "ipv6");
+
+function privateAddress(ip: string) {
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i)?.[1];
+  if (mapped) return PRIVATE.check(mapped, "ipv4");
+  return PRIVATE.check(ip, isIP(ip) === 6 ? "ipv6" : "ipv4");
+}
+
+/** A Canvas address must be a public name (not an IP, not something on this machine or its network). */
+async function checkCanvasHost(baseUrl: string) {
+  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host)) throw new Error("Use your school's Canvas address (like wustl.instructure.com), not an IP address.");
+  const addrs = await lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length) throw new Error(`Couldn't find ${host}. Check the Canvas address.`);
+  if (addrs.some((a) => privateAddress(a.address))) throw new Error(`${host} isn't a public Canvas address.`);
+}
+
 /** Validate a pasted token against Canvas, then keep it. */
 export async function connectCanvas(token: string, baseUrl = DEFAULT_CANVAS): Promise<string> {
   const c = { baseUrl: baseUrl.trim().replace(/\/$/, ""), token: token.trim() };
-  if (!/^https:\/\//.test(c.baseUrl)) throw new Error("Canvas URL must start with https://");
+  if (!/^https:\/\/[^/?#@]+$/.test(c.baseUrl)) throw new Error("Canvas URL must start with https://");
+  await checkCanvasHost(c.baseUrl);
   const me = await api<{ name: string }>("/users/self", {}, c);
   cred = { ...c, account: me.name };
   mkdirSync(dirname(CRED_FILE), { recursive: true });
   writeFileSync(CRED_FILE, JSON.stringify(cred), { mode: 0o600 });
-  console.log(`[canvas] connected as ${me.name}`);
+  console.log(HOSTED ? "[canvas] connected" : `[canvas] connected as ${me.name}`);
   return me.name;
+}
+
+/** A Canvas web address from a school's domain ("canvas.harvard.edu" -> https://canvas.harvard.edu), or null if it isn't one. */
+export function canvasBase(domain: string | undefined): string | null {
+  const d = (domain ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) ? `https://${d}` : null;
+}
+
+const schoolCache = new Map<string, { at: number; list: { name: string; domain: string }[] }>();
+
+/**
+ * Find a school's Canvas by name, using the public directory the official
+ * Canvas apps use ("Find your school"). Any school on Canvas can connect.
+ */
+export async function searchSchools(term: string): Promise<{ name: string; domain: string }[]> {
+  const q = term.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const hit = schoolCache.get(q.toLowerCase());
+  if (hit && Date.now() - hit.at < 3_600_000) return hit.list;
+  const res = await fetch(`https://canvas.instructure.com/api/v1/accounts/search?search_term=${encodeURIComponent(q)}&per_page=12`);
+  if (!res.ok) throw new Error(`the school directory didn't answer (${res.status})`);
+  const raw = (await res.json()) as { name?: string; domain?: string }[];
+  const seen = new Set<string>();
+  const list = raw
+    .filter((x) => x.name && x.domain && canvasBase(x.domain))
+    .filter((x) => !seen.has(x.domain!) && seen.add(x.domain!))
+    .map((x) => ({ name: x.name!, domain: x.domain! }));
+  schoolCache.set(q.toLowerCase(), { at: Date.now(), list });
+  return list;
 }
 
 export function disconnectCanvas() {

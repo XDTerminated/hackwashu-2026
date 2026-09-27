@@ -4,7 +4,8 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { VillagerId } from "../../shared/game.js";
-import { runLeafTool } from "./agents.js";
+import { isChoreTask, recordSearch, runLeafTool, taskLive, toolsFor } from "./agents.js";
+import { isResident, needsConnect } from "./services.js";
 import { emit, owns, setVillager } from "./world.js";
 
 /** Forced on with MOCK_AGENTS=1; otherwise agents.ts falls back to it only when no model key exists. */
@@ -24,6 +25,15 @@ function think(v: VillagerId, text: string) {
   emit({ type: "think", villager: v, text });
 }
 
+/** Anyone else: one look with a tool of their own, if they have it set up (never someone else's). */
+async function own(v: VillagerId, taskId: string, name: string, thought: string, done: string): Promise<string> {
+  think(v, thought);
+  await sleep(900);
+  if (!toolsFor(v).some((t) => "name" in t && t.name === name)) return "(Mock mode) I'm not set up for that yet: build my place and connect my account first.";
+  const r = await tool(v, taskId, name, {});
+  return r.ok ? done : `Couldn't manage it: ${r.text}`;
+}
+
 function nextTuesdayAt(h: number, m = 0) {
   const d = new Date();
   d.setDate(d.getDate() + (((2 - d.getDay() + 7) % 7) || 7));
@@ -39,6 +49,7 @@ async function postmaster(taskId: string, task: string): Promise<string> {
   await sleep(500);
   await tool("postmaster", taskId, "read_email", { email_id: "m1" });
   await sleep(700);
+  if (isChoreTask(taskId)) return "Heads-up: Prof. Vega moved office hours to Tuesday 3-5pm.";
   if (!owns("post_office")) return "I read Prof. Vega's note, but the Post Office isn't built, so I can't draft a reply.";
   const draft = await tool("postmaster", taskId, "draft_email", {
     to: "vega@physics.example.edu",
@@ -55,7 +66,7 @@ async function postmaster(taskId: string, task: string): Promise<string> {
     }
   })();
   await sleep(600);
-  if (!owns("rocket_pad")) return `Drafted a reply to Prof. Vega (${draftId}), but there's no Rocket Pad to launch it — build one and I'll send it.`;
+  if (!owns("rocket_pad")) return `Drafted a reply to Prof. Vega (${draftId}), but there's no Mail Rocket on the Post Office yet: build it and I'll send it.`;
   const sent = await tool("postmaster", taskId, "send_email", { draft_id: draftId });
   return sent.ok && sent.text.includes('"sent":true')
     ? "Read Prof. Vega's note and sent your reply confirming Tuesday at 3pm."
@@ -67,6 +78,7 @@ async function timekeeper(taskId: string): Promise<string> {
   await sleep(1100);
   await tool("timekeeper", taskId, "list_events", { from: nextTuesdayAt(12), to: nextTuesdayAt(18) });
   await sleep(700);
+  if (isChoreTask(taskId)) return "Heads-up: Tuesday afternoon has lecture until 2:20 and a lab shift at 4.";
   const booked = await tool("timekeeper", taskId, "create_event", {
     title: "Office hours w/ Prof. Vega",
     start: nextTuesdayAt(15),
@@ -88,6 +100,8 @@ async function scholar(taskId: string): Promise<string> {
 async function stargazer(taskId: string, task: string): Promise<string> {
   think("stargazer", "Pointing the dish at Earth's web…");
   await sleep(1200);
+  // (logged like a real search, so the Observatory's work counts the same)
+  recordSearch("stargazer", taskId, task.slice(0, 80));
   return `(Mock mode can't search the real web — add an ANTHROPIC_API_KEY.) You asked: "${task.slice(0, 80)}"`;
 }
 
@@ -97,8 +111,17 @@ export async function mockVillager(v: VillagerId, task: string, taskId: string):
   if (v === "timekeeper") return timekeeper(taskId);
   if (v === "stargazer") return stargazer(taskId, task);
   if (v === "scholar") return scholar(taskId);
+  if (v === "manager") return own(v, taskId, "check_office", "Let me peek into the Office.", "Looked around the Office: that's who's working right now.");
+  if (v === "dj") return own(v, taskId, "now_playing", "What's on the deck?", "Checked the deck for you.");
+  if (v === "mechanic") return own(v, taskId, "github_my_prs", "Let me look over the pull requests.", "Looked over your pull requests.");
 
-  // Jade Rabbit: the teamwork demo — split the job between two neighbors.
+  // Jade Rabbit: the teamwork demo — split the job between two neighbors (only ones who live here and can work).
+  const can = (w: VillagerId) => isResident(w) && !needsConnect(w) && toolsFor(w).length > 0;
+  if (!toolsFor("jade_rabbit").length || !can("postmaster") || !can("timekeeper")) {
+    think("jade_rabbit", "Nobody here can take that on yet.");
+    await sleep(800);
+    return "(Mock mode) Once Hoot and Cog have moved in and set up shop, I can hand them jobs like that. For now, let's work on the colony!";
+  }
   think("jade_rabbit", "Two jobs here: an email to Prof. Vega, and a calendar hold. Postmaster and Timekeeper can do them at the same time.");
   await sleep(1300);
   const jobs: Promise<string>[] = [];
@@ -106,7 +129,7 @@ export async function mockVillager(v: VillagerId, task: string, taskId: string):
     emit({ type: "handoff", from: "jade_rabbit", to, text });
     const report = await run();
     emit({ type: "handoff", from: to, to: "jade_rabbit", text: report });
-    setVillager(to, { status: "idle", activity: "relaxing" });
+    if (taskLive(taskId)) setVillager(to, { status: "idle", activity: "relaxing" });
     return report;
   };
   jobs.push(handoff("postmaster", "Reply to Prof. Vega: the player will come to office hours Tuesday at 3pm.", () => postmaster(taskId, task)));

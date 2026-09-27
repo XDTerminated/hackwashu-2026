@@ -1,4 +1,4 @@
-# 🌙 Moon Village
+# 🌙 Fl-AI Me to the Moon
 
 *Earth sent you to the Moon for talking about AI too much. Turns out AI is how you stay close to everyone.*
 
@@ -25,59 +25,246 @@ Fresh colony: stop the server, delete `server/data/world.json`, start again.
 websocket dev commands `{"type":"dev","action":"complete_quest" | "meteor" | "dust"}`, handy for
 rehearsing the demo or summoning a meteor shower on cue.
 
-## Unlocking the colony
+## Play it online (everyone gets their own village)
 
-The villagers: **Yutu the Jade Rabbit** (your guide), **Nova the Stargazer** (web research), **Hoot the Postmaster** (Gmail),
-**Cog the Timekeeper** (Calendar) and **Mabel the Scholar** (Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ...").
+The hosted version's title screen has a **SIGN IN WITH GOOGLE** button: everyone signs in before landing
+(and "signed in as ... · sign out" sits in the corner after). Each account gets
+its own private copy of the colony server: its own village and save, and its own connections (their
+Gmail and Calendar, their Canvas, their Claude Code in the Office). Nobody shares anything.
 
-You start with Yutu and Nova.
-Each villager's real work uncovers the next one. Coins come from popping finished work ("baby clods").
+- **Signing in** only asks for name and email. Gmail and Calendar are requested later, in the game,
+  when Hoot moves in (the same Google app; the sign-in suggests the account you logged in with).
+- **Canvas** online: GET A TOKEN opens your school's Canvas settings; make a token and paste it.
+  (The automatic Canvas sign-in window only works when the game runs on your own computer.)
+- **The Office** is already built in a new online village. Press E at the board → **LINK**: it shows
+  one command to paste into a terminal on your own computer (needs Node.js 18+):
+  `curl -fsSL https://<site>/bridge/<you>/script | node - ABCD-EFGH`. That small script (the Office's
+  own log reader, `server/src/bridge.ts`) watches your Claude Code there and sends what it sees to your
+  village only; your subagents walk into your Office live. `--summary` sends less; Ctrl+C unlinks.
+  The code works once, for 10 minutes. REPLAY plays a recorded, scrubbed session (`server/demo/`).
+- Texting (iMessage) is only on the host's own computer, never online.
+- **Help → MY ACCOUNT**: sign out, or **DELETE MY DATA** (village, connections and account).
 
-| Quest | Unlocks | Moves in when you connect |
+How it works: `server/src/gateway.ts` is the front door. It handles Google sign-in (signed session
+cookies), starts each player's copy of `server/src/index.ts` on demand (`MOON_HOSTED=1`, its own
+`MOON_DATA_DIR`), passes that player's pages and live connection (WebSocket) to their copy only, and
+stops copies after 15 minutes idle (saves stay on disk). Each copy is about 70-130 MB of memory.
+
+### Deploying (Railway)
+
+1. Push the repo to GitHub and create a Railway service from it. `railway.json` sets the build
+   (`npm run build`: the game plus the link script) and start (`npm start`: the gateway) commands.
+2. Add a **volume** (for example mounted at `/data`) so villages survive redeploys, and give the
+   service about **2 GB of memory** (roughly 15-25 players at once).
+3. Generate a domain (Settings → Networking), then set these variables:
+
+   | Variable | Value |
+   |---|---|
+   | `MOON_PUBLIC_URL` | `https://<your-app>.up.railway.app` (required: the gateway won't start without it) |
+   | `MOON_DATA_ROOT` | `/data` (the volume) |
+   | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
+   | `GROQ_API` | the villagers' brain |
+   | `SESSION_SECRET` | any long random string |
+
+4. In Google Cloud → your OAuth client → **Authorized redirect URIs**, add both:
+   `https://<your-app>.up.railway.app/auth/google/callback` (signing in) and
+   `https://<your-app>.up.railway.app/oauth/google/callback` (connecting Gmail + Calendar).
+   On the consent screen, add the domain under Authorized domains and the privacy page
+   (`https://<your-app>.up.railway.app/privacy`). Until Google verifies the app, up to 100 people
+   can grant Gmail access, after a "Google hasn't verified this app" screen.
+
+Test the online setup on your own computer: `npm run build`, then
+`cd server && MOON_DEV_LOGIN=1 PORT=8090 npx tsx src/gateway.ts` and open http://localhost:8090. The title
+screen shows SIGN IN WITH GOOGLE; to sign in without Google while testing, open
+http://localhost:8090/auth/dev?email=you@example.com (only with `MOON_DEV_LOGIN=1`; never set it on the real site).
+
+## The story
+
+The first time you land, an animated intro (about a minute and a half, drawn in code like the rest
+of the art) shows how you got here:
+
+1. **Earth, at night.** A full moon over the city; the camera pans down to one lit window.
+2. **Dinner.** You won't stop talking about AI agents. Dad: "Every. Single. Dinner." Grandma looks out at the moon: "...You know, there's plenty of room on the Moon."
+3. **The vote.** 4 to 1. A one-way ticket slides in and gets stamped APPROVED.
+4. **Launch.** The family waves a BYE!! banner; countdown, liftoff.
+5. **The trip.** Day 2, the snacks run out; day 3, the Wi-Fi. Your texts home come back "Not Delivered".
+6. **The Moon.** Population: one rabbit, one stargazer. Yutu tells you every line home went quiet, but each neighbor who moves in brings one back... and the neighbors are AI agents. "This is the BEST DAY OF MY LIFE."
+
+SPACE hurries it along, ESC skips. Replay it from the title screen (I) or from the Quests dialog (WATCH INTRO).
+
+Each neighbor who moves in opens the next chapter, and a card announces it (Chapter 2: Keeping Time when
+Hoot arrives, 3: The Scholar when Cog does). When the last neighbor moves in, the **finale** plays: a night on the Moon
+with every neighbor home and fireworks overhead, then four bars of signal and a video call from the
+family at the same dinner table ("...Every. Single. Call."). Rewatch it from the Quests dialog.
+
+## The town
+
+The villagers: **Yutu the Jade Rabbit** (your guide, and the town's mayor), **Nova the Stargazer** (web
+research), **Hoot the Postmaster** (Gmail), **Cog the Timekeeper** (Calendar) and **Mabel the Scholar**
+(Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ..."). **Ada the Team Lead** runs the Office.
+
+The town is laid out along **Main Street**, which runs east-west across the crater from where your ship came
+down to the Office. The Library, Market, Town Hall, Clock Tower and Post Office stand in a row facing it; the
+fountain square opens off its south side across from the Town Hall; the Observatory sits up on the hill behind
+the row, and Yutu's burrow and your house are out in the south-west and south-east. Every door has its own path,
+lamps line the street, and the neighbors mostly stroll the town (the street, the square, each other's doors).
+
+**The tutorial: Nova's Observatory.** You start with just Yutu in the ruins of an old colony. Nova the
+Stargazer wants to move up, and her Observatory is the first lot, with Yutu walking you through it in four
+steps: clear the rubble on her lot, break a boulder for moonstone, sweep a moondust drift for stardust, then
+repair the Observatory and she moves in. (Nova doesn't count toward the Town Hall's room.)
+
+Then, Stardew-style, you bring the **town** back:
+four landmarks, each going **ruined → repaired → grand**. E at the Town Hall for the projects board (or E at
+the Fountain or the Market): a card per landmark with its stage, what the next stage gives, and what it takes
+as chips (each resource's sprite and a bold have/need count, green when you've got enough; hover one to see
+where to get it), with the UPGRADE button on the card. Neighbors' lots get the same card. The gold ★ always
+points at what's next.
+
+| Landmark | Ruined (start) | Repaired | Grand |
+|---|---|---|---|
+| **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new neighbor | room for 2, and the Office can be built | room for all 3 |
+| **Fountain** | dry and cracked | water again: neighbors make daily wishes | the star turns: friendships grow faster |
+| **Roads & Lamps** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
+| **Market** | a collapsed cart: no shop yet (the Shop button appears once it's repaired) | a striped stall: all Garden and Cozy | a real shop: everything |
+
+| Upgrade | Repaired needs | Grand needs |
 |---|---|---|
-| Ask Nova the Stargazer 3 questions | Post Office plot | **Google**: Hoot reads Gmail, drafts replies |
-| Have Hoot check your mail | Clock Tower + Rocket Pad plots | same Google account: Cog reads and books your Calendar |
-| Ask Cog about your week | Library plot | **Canvas** token: Mabel reads courses, due dates, announcements |
-| Give Yutu a job for two neighbors | the finale | (Yutu starts coordinating once two neighbors live here) |
+| Town Hall | 4 moonstone, 3 stardust, 1 glow ore | 4 moonstone, 2 ice, 2 scrap, the Old Colony Charter, a real job from Hoot, Cog, Mabel or Yutu |
+| Fountain | 3 moonstone, 2 stardust | 2 moon shards, 2 ice, 1 helium-3, the Fountain Valve, a web search by Nova |
+| Roads & Lamps | 3 moonstone, 2 stardust | 2 ice, 1 glow ore, the Lamp Lens |
+| Market | 2 moonstone, 2 stardust, 1 moon shard | 2 scrap, 2 helium-3, the Shop Bell |
 
-Build a plot, then press **E** at the new house to "call" its villager: **CONNECT GOOGLE** opens
-Google sign-in; for Canvas, paste an access token; or choose **USE SAMPLE DATA** for now.
+**New neighbors:** Hoot, Cog and Mabel each have a ruined lot. Clear its rubble (2 piles) and repair it with
+materials, and they move right in, up to the Town Hall's room; you pick the order. Decorating their yard with
+things they love is optional and grows your friendship. **Connecting your real account comes after they move
+in**: the first time you talk to them they ask for it (or try them on sample data).
 
-Buildings the quests reveal are free, so you can never get stuck. Construction takes a few seconds:
-scaffolding goes up, baby clods hammer away, and a path is laid once it's done.
+| Neighbor | Lot | Repair needs |
+|---|---|---|
+| Hoot the Postmaster | Post Office | 3 moonstone, 2 stardust |
+| Cog the Timekeeper | Clock Tower | 3 moonstone, 2 stardust, 1 glow ore |
+| Mabel the Scholar | Library | 3 moonstone, 2 stardust, 1 moon shard |
+
+**Materials:** moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust (2 a drift); moon shards
+(12 glint around the crater); **glow ore** from meteors and three old glowing craters; **ice crystals** in the
+shadowed north; **scrap metal** from wrecks and **helium-3** from shimmering dust in the south. Gathering spots
+grow back each day. **Story items** (one line of flavor each): the Old Colony Charter is dug up at the Town Hall
+once it's repaired, the Lamp Lens is out in the north, Yutu gives you the Fountain Valve when your first new
+neighbor moves in, and your second new neighbor brings the Shop Bell. **Coins** come from popping the stars
+your neighbors leave after real work, sweeping, meteors, requests and shards.
+
+Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), which lets him send your
+replies, with your OK. The town came in with save version 3: older saves start fresh.
+
+**Demo fast mode** (with `DEV_TOOLS=1` on the server): send `{type: "dev", action: "town"}` for a pile of every
+material, all four story items and both jobs done, so any stage can be shown in seconds.
 
 ## The Office (for developers)
 
 The other buildings are everyday agents. The **Office** (a 120¢ plot northeast of the plaza, open from
-the start) is for developers: walk in, and you're the **project manager** of a team of LLM sub-agents.
+the start) is for developers: a live view of your **coding agents**. When Claude Code spins up subagents
+and the work takes a while, walk in and watch them.
 
-- **Connect your AI** (project board → CONNECT AI): one-click **OpenRouter sign-in** (log in, and the Office
-  can use Claude, GPT, Gemini or free models; pick one with the MODEL button), or **paste a key** for Groq or
-  Gemini (both free) or OpenAI / Anthropic. Keys are checked with a tiny request, stored owner-only in
-  `server/data/ai-keys.json`, never sent back to the game (only "••••1a2b"), and can be disconnected.
-  Server-wide keys in `.env` work too. ChatGPT Plus / Claude Pro subscriptions don't include API access.
-- At the **project board**, pick which connected AI the team uses and write a brief.
-- The **team lead** (the model) splits it up and spins up **workers** with a `spawn_worker` tool. Each
-  sub-agent is an office worker: they walk in from the elevator, sit at a desk and work live. Their
-  current step (thinking, searching the web, running code, writing) floats over their monitor, and
-  the board shows TO DO / DOING / DONE.
-- Walk up to a worker to **check in**: their task, what they've done, and ask them how it's going.
-- When everyone's done, the lead combines their work into one deliverable on the board, and
-  **OPEN REPORT** shows it in a browser tab (reports are saved in `server/data/office/`).
-- Workers can do what the model can: Claude workers have web search and code execution, Groq workers
-  web search, GPT workers reasoning and writing.
+- **Your Claude Code session is the Team Lead**, standing by the board. **Every subagent it sends out is a
+  worker**: it walks in from the elevator when it's spawned, takes one of twelve desks, and works there.
+  Its monitor shows code scrolling while it uses tools, "..." while it thinks, "?" if it's waiting on you,
+  a green ✓ when it's done (or red if it stopped); after a while finished workers head home.
+- Over each desk: what that agent is doing right now ("Reading GameScene.ts", "Running npm test",
+  "Searching for \"shardSpots\""); walk close to see its name too. The board says LEAD / WORKING / DONE, and
+  the top-left panel sums it up ("LIVE · 3 working · 1 done").
+- **Walk up to anyone (E) to watch their live feed**: their task (the prompt they were given), then
+  everything as it happens: thinking, messages, each tool call with its input (the command, the file, the
+  edit), and a preview of what came back, plus elapsed time, tool calls, tokens and model. PREV / NEXT
+  step through the team. The board (E) lists everyone; INSPECT and LEAD jump to a feed, SWITCH flips
+  between sessions if you have several running.
+- **Nothing running? REPLAY** (at the board) plays back your most recent past session that used subagents,
+  sped up to about a minute and a half, so the Office is never empty in a demo.
+- While you're outside, a toast says when new agents start work.
+- **How it works:** Claude Code writes each session to `~/.claude/projects/<project>/<session>.jsonl` as it
+  goes, and each subagent gets its own file (plus a small meta file with its task) under
+  `<session>/subagents/`. The server tails those files every second (`server/src/agentwatch.ts`); there's
+  nothing to install or configure. It's read-only: the Office never steers your agents. Use
+  `CLAUDE_PROJECTS_DIR` to point it somewhere else.
+- **Other tools** (Codex, Gemini, your own scripts) can put their agents in the Office by POSTing JSON
+  (`content-type: application/json`, from a tool, not a web page) to `http://localhost:8787/agents/event`:
+  `{"session":"s1","title":"Fix login bug","agent":"w1","name":"Write failing test","tool":"Running npm test","status":"working"}`
+  (fields: `session`, `title`, `project`, `agent` (omit or `"lead"` for the lead), `name`, `parent`,
+  `status` thinking/working/waiting/done/failed, `activity`, `say`, `tool`, `result`, `model`).
+- **Privacy:** the feed includes your code, commands and their output, so it's only ever sent to a game
+  running on the same computer (never to another device on the network, never to your phone), and the
+  event endpoint only accepts reports from this computer.
+
+## Accounts
+
+**Connections live in the MoonPad.** It's a phone (status bar, notch, home bar) with two tabs: **CHATS**
+(text your neighbors) and **CONNECT**: Google (Gmail + Calendar), Canvas (any school), your phone
+(iMessage) and Claude Code (for the Office), each ✓ / ● sample / ○ with a button where there's something
+to do, plus **TEST CONNECTIONS**, whose results appear on each row. The very first time you land, the
+MoonPad opens on this screen as a **WELCOME** setup (skip anything, then START PLAYING). Help → ACCOUNTS
+opens the same screen.
+
+Villagers also ask at the moment it's useful: Nova needs nothing (quest 1 works with
+zero setup); Hoot's door asks for Google (and Cog then moves in without asking again, same account);
+Mabel's door asks for your school's Canvas; the first letter that needs your OK offers to text these to
+your phone. Sample data always works, and a villager on sample
+data mentions (once per visit) that your real account is one sign-in away.
+
+**Help → ACCOUNTS** is also a "connect everything now" checklist (handy before a demo): Google, Canvas,
+your phone and Claude Code, each ✓ / ● sample / ○ with a button, ticking itself off live. **TEST** runs a
+real, read-only check of each one (reads a few emails and this week's calendar, checks which Google
+permissions were granted, fetches your Canvas courses, checks the phone link, checks Claude Code for the Office, pings the villagers' AI) and reports
+✓, or ✗ with what to do in plain words (e.g. "the Gmail API is turned off in your Google Cloud project:
+enable it here"). It shows every connection in one place (Google for Hoot and Cog, Canvas for Mabel,
+your phone for iMessage) with a button to connect whatever isn't yet. When a villager is still on Earth,
+their door's CALL dialog connects the account they need. **Sign in with Google** needs a one-time setup by whoever runs the colony: open
+`http://localhost:8787/setup/google` (or press SET UP GOOGLE in Help → ACCOUNTS). It walks through
+creating the Google Cloud project, turning on the Gmail and Calendar APIs, and making a Web OAuth client
+with the redirect URI it shows, then takes the Client ID and secret in a form (saved to
+`server/data/google-client.json`, owner-only; `.env` works too). After that, every player's CONNECT GOOGLE
+opens the real Google sign-in. Publish the app (Google Auth Platform → Audience) so anyone can sign in;
+until Google verifies it, players click through a "Google hasn't verified this app" screen (Advanced →
+Go to Fl-AI Me to the Moon). Until it's set up, the dialogs offer **sample data** instead of a dead end. **Canvas works at any school.** Mabel's connect dialog asks which school you're at and searches Canvas's
+public school directory (the one the official Canvas app's "Find your school" uses), or you can type a
+Canvas address like `canvas.myschool.edu` directly. The choice is remembered (CHANGE SCHOOL to switch).
+**Sign in with Canvas** then opens a Chrome window at *that* school's Canvas: log in the
+normal way (SSO, Duo), and the game asks Canvas for a personal access key for Mabel from inside that
+signed-in page (the same thing Canvas settings → "+ New Access Token" does), connects, and closes the
+window. No developer key from the school is needed. If Canvas won't make the key directly, the same
+window goes straight to Canvas settings with the "New Access Token" dialog already open: click
+**Generate Token** and the game picks the token up and closes the window, with no copy and paste.
+It follows whatever address you ended up signed in at, so custom school domains work. Mabel only ever reads.
+
+If Google sign-in is set up but Google would refuse it (the redirect URI isn't registered, or the Client
+ID is wrong), CONNECT GOOGLE shows exactly what to fix instead of Google's error page.
+
+The colony server only listens on this computer (`127.0.0.1`) and only answers to `localhost`,
+`127.0.0.1` or `[::1]`. To play from another device on your network, set `HOST=0.0.0.0` and
+`ALLOWED_HOSTS=<the address they use>` (comma-separated); connecting accounts, answering letters and
+asking villagers for real work still only works from the game on the colony's own computer.
+
+For testing without touching your save: `MOON_DATA_DIR=/some/folder PORT=8797 npm run dev:server`
+runs a server with its own data, and `http://localhost:5173/?server=8797` points the game at it.
 
 ## Clearing rocks
 
 Rocks outside your buildings can be cleared: click one (or stand by it and press the action button)
 to haul it away for good. Pebbles 10¢, boulders 25¢, spires 30¢, crystal outcrops 40¢, stone arches 60¢.
+Sometimes there's something underneath (loose change, a lost trinket, raw moon-crystal): crystal outcrops
+always pay out, arches usually do, pebbles rarely.
 
 ## Earning coins
 
-- **Pop clods**: every real tool call a villager makes leaves a clod worth a few coins.
-- **Moondust**: drifts pile up by the solar lamps and dim them, even while you're away. Hold SPACE to sweep one (3¢).
-- **Meteors**: a shadow and a whistle, then a glowing moon-rock. Grab it (SPACE) before it cools (8¢). Sometimes a shower comes.
+- **Pop stars**: every real tool call a villager makes leaves a star worth a few coins.
+- **Moondust**: drifts pile up by the solar lamps and dim them, even while you're away. Hold E (or SPACE) by one to sweep it (3¢).
+- **Meteors**: a shadow and a whistle, then a glowing moon-rock. Grab it (E) before it cools (8¢). Sometimes a shower comes.
+- **Colony requests**: three small goals a day from the neighbors who live here (sweep drifts, catch a meteor, clear a rock, decorate a yard, find a shard, text someone, ask for help in person, pop stars), paid when done. New ones each day; the gold badge on the Quests button counts what's left, and the Quests list shows them first.
+- **Moon Shards**: 12 glowing pieces of the old colony's broken beacon are hidden across the wilds. Walk over one to pick it up (15¢); find all 12 and Nova relights the beacon (+200¢). The first shard you find, Nova explains all this; halfway she cheers you on, and the Quests list tracks them.
 - **Villager chores** (opt-in, per villager): tick **[ ] CHORES** in their dialog and, when idle, they do a small real check every 15 minutes (unread mail, next 24h, what's due, space news). Each round uses real API calls. Chores never count toward quests.
+
+Coins you earn fly from where you earned them into your wallet. Hold a direction to break from a walk into a run
+(with a trail of moondust), and villagers say hi by name as you pass. The music is played live in the browser
+(a soft procedural lullaby, no audio files); the note button on the toolbar mutes it, and the choice is remembered.
 
 When they're not working, villagers wander, visit each other and gossip: scripted lines plus small talk about
 what they actually fetched for you (no extra API calls).
@@ -86,13 +273,54 @@ what they actually fetched for you (no extra API calls).
 
 | On the island | What the agent is doing |
 |---|---|
-| Villager walks to a building | Using that tool: Mailbox = read inbox, Post Office = draft, Rocket Pad = send, Clock Tower = calendar, Library = Canvas, Observatory = web |
+| Villager walks to a building | Using that tool: Mailbox = read inbox, Post Office = draft, Mail Rocket = send, Clock Tower = calendar, Library = Canvas, Observatory = web |
 | Thought bubble over a villager (click it) | Its latest reasoning |
-| Baby clod runs off, then glows | One real tool call finished. SPACE pops it for the result and coins |
+| Little star runs off, then glows | One real tool call finished. E pops it for the result and coins |
 | Two villagers meet, a letter flies | A handoff between agents |
 | Villager at your door with ❗ and a letter | Needs your OK to send an email or book an event. The same letter texts your phone |
 | Building smokes | A tool failed ("the post office is closed") |
 | Lantern rises | Task done; the lantern ring at the plaza is your history |
+
+### Ada the Team Lead
+
+Build the Office and **Ada 💼** sets up there. She's a neighbor like the rest (hearts, texts on the
+MoonPad and your phone, "Ada: ..." to reach her), but she works in the Office instead of wandering the
+island. Walk up to her there and press E, or text her: she checks on your coding agents (what's
+running, who's stuck or waiting on you, what finished) and tells you how it's going.
+
+## Talking to villagers
+
+Talking happens right where you stand. **With the mic on, just talk:** near a neighbor, say their
+name ("Hey Hoot, what's in my inbox?"), or say hi while you're right beside one, and the conversation
+starts hands-free. You can keep walking; walk off (or press **ESC**) to leave. Or press **E** next to
+them (or **Enter** mid-conversation) to type instead. The chat bar shows the conversation so far.
+
+They stop, turn to you, think ("..."), and answer out loud in bubbles over their head, a sentence or
+two at a time. **Talk over them to interrupt:** they stop mid-sentence and listen (the mic ignores their
+own voice coming back through your speakers). Pausing mid-sentence doesn't cut you off: what you say
+builds up and sends after about two seconds of quiet (a thin bar under the chat fills as it's about to
+go), or right away when you press Enter. They greet you once; come back within five minutes and the
+conversation so far is still there. (Letters to approve and account connections still open their own
+windows.)
+
+- **Email addresses out loud**: say "jordan dot lee at gmail dot com", or spell it ("j o r d a n at
+  wustl dot edu"), and it arrives as jordan.lee@gmail.com; Hoot fixes up anything still garbled or asks
+  you to spell it.
+- **The mic button** (on the chat bar, and on the toolbar) turns voice off, and it stays off until you
+  turn it back on. It only ever listens with a neighbor close by, never while you're off on your own.
+- **Sounds are spatial**: hammering, bells, meteors, finished jobs and villagers' voices are louder
+  close up, fade with distance, and pan left or right toward where they happen.
+
+- **Voices**: every villager has their own ElevenLabs voice (set `ELEVENLABS_API_KEY`; the free plan
+  works). Each reply's first couple of sentences are spoken, the rest types out, and every line is
+  cached in `server/data/voice/`, so repeats cost no credits. No key, out of credits, or offline?
+  The browser's built-in voices take over. `BROWSER_VOICES=1` keeps ElevenLabs off while you
+  develop. The **sound** button on the toolbar mutes voices along with sound effects.
+- **Voice input** uses the browser's speech recognition: Chrome, Edge or Safari, online, on
+  localhost or https.
+- **Conversation, not reports**: in person, villagers answer in a sentence or three and offer more.
+  If a lookup comes back long (a web search, an inbox rundown), they retell the highlight and keep
+  the rest in mind, so "tell me more" picks up without searching again.
 
 ## Safety
 
@@ -105,13 +333,26 @@ what they actually fetched for you (no extra API calls).
 Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at the bottom (hover an icon for its name):
 
 - **MoonPad** (tablet): text any villager who's moved in to get to know them. Texts are just conversation: villagers remember what you tell them (saved on the server with the colony) and friendship grows, shown as hearts. Ask for real work over text and they'll invite you to their house; tasks only run when you ask in person, and those visits count double toward friendship. A red badge means new replies.
-- **Supply Pod** (crate): 12 decorations from a 25¢ flag to a 120¢ habitat dome (prices are checked on the server).
+- **Shop** (crate): 34 decorations in four tabs (Garden, Cozy, Sci-Fi, Party), from a 20¢ shrub to a 150¢ Star Portal (prices are checked on the server). Each tile shows who loves it.
 - **Quests** (scroll) · **Help** (?)
-- **Call** (phone): lights up at a villager's door when they're out; they walk home. There's also a CALL button at the door itself, and E works too.
-- **Edit layout** (pencil): pick up any building, plot or decoration and set it down anywhere on the island. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
-- **Action button** (right end): its icon shows whatever you're standing next to: talk, read a letter, build, pop a clod, grab a moon-rock, hold to sweep, or arrange a decoration.
+- **Music** (note) and **Sound effects** (speaker): separate mutes, remembered per browser.
+- **Edit layout** (pencil): drag any building, plot, decoration or task lantern (the stone lanterns planted when villagers finish real work) anywhere on the island, or click a decoration to sell it. Task lanterns can be moved but not sold. Everything snaps to the 16px tile grid; the footprint turns green where it fits and red where it doesn't (tiles must be on the island and free, the plaza and your ship stay clear, and buildings keep the tile row in front of their door open). Paths, lamps and doorbells follow the building. The banner above the toolbar has SELL (for decorations), CANCEL and DONE. Positions are saved on the server and checked there too.
+- **Action button** (right end): does exactly what E would, and its icon shows what that is: calling a villager home from their door (also a CALL button at the door itself), talk, read a letter, build, pop a star, grab a moon-rock, hold to sweep, or switch a light on or off. Lights (the Glow Lamp and the Habitat Dome) are the only decorations you interact with outside edit mode; moving and selling happen in edit mode.
 
-Keys are optional shortcuts: E (action/call), SPACE (pop/grab, hold to sweep), B (Supply Pod), ESC (put down / leave edit mode).
+**Decorations are part of the daily requests.** Every day one neighbor who lives here makes a **wish**
+for a decoration they love that isn't in their yard yet ("Hoot: I'd love an Owl Birdbath by my home!").
+Put it in their yard and the wish pays out (20¢ + half the item's price) on top of the happiness. There's
+also a "place 3 new decorations" request in the mix. In the Shop every tile shows the little heads of
+the villagers who love it, a gold ★ marks today's wished-for item, and hovering a tile (or any decoration
+already placed in the world) says who loves it and, in the world, whose yard it's brightening.
+
+**Decorations make villagers happy.** Each villager has favorite items (the Shop lists who loves what). A decoration in a villager's yard (3 tiles around their house) adds happiness: +3 for a favorite, +1 for anything else, each kind counted once, up to 12. Happiness adds to friendship hearts, the villager reacts when you place something, and they mention their decorated home in conversation. While carrying a decoration, yards are outlined and a label previews whose happiness it would change.
+
+**Meteors** show on the minimap (red and blinking while falling, orange once landed), and when one is off-screen a marker on the screen edge points to it. Villagers show on the minimap as little head icons, the same ones as in the top-left list.
+
+**The gold ★** always marks your current goal: over the villager's head when they're on screen, an arrow at the screen edge (named) when they're not. It points to the plot to build, then the door to call from, then the villager. New players get a one-time hint at the top of the screen for walking, then for following the ★.
+
+**E or SPACE interacts with whatever is closest** (talk, call, build, read a letter, pop, grab, switch a light; hold to sweep): the two keys are interchangeable everywhere, including the Office. Next to a villager, E opens the chat. Other keys: B (Shop), M (music), ESC (close any window / put down / leave edit mode). While a window is open (dialog, MoonPad, shop), keys go to it, not to walking.
 
 ## Texting the colony (Photon Spectrum, iMessage)
 
@@ -122,7 +363,9 @@ the friendship and real work waits for a visit; `help` lists who's
 around. Approval letters also arrive as texts: reply YES or NO. No credentials yet? `PHOTON_TERMINAL=1`
 runs the same flow in Photon's terminal chat.
 
-The buildings sit evenly on one circle around the central plaza, each with a single path.
+The buildings sit evenly on one circle around the central plaza, each with a single path. They're full estates (all hand-built pixel art at native size): a turreted manor with a smoking chimney, the Jade Rabbit's hollow under a giant blossoming tree, a colonnaded post office with a bell cupola (and, once upgraded, a mail rocket on a gantry beside it), a 180px clock tower whose clock shows the real time, an observatory with a giant brass telescope, a domed library with twin towers. Before a building is built, its plot is staked out at its real footprint. Each home has its own forecourt, in the character of whoever lives there: brick herringbone and tulip boxes at your house, a lawn with stepping stones and a carrot patch at Yutu's, star-inlaid navy slate and glowing crystals at Nova's, a blue-and-cream checkerboard with parcels at the Post Office, cobbles around a brass compass rose at the Clock Tower, a reading deck with a rug and lavender at the Library, and lit concrete with a </> inlay at the Office. Windows glow. The grand plaza is marble laid in rings with gold and coral inlays, around the three-tier Earthrise Fountain (the coral spark turns on top), kept wide open to walk around: lampposts stand on the rim and gold-tipped obelisks just outside it, both in the gaps between the paths. Moon rocks (boulders, spires, arches and glowing crystal outcrops) are scattered over the island; they sit on the tile grid and take up their tiles like everything else.
+
+**Dev mode** (Help → DEV MODE): switches to a separate showcase save (`server/data/world-dev.json`, made from a copy of your colony the first time) with every estate built, every villager moved in, every quest done and 5000¢. Your real save is written out first and never touched; EXIT (top of the screen) brings it back exactly as it was.
 
 ## Pixel-perfect rendering
 
@@ -136,5 +379,8 @@ shared/game.ts            contract: buildings, villagers, quests, events, snapsh
 server/src/connectors/    real Gmail + Calendar (Google OAuth) and Canvas
 server/src/services.ts    live-or-sample routing, residents, quest chain
 server/src/agents.ts      villager tool-use loops (Claude or Groq), approvals
+server/src/voice.ts       ElevenLabs voices for the talk dialog, cached on disk
 client/                   Phaser 3 + Vite; all art generated from code
+client/src/panel.ts       dialogs: letters, connections, the Office boards
+client/src/neartalk.ts    talking in place: the chat bar, the mic, speech bubbles
 ```

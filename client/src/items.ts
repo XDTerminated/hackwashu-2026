@@ -1,4 +1,4 @@
-// How each Supply Pod decoration looks and sits in the world. Names and
+// How each Shop decoration looks and sits in the world. Names and
 // prices live in shared/decor.ts so the server can charge the real price.
 
 import { DECOR, type DecorDef } from "../../shared/decor";
@@ -13,6 +13,9 @@ const LOOKS: Record<string, Look> = {
   lantern: { glow: { color: 0xf5c542, alpha: 0.5, dx: 3, dy: -15 } },
   crystal: { glow: { color: 0x6fe3e1, alpha: 0.35, dx: 0, dy: -9 } },
   dome: { glow: { color: 0xffd98a, alpha: 0.2, dx: 11, dy: -10 } },
+  fountain: { glow: { color: 0x9fe3f0, alpha: 0.18, dx: 0, dy: -14 } },
+  garland: { glow: { color: 0xffb070, alpha: 0.3, dx: 0, dy: -16 } },
+  pagoda: { glow: { color: 0xfff2b0, alpha: 0.35, dx: 0, dy: -49 } },
 };
 
 export interface ShopItem extends DecorDef, Look {

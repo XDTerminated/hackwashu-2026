@@ -5,7 +5,8 @@
 import Phaser from "phaser";
 import type { Chore } from "../../shared/game";
 import { puff } from "./actors";
-import { sfx } from "./sfx";
+import { serverNow } from "./net";
+import { sfxAt } from "./sfx";
 import { shadowKey } from "./textures";
 
 const HOT = Phaser.Display.Color.ValueToColor(0xffffff);
@@ -28,17 +29,18 @@ export class ChoreView {
   ) {
     if (chore.kind === "dust") {
       const variant = Math.abs([...chore.id].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7)) % 3;
-      this.objs.push(scene.add.image(chore.x, chore.y, `dust_${variant}`).setDepth(-7.5));
+      this.objs.push(scene.add.sprite(chore.x, chore.y, `dust_${variant}_0`).play({ key: `dust-${variant}`, startFrame: variant % 2 }).setDepth(-7.5));
       return;
     }
-    if (Date.now() >= (chore.landsAt ?? 0)) {
+    // (landsAt is on the server's clock)
+    if (serverNow() >= (chore.landsAt ?? 0)) {
       this.land(false);
     } else {
       this.shadow = scene.add.image(chore.x, chore.y, shadowKey(scene, 6)).setDepth(-7.4);
       this.meteor = scene.add.image(chore.x, chore.y, "meteor").setDepth(99990).setVisible(false);
       for (let i = 0; i < 4; i++) this.trail.push(scene.add.image(chore.x, chore.y, "meteor").setDepth(99989).setAlpha(0.5 - i * 0.1).setVisible(false));
       this.objs.push(this.shadow, this.meteor, ...this.trail);
-      if (near(chore.x, chore.y, 420)) sfx.whistle();
+      if (near(chore.x, chore.y, 420)) sfxAt(chore.x, chore.y).whistle();
     }
   }
 
@@ -47,6 +49,11 @@ export class ChoreView {
   }
   get y() {
     return this.chore.y;
+  }
+
+  /** A meteor still on its way down (its shadow is growing). */
+  get falling() {
+    return this.chore.kind === "meteor" && !this.landed && !this.gone;
   }
 
   /** A meteor you can grab: landed and not yet crumbled. */
@@ -68,7 +75,7 @@ export class ChoreView {
     if (fresh) {
       for (let i = 0; i < 8; i++) this.scene.time.delayedCall(i * 30, () => puff(this.scene, x + Phaser.Math.Between(-10, 10), y - 2));
       if (this.near(x, y, 260)) {
-        sfx.thunk();
+        sfxAt(x, y).thunk();
         this.scene.cameras.main.shake(160, 0.006);
       }
     }
