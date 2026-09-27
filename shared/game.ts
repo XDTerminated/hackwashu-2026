@@ -486,6 +486,8 @@ export interface Snapshot {
   shards: string[];
   /** Today's colony requests. */
   requests: ColonyRequest[];
+  /** This player has seen the intro (it plays once, the first time they play). */
+  introSeen: boolean;
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -574,6 +576,8 @@ export type ClientMessage =
   | { type: "toggle_deco"; id: string }
   /** Switch to (or back from) the dev showcase save. */
   | { type: "dev_mode"; on: boolean }
+  /** The intro's been watched (it only plays the first time). */
+  | { type: "intro_seen" }
   /** Testing: start this save over from scratch (the server keeps a copy of the old one). */
   | { type: "reset_world" }
   | { type: "move_lantern"; id: string; x: number; y: number }

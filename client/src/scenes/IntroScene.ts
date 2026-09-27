@@ -25,16 +25,14 @@ import {
   tiny,
   type FamilyId,
 } from "../cutart";
+import { store } from "../store";
 import { Cutscene, Fam, VOICE } from "./Cutscene";
 
 export const INTRO_SEEN = "moon-intro-seen";
 
+/** Has this player seen the intro? It's kept with their save (so online, per account): it plays the first time only. */
 export function introSeen() {
-  try {
-    return localStorage.getItem(INTRO_SEEN) === "1";
-  } catch {
-    return true;
-  }
+  return store.introSeen;
 }
 
 /**
@@ -59,10 +57,10 @@ export class IntroScene extends Cutscene {
   }
 
   protected onEnd() {
-    try {
-      localStorage.setItem(INTRO_SEEN, "1");
-    } catch {
-      /* private mode: it'll just play again next time */
+    // (remembered with their save, so it never plays for them again)
+    if (!store.introSeen) {
+      store.introSeen = true;
+      net.send({ type: "intro_seen" });
     }
     if (this.then === "back") {
       this.scene.stop();

@@ -3,14 +3,16 @@ import * as net from "../net";
 import { startMusic } from "../music";
 import { Button, C, measure, ptext, woodFrame } from "../widgets";
 import { introSeen } from "./IntroScene";
+import { onStoreChange, store } from "../store";
 
 // One line: the intro cutscene tells the story; the title just sets the mood.
 const STORY = ["Every home you build brings back a line to Earth."];
 
 /**
  * The front door. Online, everyone signs in (with Google) for their own
- * private village; then PLAY. On your own computer there are no accounts: just
- * PLAY. Either way there's the intro to watch again, and who you're signed in as.
+ * private village; then PLAY. On your own computer, signing in with Google
+ * brings your Gmail and Calendar along (or just PLAY). The intro plays the
+ * first time a player plays, and never again.
  */
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -117,40 +119,65 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
 
-    // Signed in (online), or on your own computer: play.
+    // Signed in (online), or on your own computer: play. (Wait for the colony first: it knows
+    // whether this player has seen the intro, which only plays their first time.)
+    if (!store.connected) {
+      inside(Math.round(panelH / 2) - 5, "Reaching the Moon...", C.inkSoft, "pxb");
+      const off = onStoreChange(() => store.connected && this.scene.restart());
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+      return;
+    }
     let landing = false;
-    const intro = () => {
-      if (landing) return;
-      landing = true;
-      startMusic();
-      this.cameras.main.fadeOut(400, 7, 6, 15);
-      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start("Intro"));
-    };
     const play = () => {
       if (landing) return;
-      // First time: the story of how you got here.
-      if (!introSeen()) return intro();
       landing = true;
       startMusic();
-      this.cameras.main.fadeOut(400, 11, 10, 26);
+      // First time on this account: the story of how you got here, then the game.
+      const first = !introSeen();
+      this.cameras.main.fadeOut(400, first ? 7 : 11, first ? 6 : 10, first ? 15 : 26);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        if (first) return void this.scene.start("Intro");
         this.scene.start("Game");
         this.scene.launch("UI");
       });
     };
-    const seen = introSeen();
     if (auth.state === "in") {
       inside(9, `WELCOME BACK, ${(auth.name || auth.email.split("@")[0]).toUpperCase()}`, C.coral, "pxb");
       inside(22, auth.email, C.inkSoft, "sm");
-      buttons([{ label: seen ? "PLAY" : "START", act: play, main: true }, ...(seen ? [{ label: "WATCH INTRO", act: intro }] : []), { label: "SIGN OUT", act: () => net.signOut() }]);
+      buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN OUT", act: () => net.signOut() }]);
       link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
     } else {
-      inside(9, "YOUR COLONY", C.coral, "pxb");
-      inside(22, "Saved on this computer. (Online, every player signs in for their own village.)", C.inkSoft, "sm");
-      buttons([{ label: seen ? "PLAY" : "START", act: play, main: true }, ...(seen ? [{ label: "WATCH INTRO", act: intro }] : [])]);
+      // On your own computer: sign in with Google (your Gmail and Calendar come along), or just play.
+      const google = store.connections.google;
+      if (google.connected) {
+        inside(9, `WELCOME BACK, ${(google.account ?? "traveler").split("@")[0].toUpperCase()}`, C.coral, "pxb");
+        inside(22, `Signed in with Google: ${google.account ?? ""}`, C.inkSoft, "sm");
+        buttons([{ label: "PLAY", act: play, main: true }]);
+      } else {
+        inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
+        inside(22, "Sign in with Google and your Gmail and Calendar come along. (Online, each Google account gets its own village.)", C.inkSoft, "sm");
+        buttons([
+          {
+            label: "SIGN IN WITH GOOGLE",
+            main: true,
+            act: () => {
+              window.open(`${net.SERVER_HTTP}/connect/google`, "_blank");
+              // (the title updates by itself once you're signed in)
+            },
+          },
+          { label: "PLAY", act: play },
+        ]);
+        let was: boolean = google.connected;
+        const off = onStoreChange(() => {
+          if (store.connections.google.connected !== was) {
+            was = store.connections.google.connected;
+            if (!landing) this.scene.restart();
+          }
+        });
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+      }
     }
     below("SPACE or ENTER to play");
-    for (const key of ["keydown-SPACE", "keydown-ENTER", "keydown-E"]) this.input.keyboard!.once(key, play);
-    this.input.keyboard!.once("keydown-I", intro);
+    for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, play);
   }
 }

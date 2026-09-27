@@ -28,6 +28,7 @@ export const store: Snapshot & { connected: boolean } = {
   clearedRocks: [],
   shards: [],
   requests: [],
+  introSeen: false,
   connected: false,
 };
 

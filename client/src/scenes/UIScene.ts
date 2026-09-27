@@ -930,9 +930,8 @@ export class UIScene extends Phaser.Scene {
     const shards = found < SHARD_COUNT
       ? `★ Moon Shards: ${found}/${SHARD_COUNT}. Pieces of the old colony's beacon, glinting out in the wilds: ${SHARD_REWARD}¢ each, and all ${SHARD_COUNT} relight the beacon for +${SHARD_BONUS}¢.`
       : `★ Moon Shards: all ${SHARD_COUNT} found. The beacon shines again.`;
-    const buttons = [
-      { label: "TOWN HALL", onClick: () => (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
-      { label: "WATCH INTRO", onClick: () => this.playCutscene("Intro") },
+    const buttons: { label: string; onClick: () => void }[] = [
+      { label: "TOWN HALL", onClick: () => void (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
     ];
     if (finished) buttons.push({ label: "WATCH FINALE", onClick: () => this.playCutscene("Ending") });
     openInfo("QUESTS", [...story, "TODAY'S REQUESTS", ...requests, shards], buttons);

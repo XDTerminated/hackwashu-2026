@@ -484,6 +484,11 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         break;
       }
 
+      case "intro_seen":
+        world.introSeen = true;
+        savePersist();
+        break;
+
       case "reset_world": {
         // (only from the game on this computer, or your own copy online)
         if (!localClients.has(ws)) break;

@@ -59,6 +59,8 @@ interface World {
   memory: Partial<Record<VillagerId, VillagerMemory>>;
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
   clearedRocks: string[];
+  /** The intro has played for this player (it only plays the first time). */
+  introSeen?: boolean;
   /** When the last cleared rock grew back (they return slowly, one at a time). */
   rocksGrewAt?: number;
   shards: string[];
@@ -102,6 +104,7 @@ function freshWorld(): World {
     shards: [],
     requests: { day: "", list: [] },
     lastChoreAt: {},
+    introSeen: false,
     progress,
     buildings,
     villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle(), dj: idle(), mechanic: idle() },
@@ -139,6 +142,8 @@ function load(file = DATA_FILE): World {
     w.layout ??= {};
     w.clearedRocks ??= [];
     w.shards ??= [];
+    // (a save from before this was kept: anyone who's got going has seen the intro)
+    w.introSeen ??= (Array.isArray(w.progress.movedIn) && w.progress.movedIn.length > 0) || (w.progress.town?.stages?.town_hall ?? 0) > 0;
     // A shard found at a spot that has since moved (the town's layout changed)
     // counts as found at the nearest spot you haven't found yet.
     const spots = shardSpots().map(shardKey);
@@ -345,6 +350,7 @@ export function snapshot(): Snapshot {
     friendship: Object.fromEntries(Object.entries(world.memory).map(([v, m]) => [v, m!.points])),
     layout: world.layout,
     devMode: isDevWorld(),
+    introSeen: !!world.introSeen,
     clearedRocks: world.clearedRocks,
     shards: world.shards,
     requests: world.requests.list,
