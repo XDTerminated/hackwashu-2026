@@ -20,6 +20,7 @@ import {
   type SeqEvent,
   type VillagerId,
   IN_OFFICE,
+  TUTORIAL_VILLAGER,
 } from "../../../shared/game";
 import { checklist, lovedCount, nextStep, type MoveInState } from "../../../shared/movein";
 import { ClodActor, VillagerActor, puff } from "../actors";
@@ -33,12 +34,12 @@ import { Button, C, Label } from "../widgets";
 import { LANDING, SPOTS, STREET, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
-import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter } from "../panel";
+import { closePanel, isPanelOpen, onPanelToggle, openConnect, openGuide, openInfo, openLetter } from "../panel";
 import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { clearListener, setListener, sfx, sfxAt } from "../sfx";
 import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
-import { pendingApprovalFor, store } from "../store";
+import { inTutorial, pendingApprovalFor, store } from "../store";
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
@@ -94,6 +95,8 @@ interface Interactable {
   act: () => void;
   /** Hold-to-do actions (sweeping) instead of a single press. */
   hold?: boolean;
+  /** Part of Yutu's tutorial (the only things E does until it's done). */
+  tut?: boolean;
   /** Calling a villager: a CALL button at their door (and on the toolbar), or E. */
   atDoor?: boolean;
   /** The villager this is about (talking or reading their letter). */
@@ -294,7 +297,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     const rabbit = this.villagers.get("jade_rabbit");
-    if (rabbit && store.connected && !welcomed) {
+    if (rabbit && store.connected && !welcomed && !inTutorial()) {
       welcomed = true;
       const ready = store.clods.filter((c) => c.status === "ready").length;
       this.time.delayedCall(900, () => {
@@ -573,15 +576,24 @@ export class GameScene extends Phaser.Scene {
     const step = n?.kind === "lot" && n.tutorial ? n.tutorial : null;
     const was = this.tutorialStep;
     this.tutorialStep = step;
-    if (was === undefined || step === was) return;
+    // (on arrival, only if there's a tutorial step to pick up)
+    if (step === was || (was === undefined && !step)) return;
     const LINES: Record<number, string> = {
       1: "Let's get you started! Nova the Stargazer wants to move up, but her Observatory is a ruin. Walk to her lot (follow the gold ★) and press E by each heap of rubble.",
       2: "Rubble breaks into moonstone! The repair needs a little more: press E by any boulder to break it up.",
       3: "Now stardust: moondust drifts settle around the lamps. Stand on one and hold E to sweep it.",
       4: "That's everything the repair needs. Walk up to Nova's lot and press E to repair it!",
     };
-    const text = step ? LINES[step] : was ? "Nova's home! That's the ropes: gather, sweep, repair. Now the town: press E at the Town Hall (the dome) to see its projects. Each one you fix makes room for more neighbors." : null;
-    if (text) this.time.delayedCall(step === 1 ? 2500 : 600, () => this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text }));
+    const text = step ? LINES[step] : was ? "Nova's home, and that's the ropes: gather, sweep, repair. The town's all yours now! Press E at the Town Hall (the glass dome) to see its projects: each one you fix makes room for more neighbors." : null;
+    if (!text) return;
+    const done = !step;
+    // Yutu's window, with her portrait: once whatever's on screen now is out of the way.
+    const show = () => {
+      if (this.windowOpen() || isMoonPadOpen()) return void this.time.delayedCall(500, show);
+      const hello = step === 1 ? "Welcome to the Moon! I'm Yutu, the mayor around here. " : was === undefined ? "Welcome back! Where were we... " : "";
+      openGuide("jade_rabbit", hello + text, done ? "LET'S GO!" : "GOT IT", () => done && this.game.events.emit("tutorial-done"));
+    };
+    this.time.delayedCall(was === undefined ? 800 : done ? 4000 : 700, show);
   }
 
   /** After any progress: redraw what's gathered or dug, and celebrate any landmark that went up a stage. */
@@ -1552,8 +1564,9 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       player: () => this.player,
       actor: (v) => this.villagers.get(v),
-      nearest: () => this.talkable(),
+      nearest: () => (inTutorial() ? null : this.talkable()),
       around: (r) =>
+        inTutorial() ? [] :
         [...this.villagers.entries()]
           .map(([v, a]) => [v, this.distTo(a.x, a.y - 8)] as const)
           .filter(([v, d]) => d < r && !pendingApprovalFor(v) && !this.needsConnect(v))
@@ -1686,7 +1699,8 @@ export class GameScene extends Phaser.Scene {
   private findTarget(): Interactable | null {
     const dist = (x: number, y: number) => this.distTo(x, y);
     const options: Interactable[] = [];
-    const add = (o: Interactable, r: number) => o.d < r && options.push(o);
+    // (in the tutorial, only the tutorial's own things: Nova's lot, boulders, meteors, moondust)
+    const add = (o: Interactable, r: number) => o.d < r && (!inTutorial() || o.tut) && options.push(o);
 
     for (const [v, a] of this.villagers) {
       const letter = pendingApprovalFor(v);
@@ -1742,14 +1756,14 @@ export class GameScene extends Phaser.Scene {
         const lot = store.progress.lots[b] ?? { cleared: [], repaired: false };
         for (const r of this.rubbleSpots(move)) {
           if (lot.cleared.includes(r.i) || this.rubbleSent.has(`${b}:${r.i}`)) continue;
-          add({ verb: "CLEAR", label: "[E] clear rubble", x: r.x, y: r.y - 26, d: dist(r.x, r.y - 6) - 4, act: () => this.clearRubble(move, r) }, 24);
+          add({ verb: "CLEAR", label: "[E] clear rubble", x: r.x, y: r.y - 26, d: dist(r.x, r.y - 6) - 4, act: () => this.clearRubble(move, r), tut: move.villager === TUTORIAL_VILLAGER }, 24);
         }
         if (lot.cleared.length < move.rubble) {
-          add({ verb: "CHECK", label: `[E] ${VILLAGER_SHORT[move.villager]}'s lot`, x: s.x, y: s.y - 36, d: dist(s.x, s.y) + 10, act: () => this.showNeeds(move) }, 46);
+          add({ verb: "CHECK", label: `[E] ${VILLAGER_SHORT[move.villager]}'s lot`, x: s.x, y: s.y - 36, d: dist(s.x, s.y) + 10, act: () => this.showNeeds(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
           continue;
         }
         if (!lot.repaired) {
-          add({ verb: "BUILD", label: "[E] repair the foundation", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showRepair(move) }, 46);
+          add({ verb: "BUILD", label: "[E] repair the foundation", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showRepair(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
           continue;
         }
       }
@@ -1789,16 +1803,16 @@ export class GameScene extends Phaser.Scene {
     // Rocks you could clear.
     for (const r of this.rocks) {
       const w = ROCK_TILES[r.kind] * TILE;
-      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]} moonstone)`, x: r.x, y: r.y - 30, d: dist(r.x, r.y - 6) + 8, act: () => this.clearRockNow(r) }, Math.max(20, w / 2 + 10));
+      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]} moonstone)`, x: r.x, y: r.y - 30, d: dist(r.x, r.y - 6) + 8, act: () => this.clearRockNow(r), tut: true }, Math.max(20, w / 2 + 10));
     }
     // Things you stand on: prompts float above the player's head.
     const head = this.player.y - 30;
     const clod = this.nearestPoppable();
     if (clod) add({ verb: "POP", label: "[E] pop star", x: clod.x, y: head, d: dist(clod.x, clod.y - 6), act: () => this.tryPop() }, 30);
     const rock = this.nearestChore("meteor", 24);
-    if (rock) add({ verb: "GRAB", label: "[E] grab moon-rock", x: rock.x, y: head, d: dist(rock.x, rock.y), act: () => this.tryGrabMeteor() }, 24);
+    if (rock) add({ verb: "GRAB", label: "[E] grab moon-rock", x: rock.x, y: head, d: dist(rock.x, rock.y), act: () => this.tryGrabMeteor(), tut: true }, 24);
     const drift = this.nearestChore("dust", 22);
-    if (drift) add({ verb: "SWEEP", label: "[hold E] sweep", x: drift.x, y: head, d: dist(drift.x, drift.y), act: () => {}, hold: true }, 22);
+    if (drift) add({ verb: "SWEEP", label: "[hold E] sweep", x: drift.x, y: head, d: dist(drift.x, drift.y), act: () => {}, hold: true, tut: true }, 22);
     options.sort((a, b) => a.d - b.d);
     this.doorCall = options.find((o) => o.atDoor) ?? null;
     return options.find((o) => !o.atDoor) ?? null;

@@ -235,3 +235,6 @@ export function applyEvent(e: SeqEvent) {
 export function pendingApprovalFor(v: VillagerId): Approval | undefined {
   return store.approvals.find((a) => a.villager === v);
 }
+
+/** Still in Yutu's tutorial (Nova hasn't moved in yet)? Everything but the tutorial waits till it's done. */
+export const inTutorial = () => store.connected && !store.progress.movedIn.includes("stargazer");

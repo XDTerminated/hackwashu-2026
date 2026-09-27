@@ -11,7 +11,7 @@ import * as net from "../net";
 import { AGENT_STATUS, closePanel, isPanelOpen, mountPanel, openAccounts, openInfo } from "../panel";
 import { mountMoonPad, onUnreadChange, openMoonPad, unreadTotal } from "../tablet";
 import { isSfxMuted, onSfxToggle, sfx, toggleSfx } from "../sfx";
-import { agents, focusedSession, onStoreChange, store } from "../store";
+import { agents, focusedSession, inTutorial, onStoreChange, store } from "../store";
 import { MINIMAP_H, MINIMAP_W } from "../terrain";
 import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
 import { VERB_ICON } from "../icons";
@@ -57,6 +57,8 @@ export class UIScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.BitmapText;
   private matIcons: Phaser.GameObjects.Image[] = [];
   private townPanel!: TownPanel;
+  /** Toolbar buttons that wait for the tutorial (dimmed till then). */
+  private tutorialLocked: IconButton[] = [];
   private matCounts: Phaser.GameObjects.BitmapText[] = [];
   private coinIcon!: Phaser.GameObjects.Image;
   private coinPing = 0;
@@ -232,7 +234,19 @@ export class UIScene extends Phaser.Scene {
     } catch {
       /* skip it */
     }
-    if (!setupShown)
+    // (a new player does Yutu's tutorial first: the MoonPad opens after it, see "tutorial-done")
+    const openSetup = () => {
+      try {
+        localStorage.setItem(SETUP, "1");
+      } catch {
+        /* fine */
+      }
+      openMoonPad("connect", { welcome: true });
+    };
+    const afterTutorial = () => !setupShownNow() && this.time.delayedCall(400, openSetup);
+    this.game.events.on("tutorial-done", afterTutorial);
+    this.unsubs.push(() => this.game.events.off("tutorial-done", afterTutorial));
+    if (!setupShown && !inTutorial())
       this.time.delayedCall(700, () => {
         if (!this.scene.isActive("Game")) return;
         try {
@@ -243,7 +257,7 @@ export class UIScene extends Phaser.Scene {
         openMoonPad("connect", { welcome: true });
       });
     // ...then how to walk, once the MoonPad is closed.
-    const walkHint = () => (isMoonPadOpen() || !setupShownNow() ? this.time.delayedCall(600, walkHint) : this.showHint("Walk with WASD or the arrow keys"));
+    const walkHint = () => (isMoonPadOpen() || isPanelOpen() || (!setupShownNow() && !inTutorial()) ? this.time.delayedCall(600, walkHint) : this.showHint("Walk with WASD or the arrow keys"));
     const setupShownNow = () => {
       try {
         return localStorage.getItem(SETUP) === "1";
@@ -283,6 +297,7 @@ export class UIScene extends Phaser.Scene {
 
   private refresh() {
     this.renderDevBadge();
+    for (const b of this.tutorialLocked) b.setAlpha(inTutorial() ? 0.45 : 1);
     this.renderRequestBadge();
     this.coins.setText(String(store.coins));
     // moonstone · stardust · shards
@@ -723,17 +738,19 @@ export class UIScene extends Phaser.Scene {
       sfx.blip();
       fn();
     };
+    // (during Yutu's tutorial, the MoonPad, Quests, edit mode and the mic wait till it's done)
+    const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get Nova moved in first, then it's all yours.", C.coral) : fn());
     const groups: [string, string, string, () => void][][] = [
       [
-        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", click(() => openMoonPad())],
+        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => openMoonPad()))],
         // (the Shop button only once the Market's repaired: there's no shop before that)
         ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", click(() => this.toggleShop())] as [string, string, string, () => void]] : []),
-        ["icon_quests_0", "quests", "Quests", click(() => this.showQuests())],
+        ["icon_quests_0", "quests", "Quests", later(click(() => this.showQuests()))],
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
       [
-        [isMicOn() ? "icon_mic_on_0" : "icon_mic_0", "mic", MIC_TIP(isMicOn()), click(() => toggleMic())],
-        ["icon_edit_0", "edit", "Edit layout", () => this.game.events.emit("edit-toggle")],
+        [isMicOn() ? "icon_mic_on_0" : "icon_mic_0", "mic", MIC_TIP(isMicOn()), later(click(() => toggleMic()))],
+        ["icon_edit_0", "edit", "Edit layout", later(() => this.game.events.emit("edit-toggle"))],
         [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", "music", isMusicMuted() ? "Music: off (M)" : "Music: on (M)", () => toggleMusic()],
         [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", "sound", isSfxMuted() ? "Sound effects and voices: off" : "Sound effects and voices: on", () => toggleSfx()],
       ],
@@ -757,6 +774,7 @@ export class UIScene extends Phaser.Scene {
     }
     const byWord = (w: string) => made[groups.flat().findIndex((g) => g[1] === w)];
     const [moonpad, quests, mic, edit, music, sound] = ["phone", "quests", "mic", "edit", "music", "sound"].map(byWord);
+    this.tutorialLocked = [moonpad, quests, mic, edit];
     const showMic = (on: boolean) => mic.setIcon(on ? "icon_mic_on_0" : "icon_mic_0").setTooltip(MIC_TIP(on)).setLabel("mic", on ? 0x9dff8a : undefined);
     showMic(isMicOn());
     this.unsubs.push(onMicToggle(showMic));

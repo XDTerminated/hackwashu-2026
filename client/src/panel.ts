@@ -970,6 +970,21 @@ export function openLetter(a: Approval) {
   toggleCb(true);
 }
 
+/**
+ * A neighbor guiding you (the tutorial): their portrait, their words typed
+ * out and spoken, and one button to carry on.
+ */
+export function openGuide(v: VillagerId, text: string, button: string, onDone?: () => void) {
+  if (!dialog) return;
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  dialog.open(VILLAGER_NAMES[v].toUpperCase(), false, { face: { villager: v, mode: "talk" } });
+  dialog.say(text);
+  dialog.setButtons([{ label: button, kind: "ok", onClick: () => (closePanel(), onDone?.()) }]);
+  toggleCb(true);
+}
+
 export function openInfo(title: string, lines: string[], buttons: ButtonSpec[] = []) {
   if (!dialog) return;
   closeMoonPad();
