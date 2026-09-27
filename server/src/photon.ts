@@ -332,7 +332,7 @@ async function inbound(space: Space, message: Inbound[1]) {
 
     if (/^\s*(help|\?|who)\s*[?!.]*\s*$/i.test(text)) {
       const here = residents().map((v) => VILLAGER_NAMES[v]).join(", ");
-      await say(space, `🌙 The Moon colony. Moonfolk here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
+      await say(space, `🌙 The Moon colony. Moonfolk here: ${here}.\nText one by name and they'll do it right here, e.g. "Hoot: anything important in my inbox?" or "Nova: when's the next eclipse?" Anything that sends or books waits for your YES. Anything else goes to Yutu the Jade Rabbit.`);
       return;
     }
 
