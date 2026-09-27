@@ -5,6 +5,8 @@
 
 import * as google from "./connectors/google.js";
 import * as canvas from "./connectors/canvas.js";
+import * as github from "./connectors/github.js";
+import * as spotify from "./connectors/spotify.js";
 import { photonReady, phoneLinked } from "./photon.js";
 import { agentsState } from "./agentwatch.js";
 import { world } from "./world.js";
@@ -65,6 +67,31 @@ export async function testConnections(): Promise<CheckResult[]> {
       out.push({ name: "Canvas", ok: true, detail: `${c.account ?? "signed in"}: ${courses.length} active course${courses.length === 1 ? "" : "s"}` });
     } catch (err) {
       out.push({ name: "Canvas", ok: false, detail: /rejected/i.test(String(err)) ? "Canvas no longer accepts the key: press CANVAS in Accounts to sign in again." : plain(err) });
+    }
+  }
+
+  // GitHub (Tinker): the token still works, and who it signs in as
+  const gh = github.githubStatus();
+  if (!gh.connected) out.push({ name: "GitHub", ok: null, detail: world.progress.sandbox.github ? "just chatting (not connected)" : "not connected yet" });
+  else {
+    try {
+      const me = await github.gh<{ login: string }>("GET", "/user");
+      out.push({ name: "GitHub", ok: true, detail: `signed in as ${me.login}` });
+    } catch (err) {
+      out.push({ name: "GitHub", ok: false, detail: /401|accept/i.test(String(err)) ? "GitHub no longer accepts the token: press SIGN IN on the GitHub row to connect again." : plain(err) });
+    }
+  }
+
+  // Spotify (Echo): still signed in, and whether it can play here (Premium only)
+  const sp = spotify.spotifyStatus();
+  if (!sp.connected) out.push({ name: "Spotify", ok: null, detail: world.progress.sandbox.spotify ? "just chatting (not connected)" : sp.configured ? "not connected yet" : "not turned on here" });
+  else {
+    try {
+      const me = await spotify.spotifyMe();
+      const who = me?.display_name ?? me?.id ?? "signed in";
+      out.push(me?.product === "premium" ? { name: "Spotify", ok: true, detail: `${who} (Premium): Echo can play music here` } : { name: "Spotify", ok: false, detail: `${who} is connected, but Spotify only lets Premium accounts play in other apps` });
+    } catch (err) {
+      out.push({ name: "Spotify", ok: false, detail: plain(err) });
     }
   }
 

@@ -125,6 +125,11 @@ export async function accessToken(): Promise<string> {
   return saved!.access_token;
 }
 
+/** Who's signed in, and on which plan (for TEST CONNECTIONS). */
+export async function spotifyMe() {
+  return api<{ id: string; display_name?: string; product?: string }>("GET", "/me");
+}
+
 async function api<T>(method: string, path: string, body?: object): Promise<T | null> {
   const res = await fetch(`https://api.spotify.com/v1${path}`, {
     method,
