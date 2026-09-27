@@ -14,7 +14,7 @@ import { listen, micSupported, type Listening } from "./mic";
 import * as net from "./net";
 import { markdownToPlain } from "../../shared/markdown";
 import { PORTRAIT } from "./portraits";
-import { sfx } from "./sfx";
+import { BLIP, sfx } from "./sfx";
 import { agents, focusNextSession, focusedSession, store } from "./store";
 import { closeMoonPad, openMoonPad } from "./tablet";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
@@ -55,8 +55,8 @@ const TALK_W = 250;
 const TALK_H = 72;
 /** Room kept free at the bottom of the screen for the toolbar. */
 const TOOLBAR_CLEAR = TOOLBAR_H + 5;
-/** Each reply's first couple of sentences are spoken; the rest just types out (free-plan credits). */
-const VOICED_SENTENCES = 2;
+/** Each reply's first sentence is spoken; the rest types out in their talk blips (free-plan credits). */
+const VOICED_SENTENCES = 1;
 /** Typewriter speed when nobody's speaking. */
 const TYPE_MS = 26;
 
@@ -160,7 +160,7 @@ class Dialog {
   // --- speaking: lines play one at a time, typing out while they're said
   private queue: Queued[] = [];
   private run: { cancelled: boolean; waiting: Queued | null } | null = null;
-  private revealing: { label: Label; start: number; ms: number; done: () => void } | null = null;
+  private revealing: { label: Label; start: number; ms: number; done: () => void; shown: number } | null = null;
   private speech: voice.Speech | null = null;
   /** The villager is working on an answer: show ". . ." whenever nothing else is playing. */
   private awaiting = false;
@@ -259,7 +259,8 @@ class Dialog {
     const fy = y + h - 22;
     let bx = x + w - 9 - 34;
     this.send.setPosition(bx, fy);
-    if (talk) this.soundBtn.setPosition((bx -= 19), fy);
+    // (no text field: the voices toggle takes the corner, and any buttons sit left of it)
+    if (talk) this.soundBtn.setPosition(this.talkMode ? (bx -= 19) : x + w - 9 - 16, fy);
     if (this.micOn) this.micBtn.setPosition((bx -= 19), fy);
     this.inputW = bx - 4 - (x + 9);
     this.inputG.clear();
@@ -373,13 +374,13 @@ class Dialog {
     this.inputT.setFont(this.font);
     this.cursor.setSize(1, this.font === "sm" ? 7 : 9);
     this.micOn = talk && !!opts.mic;
+    this.talkMode = talk;
     this.placeholder = opts.placeholder ?? (this.micOn && micSupported ? "Type, or hold TAB to talk..." : "Ask them to do something on Earth...");
     this.layout();
     this.setAreaHeight(this.baseAreaH);
     this.title.setText(sanitize(title));
     this.soundBtn.setVisible(this.face?.mode === "talk").setIcon(voice.isMuted() ? "icon_sound_off_0" : "icon_sound_on_0");
     this.blinkAt = performance.now() + 1800;
-    this.talkMode = talk;
     this.inputG.setVisible(talk);
     this.inputT.setVisible(talk);
     this.cursor.setVisible(talk);
@@ -451,10 +452,12 @@ class Dialog {
     this.awaiting = false;
     const f = this.face;
     const v = f?.mode === "talk" ? f.villager : null;
-    let spoken = 0;
-    bubbles(text).forEach((b, i) => {
-      const line = v && spoken < VOICED_SENTENCES ? voice.prepare(v, b.text) : undefined;
-      if (line) spoken += b.sentences;
+    // The voiced sentence gets a bubble of its own (short ones aren't paired onto it); the rest pair up as usual.
+    const all = sentences(text);
+    const head = v ? all.slice(0, VOICED_SENTENCES).join(" ") : "";
+    const parts = [...(head ? [{ text: head }] : []), ...bubbles((head ? all.slice(VOICED_SENTENCES) : all).join(" "))];
+    parts.forEach((b, i) => {
+      const line = v && head && i === 0 ? voice.prepare(v, b.text) : undefined;
       this.queue.push({ kind: "them", text: b.text, line, chime: i === 0 });
     });
     this.pump();
@@ -497,9 +500,9 @@ class Dialog {
         const speech = q.line ? voice.play(q.line, buf) : null;
         this.speech = speech;
         const label = this.add("them", q.text).reveal(0);
-        if (!speech && q.chime) sfx.message();
+        if (!speech && q.chime && !this.blips()) sfx.message();
         const ms = speech ? Math.max(300, speech.duration * 0.9) : Math.min(4000, label.textLength * TYPE_MS);
-        await new Promise<void>((done) => (this.revealing = { label, start: performance.now(), ms, done }));
+        await new Promise<void>((done) => (this.revealing = { label, start: performance.now(), ms, done, shown: 0 }));
         if (speech) await speech.done;
         if (run.cancelled) return;
         this.speech = null;
@@ -538,6 +541,11 @@ class Dialog {
     if (this.awaiting) this.showTyping();
   }
 
+  /** A neighbor talking (with their voice on): unspoken words get their talk blips. */
+  private blips() {
+    return this.face?.mode === "talk" && !voice.isMuted();
+  }
+
   /** Click-to-continue: finish the current line now and move on to the next. */
   private skipLine() {
     if (!this.revealing && !this.speech) return;
@@ -551,6 +559,9 @@ class Dialog {
       const t = (performance.now() - r.start) / r.ms;
       const n = Math.floor(t * r.label.textLength);
       r.label.reveal(n);
+      // Words that aren't said aloud type out in their talk blips: a syllable every few letters.
+      if (!this.speech && this.blips() && Math.floor(n / 3) > Math.floor(r.shown / 3) && n < r.label.textLength) sfx.voice(BLIP[this.face!.villager]);
+      r.shown = n;
       if (this.paged) {
         // A line taller than the box scrolls along as it types out.
         const m = FONT_METRICS[this.font];
@@ -658,7 +669,7 @@ class Dialog {
   }
 
   private placeButtons() {
-    let x = this.box.x + this.box.w - 9;
+    let x = this.box.x + this.box.w - 9 - (!this.talkMode && this.face?.mode === "talk" ? 16 + 5 : 0);
     const y = this.box.y + this.box.h - 22 - (this.talkMode ? 19 : 0);
     for (let i = this.buttons.length - 1; i >= 0; i--) {
       const b = this.buttons[i];

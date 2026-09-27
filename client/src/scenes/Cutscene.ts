@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 import { buildLogo } from "../font";
-import { sfx } from "../sfx";
+import { BLIP, sfx } from "../sfx";
 import { C, Label, measure, pixBox, ptext } from "../widgets";
 import { bust, type Eyes, type FamilyId, type Mouth, type Pose } from "../cutart";
 
 /** Voices: each speaker's blip pitch. */
-export const VOICE: Record<string, number> = { you: 520, mom: 640, dad: 300, grandma: 760, sibling: 900, yutu: 980, narrator: 420 };
+export const VOICE: Record<string, number> = { you: 520, mom: 640, dad: 300, grandma: 760, sibling: 900, yutu: BLIP.jade_rabbit, narrator: 420 };
 
 /** A family member at the table: swap pose, eyes and mouth; blinks on their own. */
 export class Fam {

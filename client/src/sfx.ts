@@ -1,5 +1,10 @@
 // Tiny WebAudio bleeps — no audio assets needed.
 
+import type { VillagerId } from "../../shared/game";
+
+/** Each neighbor's talk-blip pitch (for sfx.voice), for the words that aren't spoken aloud. */
+export const BLIP: Record<VillagerId, number> = { jade_rabbit: 980, postmaster: 340, timekeeper: 600, scholar: 720, stargazer: 860, manager: 500 };
+
 let ctx: AudioContext | null = null;
 
 const MUTE_KEY = "moon-sfx-muted";
