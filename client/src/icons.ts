@@ -401,6 +401,38 @@ export const VILLAGER_ICONS: Record<string, PixelSprite> = {
   },
 };
 
+/** Tiny 7x7 story items and jobs, for the town's requirement lists (texture `item_<id>_0`). */
+export const ITEM_ICONS: Record<string, PixelSprite> = {
+  charter: {
+    palette: { K: "#3b2a3a", P: "#f4e2b8", D: "#c9a96a", R: "#c0392b" },
+    frames: [[".KKKKK.", "KPPPPPK", ".KDDDPK", ".KPPPPK", ".KDDPPK", "KPPPPRK", ".KKKKK."]],
+  },
+  valve: {
+    palette: { K: "#3b2a3a", R: "#d9503f", L: "#f08a7a", M: "#8e97a8" },
+    frames: [["..KKK..", ".KRLRK.", "KRKMKRK", "KLMMMLK", "KRKMKRK", ".KRRRK.", "..KKK.."]],
+  },
+  lens: {
+    palette: { K: "#3b2a3a", G: "#c99a3e", B: "#8fd0f0", W: "#e8f7ff" },
+    frames: [["..KKK..", ".KGGGK.", "KGWBBGK", "KGBBBGK", "KGBBBGK", ".KGGGK.", "..KKK.."]],
+  },
+  bell: {
+    palette: { K: "#3b2a3a", Y: "#f5c542", L: "#fff0a8", D: "#c99a3e" },
+    frames: [["...K...", "..KYK..", ".KLYYK.", ".KYYYK.", "KYYYYDK", "KKKKKKK", "...K..."]],
+  },
+  search: {
+    palette: { K: "#3b2a3a", B: "#8fd0f0", W: "#e8f7ff", H: "#8a5a3b" },
+    frames: [[".KKK...", "KWBBK..", "KBBBK..", "KBBBK..", ".KKKHK.", "....KHK", ".....KK"]],
+  },
+  job: {
+    palette: { K: "#3b2a3a", Y: "#f5c542", L: "#fff0a8" },
+    frames: [["...K...", "..KYK..", "KKKLKKK", "KYYYYYK", ".KYYYK.", ".KYKYK.", "KK...KK"]],
+  },
+  room: {
+    palette: { K: "#3b2a3a", R: "#e0708a", W: "#fff2d6", D: "#8a4b1f" },
+    frames: [["...K...", "..KRK..", ".KRRRK.", "KRRRRRK", ".KWWWK.", ".KWDWK.", ".KKKKK."]],
+  },
+};
+
 /** Tiny 7x7 materials for the HUD and pickups (texture `mat_<material>_0`). */
 export const MATERIAL_ICONS: Record<string, PixelSprite> = {
   moonstone: {

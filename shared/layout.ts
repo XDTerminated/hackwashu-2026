@@ -73,38 +73,44 @@ export function tileAt(p: { x: number; y: number }): Rect {
 
 export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** Where every path starts: the central plaza (its center sits on a tile corner). */
-export const PLAZA = { x: Math.round(CX / TILE) * TILE, y: Math.round((CY + 70) / TILE) * TILE };
+// ---------------------------------------------------------------- the town
+// Main Street runs east-west across the crater, from where your ship came down
+// to the Office. The town's row of civic buildings faces it from the north
+// (doors onto the street); the fountain square opens off its south side,
+// across from the Town Hall. The Observatory sits up on the hill behind the
+// row, the Office off the east end, and the two homes (Yutu's burrow, your
+// house) out in the south-west and south-east. Every door has its own path.
+
+/** Main Street: its center line and where it starts and ends. */
+export const STREET = { y: 600, x0: 176, x1: 1424 };
+
+/** The fountain square, just south of Main Street (its center sits on a tile corner). */
+export const PLAZA = { x: Math.round(CX / TILE) * TILE, y: 736 };
 
 /** The plaza's radius (its paving; the grand fountain stands in the middle). */
 export const PLAZA_R = 120;
 
-/** Every building starts on one circle around the plaza, evenly spaced, clockwise from north: the Town Hall faces the fountain. */
-export const RING_RADIUS = 300;
-const RING: BuildingId[] = ["town_hall", "library", "market", "clock_tower", "observatory", "post_office", "player_house", "rabbit_burrow"];
+/** The north row's base line: their doors open onto the street. */
+const ROW_Y = 560;
 
-function onRing(b: BuildingId) {
-  const a = -Math.PI / 2 + (RING.indexOf(b) / RING.length) * Math.PI * 2;
-  return { x: Math.round(PLAZA.x + Math.cos(a) * RING_RADIUS), y: Math.round(PLAZA.y + Math.sin(a) * RING_RADIUS) };
-}
-
-const spot = (b: BuildingId, texture: string, fw: number, fh: number, tall: number, door: { dx: number; dy: number }): BuildingSpot => ({ ...onRing(b), texture, fw, fh, tall, door });
+const spot = (x: number, y: number, texture: string, fw: number, fh: number, tall: number, door: { dx: number; dy: number }): BuildingSpot => ({ x, y, texture, fw, fh, tall, door });
 
 export const SPOTS: Record<BuildingId, BuildingSpot> = {
-  player_house: spot("player_house", "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
-  // The town's landmarks (their look changes with each stage: see town.ts).
-  town_hall: spot("town_hall", "b_town_hall", 60, 40, 132, { dx: 0, dy: 14 }),
-  market: spot("market", "b_market", 36, 24, 76, { dx: 0, dy: 12 }),
-  library: spot("library", "b_library", 60, 40, 120, { dx: 0, dy: 14 }),
-  // Hoot's Mail Rocket: an annex built onto the Post Office (placed beside it, below).
+  // the row along Main Street, west to east
+  library: spot(330, ROW_Y, "b_library", 60, 40, 120, { dx: 0, dy: 14 }),
+  market: spot(560, ROW_Y, "b_market", 36, 24, 76, { dx: 0, dy: 12 }),
+  town_hall: spot(800, ROW_Y, "b_town_hall", 60, 40, 132, { dx: 0, dy: 14 }),
+  clock_tower: spot(1016, ROW_Y, "b_clock_tower", 28, 28, 180, { dx: 0, dy: 14 }),
+  post_office: spot(1200, ROW_Y, "b_post_office", 52, 40, 116, { dx: 0, dy: 14 }),
+  // Hoot's Mail Rocket: an annex built onto the Post Office (placed beside it).
   rocket_pad: { x: 0, y: 0, texture: "b_rocket_pad", fw: 24, fh: 24, tall: 112, door: { dx: 0, dy: 14 } },
-  clock_tower: spot("clock_tower", "b_clock_tower", 28, 28, 180, { dx: 0, dy: 14 }),
-  observatory: spot("observatory", "b_observatory", 52, 40, 124, { dx: 0, dy: 14 }),
-  post_office: spot("post_office", "b_post_office", 52, 40, 116, { dx: 0, dy: 14 }),
-  rabbit_burrow: spot("rabbit_burrow", "b_rabbit_burrow", 48, 28, 96, { dx: 0, dy: 12 }),
   mailbox: { x: 0, y: 0, texture: "b_mailbox", fw: 5, fh: 4, tall: 24, door: { dx: 12, dy: 10 } },
-  // Off the ring, out to the northeast: the developers' building.
-  office: { x: 1328, y: 432, texture: "b_office", fw: 60, fh: 40, tall: 156, door: { dx: 0, dy: 14 } },
+  // up on the hill behind the row, and off the east end of the street
+  observatory: spot(664, 424, "b_observatory", 52, 40, 124, { dx: 0, dy: 14 }),
+  office: spot(1392, 432, "b_office", 60, 40, 156, { dx: 0, dy: 14 }),
+  // the homes, out past the fountain square
+  rabbit_burrow: spot(456, 912, "b_rabbit_burrow", 48, 28, 96, { dx: 0, dy: 12 }),
+  player_house: spot(1144, 912, "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
 };
 
 export function buildingTiles(b: BuildingId): { w: number; h: number } {
@@ -129,11 +135,8 @@ for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snap
 Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
 Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
 
-/** The ship you arrived in: parked just outside the ring, between your house and the Rabbit's. */
-export const LANDING = (() => {
-  const a = -Math.PI / 2 - Math.PI / RING.length;
-  return snapToTiles(PLAZA.x + Math.cos(a) * (RING_RADIUS + 130), PLAZA.y + Math.sin(a) * (RING_RADIUS + 130), 2);
-})();
+/** The ship you arrived in: parked at the west end of Main Street. */
+export const LANDING = snapToTiles(STREET.x0 + 24, STREET.y + 56, 2);
 
 /** Lanterns from finished tasks are planted on a ring of tiles around the plaza. */
 export function lanternSpot(i: number): { x: number; y: number } {
@@ -153,9 +156,21 @@ export function lanternAt(l: { x?: number; y?: number }, i: number): { x: number
 /** Solar lamps: around the plaza, and beside each built doorway. */
 export function lampSpots(built: (b: BuildingId) => boolean = () => true): { x: number; y: number; building?: BuildingId }[] {
   const out: { x: number; y: number; building?: BuildingId }[] = plazaRing().lamps.map((p) => ({ ...p }));
+  out.push(...streetLamps());
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     if (isAnnex(b) || !built(b)) continue;
     out.push({ ...besideDoor(b, -1), building: b });
+  }
+  return out;
+}
+
+/** Lamps along Main Street's south edge, spaced out, never in front of a door's path or on the square. */
+export function streetLamps(): Pt[] {
+  const out: Pt[] = [];
+  const doors = (Object.keys(SPOTS) as BuildingId[]).filter((b) => !isAnnex(b)).map((b) => SPOTS[b].x + SPOTS[b].door.dx);
+  for (let x = STREET.x0 + 96; x < STREET.x1 - 40; x += 128) {
+    if (Math.abs(x - PLAZA.x) < PLAZA_R + 40 || doors.some((d) => Math.abs(d - x) < 36)) continue;
+    out.push(snapToTiles(x, STREET.y + 32, 1));
   }
   return out;
 }
@@ -175,6 +190,8 @@ type Pt = { x: number; y: number };
 export function pathPoints(b: BuildingId, at: Pt = SPOTS[b]): Pt[] {
   const s = { ...SPOTS[b], ...at };
   const door = { x: s.x + s.door.dx, y: s.y + s.door.dy };
+  // North of Main Street: a short spur straight down to it.
+  if (door.y < STREET.y) return [{ x: door.x, y: STREET.y }, door];
   const behind = s.y - s.fh > PLAZA.y;
   const via = behind ? { x: s.x + (PLAZA.x < s.x ? -1 : 1) * (s.fw + 14), y: door.y } : null;
   const first = via ?? door;
@@ -221,7 +238,8 @@ export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
       const p = pathPoints(b)[0];
       return Math.atan2(p.y - PLAZA.y, p.x - PLAZA.x);
     });
-  angles.push(Math.atan2(LANDING.y - PLAZA.y, LANDING.x - PLAZA.x));
+  // (the top of the square opens onto Main Street)
+  angles.push(-Math.PI / 2);
   angles.sort((a, b) => a - b);
   const lamps: Pt[] = [];
   const obelisks: Pt[] = [];
@@ -230,8 +248,11 @@ export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
     const next = i + 1 < angles.length ? angles[i + 1] : angles[0] + Math.PI * 2;
     const gap = next - a;
     const mid = a + gap / 2;
-    lamps.push(at(mid, PLAZA_R - 6));
-    if (gap > 0.5) obelisks.push(at(mid, PLAZA_R + 18));
+    // (nothing on the rim where the square meets Main Street)
+    const lamp = at(mid, PLAZA_R - 6);
+    const obelisk = at(mid, PLAZA_R + 18);
+    if (lamp.y > STREET.y + 40) lamps.push(lamp);
+    if (gap > 0.5 && obelisk.y > STREET.y + 48) obelisks.push(obelisk);
   });
   return { lamps, obelisks };
 }
@@ -271,6 +292,8 @@ export const RESERVED: Rect[] = [
   { x: PLAZA.x - 120, y: PLAZA.y - 120, w: 240, h: 240 },
   { x: PLAZA.x - 80, y: PLAZA.y - 152, w: 160, h: 304 },
   footprint(LANDING.x, LANDING.y, 2, 2),
+  // Main Street itself
+  { x: STREET.x0, y: STREET.y - 18, w: STREET.x1 - STREET.x0, h: 36 },
 ];
 
 /** Every tile of every rect is on the island and clear of `others` and reserved ground. */
@@ -323,7 +346,7 @@ function wildsKeepOut(avoid: Rect[]): { keepOut: Rect[]; paths: Pt[][] } {
   // Decorations keep rocks off their own tiles only: growing them would let a
   // cheap shrub placed beside a rock make it vanish without paying to clear it.
   const keepOut: Rect[] = [...RESERVED.map((r) => grow(r, TILE)), ...avoid];
-  const paths: Pt[][] = [[PLAZA, { x: LANDING.x, y: LANDING.y + 12 }]];
+  const paths: Pt[][] = [[{ x: STREET.x0, y: STREET.y }, { x: STREET.x1, y: STREET.y }], [{ x: LANDING.x, y: STREET.y }, { x: LANDING.x, y: LANDING.y + 12 }]];
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     for (const at of [SPOTS[b], DEFAULT_POS[b]]) {
       const s = { ...SPOTS[b], ...at };

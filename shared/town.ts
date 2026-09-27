@@ -6,7 +6,7 @@
 // and then the south of the crater; the Market stocks more decorations.
 // Shared so the server enforces exactly what the game shows.
 
-import { WORLD_W, inIsland } from "./layout.js";
+import { PLAZA, PLAZA_R, STREET, WORLD_W, inIsland, nearBuilding } from "./layout.js";
 import type { DecorDef } from "./decor.js";
 import type { Materials, VillagerId } from "./game.js";
 
@@ -121,8 +121,19 @@ export const SOUTH_Y = 1040;
 export type Area = "north" | "main" | "south";
 export const areaAt = (_x: number, y: number): Area => (y < NORTH_Y ? "north" : y > SOUTH_Y ? "south" : "main");
 export const areaOpen = (t: Town, a: Area) => a === "main" || (a === "north" ? t.stages.roads >= 1 : t.stages.roads >= 2);
-/** Can you walk here (as far as the rockfalls go)? */
+/** Is this part of the crater open (for gathering, spawning, pathing)? */
 export const openAt = (t: Town, x: number, y: number) => areaOpen(t, areaAt(x, y));
+
+/**
+ * Can your feet go here? Like openAt, but a closed rockfall is a solid wall
+ * the full depth of its boulders: you stop in front of it (south of the
+ * north one, north of the south one) instead of stepping into the rocks.
+ */
+export function walkableAt(t: Town, x: number, y: number) {
+  if (!areaOpen(t, "north") && y < NORTH_Y + 20) return false;
+  if (!areaOpen(t, "south") && y > SOUTH_Y - 10) return false;
+  return true;
+}
 
 // ---------------------------------------------------------------- things to find
 
@@ -147,7 +158,9 @@ function band(prefix: string, kind: NodeKind, n: number, y0: number, y1: number,
     const x = Math.round(160 + r(1) * (WORLD_W - 320));
     const y = Math.round(y0 + r(2) * (y1 - y0));
     const ok = [[0, 0], [-20, 0], [20, 0], [0, -30], [0, 16]].every(([dx, dy]) => inIsland((x + dx) / 16, (y + dy) / 16));
-    if (!ok || out.some((o) => Math.hypot(o.x - x, o.y - y) < 70)) continue;
+    // (clear of the buildings, the fountain square and Main Street)
+    const inTown = nearBuilding(x, y, 24) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < PLAZA_R + 30 || Math.abs(y - STREET.y) < 34;
+    if (!ok || inTown || out.some((o) => Math.hypot(o.x - x, o.y - y) < 70)) continue;
     out.push({ id: `${prefix}${i++}`, kind, x, y });
   }
   return out;
@@ -178,7 +191,7 @@ export interface DigSpot {
 
 export function digSpots(townHall: { x: number; y: number }): DigSpot[] {
   return [
-    { id: "dig_charter", item: "charter", x: townHall.x + 88, y: townHall.y + 30, when: (t) => t.stages.town_hall >= 1, hint: "Something's glinting in the rubble by the Town Hall. Dig it up (E)!" },
+    { id: "dig_charter", item: "charter", x: townHall.x + 84, y: townHall.y - 6, when: (t) => t.stages.town_hall >= 1, hint: "Something's glinting in the rubble by the Town Hall. Dig it up (E)!" },
     { id: "dig_lens", item: "lens", x: WORLD_W / 2 + 180, y: 190, when: (t) => t.stages.roads >= 1, hint: "With the north open, something shiny is sparkling up there. Go look!" },
   ];
 }

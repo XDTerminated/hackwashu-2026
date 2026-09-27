@@ -1,30 +1,13 @@
 // The town on the map: the rockfalls and shadow over the parts of the crater
 // the roads haven't reached yet, the spots to gather ice, scrap, helium-3 and
-// glow ore, the mounds where story items are buried, and the landmarks'
-// panels (what the next stage gives, what it takes, and an UPGRADE button).
+// glow ore, and the mounds where story items are buried. (The landmarks'
+// cards live in townpanel.ts.)
 
 import Phaser from "phaser";
-import { MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, type Materials } from "../../shared/game";
 import { SPOTS, WORLD_W, inIsland } from "../../shared/layout";
-import {
-  ITEMS,
-  LANDMARKS,
-  LANDMARK_IDS,
-  NODES,
-  NORTH_Y,
-  SOUTH_Y,
-  STAGE_NAME,
-  TASKS,
-  areaOpen,
-  digSpots,
-  openAt,
-  upgradeBlocker,
-  type Area,
-  type HarvestNode,
-  type LandmarkId,
-} from "../../shared/town";
+import { NODES, NORTH_Y, SOUTH_Y, areaOpen, digSpots, openAt, type Area, type HarvestNode } from "../../shared/town";
 import * as net from "./net";
-import { closePanel, openInfo } from "./panel";
+import { openInfo } from "./panel";
 import { sfx } from "./sfx";
 import { store } from "./store";
 import { shadowKey } from "./textures";
@@ -168,50 +151,4 @@ export class TownView {
     net.send({ type: "dig", id });
     sfx.hammer();
   }
-}
-
-// ---------------------------------------------------------------- the landmarks' panels
-
-const have = (m: keyof Materials) => store.materials[m];
-
-/** One landmark: how it stands, what the next stage gives, and what it takes. */
-function landmarkLines(id: LandmarkId): string[] {
-  const town = store.progress.town;
-  const def = LANDMARKS[id];
-  const stage = town.stages[id];
-  const lines = [`${def.name}: ${STAGE_NAME[stage]}. ${def.perks[stage]}.`];
-  if (stage >= 2) return [...lines, "As grand as it gets."];
-  const up = def.up[stage as 0 | 1];
-  lines.push(`Next (${STAGE_NAME[stage + 1]}): ${def.perks[stage + 1]}.`);
-  for (const m of MATERIALS) {
-    const need = up.needs[m];
-    if (!need) continue;
-    lines.push(`${have(m) >= need ? "✓" : "○"} ${need} ${MATERIAL_NAME[m]} (you have ${have(m)})${have(m) >= need ? "" : `: ${MATERIAL_SOURCE[m]}`}`);
-  }
-  if (up.item) lines.push(`${town.items.includes(up.item) ? "✓" : "○"} the ${ITEMS[up.item].name}${town.items.includes(up.item) ? "" : `: ${ITEMS[up.item].from}`}`);
-  if (up.task) lines.push(`${town.tasks.includes(up.task) ? "✓" : "○"} ${TASKS[up.task]}`);
-  return lines;
-}
-
-function upgrade(id: LandmarkId) {
-  closePanel();
-  net.send({ type: "upgrade", landmark: id });
-  sfx.hammer();
-}
-
-/** A landmark's own panel (the Fountain, the Market), with an UPGRADE button when it's ready. */
-export function openLandmark(id: LandmarkId, extra: { label: string; onClick: () => void }[] = []) {
-  const town = store.progress.town;
-  const ready = town.stages[id] < 2 && !upgradeBlocker(town, id, store.materials);
-  openInfo(LANDMARKS[id].name.toUpperCase(), landmarkLines(id), [...(ready ? [{ label: "UPGRADE", kind: "ok" as const, onClick: () => upgrade(id) }] : []), ...extra]);
-}
-
-/** The Town Hall's board: every town project, and an UPGRADE button for each one that's ready. */
-export function openTownBoard() {
-  const town = store.progress.town;
-  const lines = ["Mayor Yutu's town projects. Each goes ruined, repaired, grand."];
-  for (const id of LANDMARK_IDS) lines.push(...landmarkLines(id));
-  const ready = LANDMARK_IDS.filter((id) => town.stages[id] < 2 && !upgradeBlocker(town, id, store.materials));
-  const short: Record<LandmarkId, string> = { town_hall: "TOWN HALL", fountain: "FOUNTAIN", roads: "ROADS", market: "MARKET" };
-  openInfo("TOWN PROJECTS", lines, ready.map((id) => ({ label: `UPGRADE ${short[id]}`, kind: "ok" as const, onClick: () => upgrade(id) })));
 }

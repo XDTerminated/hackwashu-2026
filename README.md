@@ -103,9 +103,18 @@ The villagers: **Yutu the Jade Rabbit** (your guide, and the town's mayor), **No
 research), **Hoot the Postmaster** (Gmail), **Cog the Timekeeper** (Calendar) and **Mabel the Scholar**
 (Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ..."). **Ada the Team Lead** runs the Office.
 
+The town is laid out along **Main Street**, which runs east-west across the crater from where your ship came
+down to the Office. The Library, Market, Town Hall, Clock Tower and Post Office stand in a row facing it; the
+fountain square opens off its south side across from the Town Hall; the Observatory sits up on the hill behind
+the row, and Yutu's burrow and your house are out in the south-west and south-east. Every door has its own path,
+lamps line the street, and the neighbors mostly stroll the town (the street, the square, each other's doors).
+
 You start with Yutu and Nova in the ruins of an old colony. Stardew-style, you bring the **town** back:
 four landmarks, each going **ruined → repaired → grand**. E at the Town Hall for the projects board (or E at
-the Fountain or the Market); the Quests window lists everything, and the gold ★ always points at what's next.
+the Fountain or the Market): a card per landmark with its stage, what the next stage gives, and what it takes
+as chips (each resource's sprite and a bold have/need count, green when you've got enough; hover one to see
+where to get it), with the UPGRADE button on the card. Neighbors' lots get the same card. The gold ★ always
+points at what's next.
 
 | Landmark | Ruined (start) | Repaired | Grand |
 |---|---|---|---|

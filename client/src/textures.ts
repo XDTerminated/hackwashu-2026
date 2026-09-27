@@ -12,7 +12,7 @@ import {
   rocket,
 } from "./art";
 import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
-import { ICON_SPRITES, MATERIAL_ICONS, VILLAGER_ICONS } from "./icons";
+import { ICON_SPRITES, ITEM_ICONS, MATERIAL_ICONS, VILLAGER_ICONS } from "./icons";
 import { decorById } from "../../shared/decor";
 import { drawMailbox, drawPlot, drawRuins, drawFoundation, drawRubble } from "./buildings";
 import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawMailRocket, drawManor } from "./estate";
@@ -672,6 +672,7 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "portrait_sky", PORTRAIT + 8, PORTRAIT + 8, (ctx) => drawPortraitSky(ctx, PORTRAIT + 8));
   for (const [name, sprite] of Object.entries(ICON_SPRITES)) registerSprite(scene, `icon_${name}`, sprite);
   for (const [v, sprite] of Object.entries(VILLAGER_ICONS)) registerSprite(scene, `vicon_${v}`, sprite);
+  for (const [k, sprite] of Object.entries(ITEM_ICONS)) registerSprite(scene, `item_${k}`, sprite);
   for (const [m, sprite] of Object.entries(MATERIAL_ICONS)) registerSprite(scene, `mat_${m}`, sprite);
   canvasTex(scene, "task_lantern", 16, 26, drawStoneLantern);
   for (const id of DECOR_ART_IDS) {

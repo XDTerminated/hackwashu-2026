@@ -5,7 +5,7 @@
 // the grey plains beyond it, and the Moon itself curving away into space.
 
 import Phaser from "phaser";
-import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
+import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, STREET, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
 export { PLAZA, lampSpots } from "./layout";
 import type { BuildingId } from "../../shared/game";
 import { type Ctx, hash, rect } from "./pix";
@@ -127,7 +127,7 @@ const STONES: [number, string, string, string][] = [
  * narrows as it goes. Stones come in mixed
  * sizes and tones, with the odd cracked, sunken or missing one, and gravel.
  */
-function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number, broken = false) {
+function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number, broken = false, wide?: number) {
   const len = Math.hypot(bx - ax, by - ay);
   const ux = (bx - ax) / len;
   const uy = (by - ay) / len;
@@ -137,7 +137,7 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number,
   const seed = Math.floor(hash(Math.round(ax), Math.round(ay), 11) * 9973);
   const r = (i: number, k: number) => hash(seed + i, k, 5);
   // its width: a walk, a broad walk or a wide way, then swelling and narrowing along the way
-  const base = [6, 7, 8, 9, 11][Math.floor(r(0, 30) * 5)];
+  const base = wide ?? [6, 7, 8, 9, 11][Math.floor(r(0, 30) * 5)];
   const halfAt = (t: number) => Math.max(5, base + Math.round((noise(t / 22 + seed, seed * 0.37) - 0.5) * 6));
   // the packed band, with gravel
   for (let t = 0; t <= len; t += 1) {
@@ -278,8 +278,7 @@ export function bakeTerrain(scene: Phaser.Scene) {
   for (let y = 0; y < WORLD_H; y++) for (let x = 0; x < WORLD_W; x++) if (!inIsland((x + 0.5) / TILE, (y + 0.5) / TILE)) img.data[(y * WORLD_W + x) * 4 + 3] = 0;
   ctx.putImageData(img, 0, 0);
 
-  // Only the landing path exists at first; each building lays its own path when built.
-  flagstonePath(ctx, PLAZA.x, PLAZA.y, LANDING.x, LANDING.y + 12);
+  // (Main Street and every building's path are drawn on their own layer: see drawStreet.)
   plaza(ctx);
 
   tex.refresh();
@@ -298,6 +297,12 @@ export function bakeTerrain(scene: Phaser.Scene) {
 }
 
 /** A building's flagstone path (see pathPoints for the route). */
+/** Main Street (broad, three rows of flagstones) and the spur down to your ship. */
+export function drawStreet(ctx: Ctx, broken = false) {
+  flagstonePath(ctx, STREET.x0, STREET.y, STREET.x1, STREET.y, broken, 14);
+  flagstonePath(ctx, LANDING.x, STREET.y, LANDING.x, LANDING.y + 12, broken, 7);
+}
+
 export function drawBuildingPath(ctx: Ctx, b: BuildingId, broken = false) {
   const pts = pathPoints(b);
   for (let i = 0; i < pts.length - 1; i++) flagstonePath(ctx, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, broken);

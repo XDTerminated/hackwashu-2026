@@ -1,5 +1,5 @@
-import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, type LandmarkId } from "../../../shared/town";
-import { TownView, openLandmark, openTownBoard } from "../townview";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, walkableAt, type LandmarkId } from "../../../shared/town";
+import { TownView } from "../townview";
 import Phaser from "phaser";
 import {
   BUILDINGS,
@@ -30,14 +30,14 @@ import type { Deco } from "../../../shared/game";
 import { itemById, type ShopItem } from "../items";
 import { shadowKey } from "../textures";
 import { Button, C, Label } from "../widgets";
-import { LANDING, SPOTS, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
+import { LANDING, SPOTS, STREET, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
 import { closePanel, isPanelOpen, onPanelToggle, openConnect, openInfo, openLetter } from "../panel";
 import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { clearListener, setListener, sfx, sfxAt } from "../sfx";
-import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, lampSpots } from "../terrain";
+import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
 import { pendingApprovalFor, store } from "../store";
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
@@ -66,7 +66,7 @@ const HELLOS: Record<VillagerId, string[]> = {
  * Somewhere someone can stand: feet on the island, and head over it too, so at
  * the island's back edge you stop short instead of standing against open space.
  */
-const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6, y - 26) && inIslandXY(x + 6, y - 26) && openAt(store.progress.town, x, y);
+const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6, y - 26) && inIslandXY(x + 6, y - 26) && walkableAt(store.progress.town, x, y);
 
 /** Every neighbor's home (the lots that go from ruin to house). */
 const MOVE_INS_HOMES = () => MOVE_INS.map((m) => m.home);
@@ -428,46 +428,13 @@ export class GameScene extends Phaser.Scene {
     return !live && !store.progress.sandbox[service];
   }
 
-  /** A neighbor's checklist, with what they love (for the yard) and a way to the Shop. */
+  /** A neighbor's lot: its card (rubble, what the repair takes, room at the Town Hall, and the REPAIR button). */
   private showNeeds(def: MoveInDef) {
-    const who = VILLAGER_SHORT[def.villager];
-    const steps = checklist(def, this.moveState());
-    const loves = DECOR.filter((d) => d.likes.includes(def.villager))
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 6)
-      .map((d) => `${d.name} ${d.price}¢`);
-    openInfo(`${who.toUpperCase()} WANTS TO MOVE IN`, [
-      ...steps.map((st) => `${st.done ? "✓" : "○"} ${st.text}`),
-      `Once they're home, ${who} loves: ${loves.join(", ")}... Decorations they love in their yard grow your friendship.`,
-    ], [{ label: "SHOP", kind: "ok", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]);
+    this.game.events.emit("town-panel", { kind: "lot", home: def.home });
   }
 
-  /** The foundation: what it takes, what you have, and where to find more. */
   private showRepair(def: MoveInDef) {
-    const lines = MATERIALS.filter((m) => def.repair[m]).map((m) => {
-      const need = def.repair[m] ?? 0;
-      const have = store.materials[m];
-      return `${have >= need ? "✓" : "○"} ${need} ${MATERIAL_NAME[m]} (you have ${have})${have >= need ? "" : `: ${MATERIAL_SOURCE[m]}`}`;
-    });
-    const cap = neighborCap(store.progress.town);
-    const room = store.progress.movedIn.length < cap;
-    const ready = room && MATERIALS.every((m) => (def.repair[m] ?? 0) <= store.materials[m]);
-    openInfo("REPAIR THE LOT", [
-      `Rebuild the old ${BUILDINGS[def.home].name} and ${VILLAGER_SHORT[def.villager]} moves right in. It takes:`,
-      ...lines,
-      room ? `✓ Room at the Town Hall (${store.progress.movedIn.length}/${cap} new neighbors)` : `○ The Town Hall is full (${cap}/${cap}): upgrade it to make room (E at the Town Hall).`,
-    ], [
-      {
-        label: ready ? "REPAIR" : room ? "NEED MATERIALS" : "NO ROOM YET",
-        kind: ready ? "ok" : "",
-        onClick: () => {
-          closePanel();
-          if (!ready) return sfx.deny();
-          net.send({ type: "repair_lot", building: def.home });
-          sfx.hammer();
-        },
-      },
-    ]);
+    this.showNeeds(def);
   }
 
   private rubbleSent = new Set<string>();
@@ -514,6 +481,7 @@ export class GameScene extends Phaser.Scene {
     this.pathTex = paths;
     const ctx = paths.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+    drawStreet(ctx, this.roadsBroken());
     for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
     paths.refresh();
     this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
@@ -590,6 +558,7 @@ export class GameScene extends Phaser.Scene {
   private redrawPaths() {
     const ctx = this.pathTex.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+    drawStreet(ctx, this.roadsBroken());
     for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
     this.pathTex.refresh();
   }
@@ -745,6 +714,8 @@ export class GameScene extends Phaser.Scene {
   private pathTex!: Phaser.Textures.CanvasTexture;
 
   private addLamp(x: number, y: number, grand = false) {
+    // (the post is solid: you walk around it, not through it)
+    this.solids.push(new Phaser.Geom.Rectangle(x - 3, y - 4, 6, 4));
     this.add.image(x, y, shadowKey(this, grand ? 10 : 8)).setDepth(-8);
     this.add.image(x, y, grand ? "lamp_grand" : "lamp").setOrigin(0.5, 1).setDepth(y);
     const glow = this.add.image(x, y - (grand ? 26 : 15), "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setAlpha(0.35).setDepth(y + 1);
@@ -786,6 +757,7 @@ export class GameScene extends Phaser.Scene {
       if (resident) {
         const p = besideDoor(b, 1);
         const bell = this.add.image(p.x, p.y, "bell_0").setOrigin(0.5, 1).setDepth(p.y);
+        this.solids.push(new Phaser.Geom.Rectangle(p.x - 2, p.y - 3, 4, 3));
         objs.push(this.add.image(p.x, p.y, shadowKey(this, 8)).setDepth(-8), bell);
         this.bells.set(resident, { x: p.x, y: p.y, img: bell });
       }
@@ -1723,11 +1695,12 @@ export class GameScene extends Phaser.Scene {
     }
     // The town's landmarks: the Town Hall's board, the Market, the Fountain. Gathering and digging.
     const th = this.doorOf("town_hall");
-    add({ verb: "BOARD", label: "[E] town projects", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: () => openTownBoard() }, 40);
+    const town = (spec: { kind: "board" } | { kind: "landmark"; id: LandmarkId }) => () => this.game.events.emit("town-panel", spec);
+    add({ verb: "BOARD", label: "[E] town projects", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: town({ kind: "board" }) }, 40);
     const mk = this.doorOf("market");
-    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: () => openLandmark("market", [{ label: "SHOP", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]) }, 36);
+    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }) }, 36);
     const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
-    add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: () => openLandmark("fountain") }, 26);
+    add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }) }, 26);
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
     if (store.buildings.office) {
       const od = this.doorOf("office");
@@ -2183,8 +2156,9 @@ export class GameScene extends Phaser.Scene {
 
   // ================================================================ helpers
 
+  /** Is anything solid under your feet here? (Your feet are a few pixels wide, not a point.) */
   private blocked(x: number, y: number) {
-    return this.solids.some((r) => r.contains(x, y));
+    return this.solids.some((r) => r.contains(x, y) || r.contains(x - 5, y) || r.contains(x + 5, y));
   }
 
   /** Move to the nearest spot you can actually stand on (straight down, in front, first). */
@@ -2243,20 +2217,21 @@ export class GameScene extends Phaser.Scene {
       if (cd > 0) continue;
       this.idleCooldown.set(v, Phaser.Math.FloatBetween(5, 11));
       const partners = [...this.villagers.values()].filter((b) => b.id !== v && b.isFree && !this.chatting.has(b.id));
+      // Mostly in town: a visit, a turn around the fountain, a stroll down Main
+      // Street, a potter in the front yard; now and then a wander a bit further out.
       const roll = Math.random();
-      if (roll < 0.35 && partners.length) void this.visit(a, Phaser.Utils.Array.GetRandom(partners));
-      else if (roll < 0.5) {
-        // A turn around the fountain.
+      const home = this.homeSpot(v);
+      if (roll < 0.3 && partners.length) void this.visit(a, Phaser.Utils.Array.GetRandom(partners));
+      else if (roll < 0.45) {
         const t = Math.random() * Math.PI * 2;
         const r = Phaser.Math.Between(72, 108);
         void this.strollTo(a, PLAZA.x + Math.cos(t) * r, PLAZA.y + 10 + Math.sin(t) * r * 0.8);
-      }
-      else {
-        const home = this.homeSpot(v);
+      } else if (roll < 0.72) void this.strollTo(a, Phaser.Math.Between(STREET.x0 + 60, STREET.x1 - 60), STREET.y + Phaser.Math.Between(-10, 12));
+      else if (roll < 0.92) {
         void this.strollTo(a, home.x + Phaser.Math.Between(-44, 44), home.y + Phaser.Math.Between(2, 34)).then((ok) => {
           if (ok && Math.random() < 0.25) a.say(mutter(v), 2400);
         });
-      }
+      } else void this.strollTo(a, home.x + Phaser.Math.Between(-130, 130), home.y + Phaser.Math.Between(-40, 90));
     }
   }
 
@@ -2372,7 +2347,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A dialog, the MoonPad or the shop is up: keys belong to it. */
   private windowOpen() {
-    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.near?.typing;
+    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.registry.get("townOpen") || !!this.near?.typing;
   }
 
   private updatePlayer(dt: number) {

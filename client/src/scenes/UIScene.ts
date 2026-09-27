@@ -1,3 +1,4 @@
+import { TownPanel, type TownPanelSpec } from "../townpanel";
 import { inStock } from "../../../shared/town";
 import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap } from "../../../shared/town";
 import Phaser from "phaser";
@@ -55,6 +56,7 @@ const ACTION_WORD: Record<string, string> = {
 export class UIScene extends Phaser.Scene {
   private coins!: Phaser.GameObjects.BitmapText;
   private matIcons: Phaser.GameObjects.Image[] = [];
+  private townPanel!: TownPanel;
   private matCounts: Phaser.GameObjects.BitmapText[] = [];
   private coinIcon!: Phaser.GameObjects.Image;
   private coinPing = 0;
@@ -196,8 +198,18 @@ export class UIScene extends Phaser.Scene {
     this.unsubs.push(net.onNotice((t, tone) => this.toast("Fl-AI Me to the Moon", t, tone === "ok" ? C.green : C.red)));
     this.unsubs.push(net.onAgents(() => this.noticeAgents()));
     this.game.events.on("toggle-shop", this.toggleShop, this);
+    // The town's project cards (the Town Hall board, a landmark, a neighbor's lot).
+    this.townPanel = new TownPanel(this);
+    const openTown = (spec: TownPanelSpec) => {
+      if (this.shopOpen) this.closeShop();
+      this.townPanel.open(spec);
+    };
+    this.game.events.on("town-panel", openTown);
+    this.unsubs.push(() => this.game.events.off("town-panel", openTown));
+    this.unsubs.push(onStoreChange(() => this.townPanel.refresh()));
     this.input.keyboard!.on("keydown-ESC", () => {
       if (this.shopOpen) this.closeShop();
+      this.townPanel.close();
     });
     // First time only: how to walk, then where to go.
     const MOVED = "moon-hint-moved";
@@ -854,18 +866,10 @@ export class UIScene extends Phaser.Scene {
     const state = { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
     const next = nextStep(state);
     const town = store.progress.town;
+    // (one line each: the TOWN PROJECTS button opens the full cards)
     const townLines = LANDMARK_IDS.map((id) => {
       const stage = town.stages[id];
-      const def = LANDMARKS[id];
-      const now = `${stage === 2 ? "✓" : "○"} ${def.name}: ${STAGE_NAME[stage]}. ${def.perks[stage]}.`;
-      if (stage >= 2) return now;
-      const up = def.up[stage as 0 | 1];
-      const needs = [
-        ...MATERIALS.filter((m) => up.needs[m]).map((m) => `${store.materials[m] >= (up.needs[m] ?? 0) ? "✓" : "○"} ${up.needs[m]} ${MATERIAL_NAME[m]} (${store.materials[m]})`),
-        ...(up.item ? [`${town.items.includes(up.item) ? "✓" : "○"} the ${ITEMS[up.item].name}${town.items.includes(up.item) ? "" : `: ${ITEMS[up.item].from}`}`] : []),
-        ...(up.task ? [`${town.tasks.includes(up.task) ? "✓" : "○"} ${TASKS[up.task]}`] : []),
-      ];
-      return `${now}\n   Next (${STAGE_NAME[stage + 1]}): ${def.perks[stage + 1]}.\n   ${needs.join(" · ")}`;
+      return `${stage === 2 ? "✓" : "○"} ${LANDMARKS[id].name}: ${STAGE_NAME[stage]}${stage < 2 ? ` → ${STAGE_NAME[stage + 1]}` : ""}`;
     });
     const cap = neighborCap(town);
     const neighborLines = MOVE_INS.map((m) => {
@@ -891,7 +895,10 @@ export class UIScene extends Phaser.Scene {
     const shards = found < SHARD_COUNT
       ? `★ Moon Shards: ${found}/${SHARD_COUNT}. Pieces of the old colony's beacon, glinting out in the wilds: ${SHARD_REWARD}¢ each, and all ${SHARD_COUNT} relight the beacon for +${SHARD_BONUS}¢.`
       : `★ Moon Shards: all ${SHARD_COUNT} found. The beacon shines again.`;
-    const buttons = [{ label: "WATCH INTRO", onClick: () => this.playCutscene("Intro") }];
+    const buttons = [
+      { label: "TOWN PROJECTS", onClick: () => (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
+      { label: "WATCH INTRO", onClick: () => this.playCutscene("Intro") },
+    ];
     if (finished) buttons.push({ label: "WATCH FINALE", onClick: () => this.playCutscene("Ending") });
     openInfo("QUESTS", [...story, "TODAY'S REQUESTS", ...requests, shards], buttons);
   }
