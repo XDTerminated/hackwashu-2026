@@ -1378,7 +1378,8 @@ export class UIScene extends Phaser.Scene {
     title.setX(x0 + Math.round((pw - measure(title).w) / 2));
     const sub = ptext(this, 0, y0 + 19, `decorations for your colony - you have ${store.coins}¢`, C.inkSoft);
     sub.setX(x0 + Math.round((pw - measure(sub).w) / 2));
-    const close = ptext(this, x0 + pw - 14, y0 + 8, "x", C.ink, "pxb").setInteractive({ useHandCursor: true });
+    const close = ptext(this, 0, y0 + 9, "x esc", C.inkSoft).setInteractive({ useHandCursor: true });
+    close.setX(x0 + pw - 10 - measure(close).w);
     close.on("pointerdown", () => this.closeShop());
     this.shop.add([g, title, sub, close]);
 

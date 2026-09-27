@@ -159,7 +159,8 @@ export class FriendsPanel implements InputOwner {
     const title =
       spec.kind === "gift" ? `A GIFT FOR ${hostName().toUpperCase()}` : spec.kind === "travel" ? "THE ROCKET" : spec.kind === "perms" ? `${this.nameOf(spec.id).toUpperCase()} ON YOUR ISLAND` : "FRIENDS";
     const t = ptext(s, x0 + 12, y0 + 9, `★ ${title}`, C.coral, "pxb");
-    const x = ptext(s, x0 + pw - 16, y0 + 8, "x", C.ink, "pxb").setInteractive({ useHandCursor: true });
+    const x = ptext(s, 0, y0 + 9, "x esc", C.inkSoft).setInteractive({ useHandCursor: true });
+    x.setX(x0 + pw - 11 - measure(x).w);
     x.on("pointerdown", () => (sfx.blip(), this.close()));
     this.root.add([g, t, x]);
     const box = { x: x0 + 8, y: y0 + 26, w: pw - 16, h: ph - 34 };

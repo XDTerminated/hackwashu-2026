@@ -247,12 +247,13 @@ class Dialog {
       this.closeZone.setPosition(this.closeHint.x - 2, y + 4).setSize(measure(this.closeHint).w + 4, 14);
     } else {
       // No title bar: a little tab on the top-right corner closes it (so does ESC).
-      const [tw, th] = [15, 12];
+      this.closeHint.setText("x esc");
+      const [tw, th] = [measure(this.closeHint).w + 10, 12];
       const tx = x + w - 6 - tw;
       const ty = y - th + 2;
       pixBox(this.g, tx, ty, tw, th, C.woodMid, C.woodDark);
       this.g.fillStyle(C.woodLight, 1).fillRect(tx + 1, ty + 1, tw - 2, 1);
-      this.closeHint.setText("x").setPosition(tx + Math.round((tw - measure(this.closeHint).w) / 2), ty + 2);
+      this.closeHint.setPosition(tx + Math.round((tw - measure(this.closeHint).w) / 2), ty + 2);
       this.closeZone.setPosition(tx, ty).setSize(tw, th);
     }
     this.maskG.clear().fillStyle(0xffffff, 1).fillRect(this.area.x, this.area.y, this.area.w, this.area.h);
