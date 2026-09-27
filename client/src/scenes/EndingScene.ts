@@ -18,8 +18,8 @@ import {
 } from "../cutart";
 import { Cutscene, Fam, VOICE } from "./Cutscene";
 
-const SPRITE: Record<VillagerId, string> = { jade_rabbit: "rabbit", postmaster: "postmaster", timekeeper: "timekeeper", stargazer: "stargazer", scholar: "scholar", manager: "office_lead", dj: "dj" };
-const PITCH: Record<VillagerId, number> = { jade_rabbit: 980, postmaster: 360, timekeeper: 620, stargazer: 820, scholar: 700, manager: 760, dj: 540 };
+const SPRITE: Record<VillagerId, string> = { jade_rabbit: "rabbit", postmaster: "postmaster", timekeeper: "timekeeper", stargazer: "stargazer", scholar: "scholar", manager: "office_lead", dj: "dj", mechanic: "mechanic" };
+const PITCH: Record<VillagerId, number> = { jade_rabbit: 980, postmaster: 360, timekeeper: 620, stargazer: 820, scholar: 700, manager: 760, dj: 540, mechanic: 580 };
 
 /**
  * The finale: a night on the Moon with every neighbor home, and
@@ -70,17 +70,19 @@ export class EndingScene extends Cutscene {
     const horizon = Math.round(H * 0.5);
     const ground = Math.round(H * 0.64);
     const cx = Math.round(W / 2);
-    const cast: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "stargazer", "scholar"];
+    const cast: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "stargazer", "scholar", "dj", "mechanic"];
 
     await this.cut(() => {
       this.keep(this.add.image(0, 0, drawMoonLanding(this, W, H, horizon)).setOrigin(0));
       this.keep(this.add.image(Math.round(W * 0.78), Math.max(this.BAR + 34, horizon - 70), "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6a9cf0).setAlpha(0.5));
       this.keep(this.add.image(Math.round(W * 0.78), Math.max(this.BAR + 34, horizon - 70), "earth_l"));
       this.fireworks(horizon);
-      const row = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
-      this.keep(this.add.sprite(cx + row[0] * 34, ground, "astro_0").setOrigin(0.5, 1).setDepth(ground));
+      // you, and everyone in a row (spaced to fit)
+      const gap = 30;
+      const at = (i: number) => cx + (i - cast.length / 2) * gap;
+      this.keep(this.add.sprite(at(0), ground, "astro_0").setOrigin(0.5, 1).setDepth(ground));
       cast.forEach((v, i) => {
-        this.keep(this.add.sprite(cx + row[i + 1] * 34, ground, `${SPRITE[v]}_0`).setOrigin(0.5, 1).setDepth(ground).play(`${v}-idle`));
+        this.keep(this.add.sprite(at(i + 1), ground, `${SPRITE[v]}_0`).setOrigin(0.5, 1).setDepth(ground).play(`${v}-idle`));
       });
     });
 

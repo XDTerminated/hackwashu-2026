@@ -356,6 +356,48 @@ function dj(g: Grid, f: PortraitFrame) {
   g.oval(39.5, 23, 3.5, 6, H, Hd, Hl);
 }
 
+function mechanic(g: Grid, f: PortraitFrame) {
+  const F = "#e8894a", Fd = "#b8612e", Fl = "#f5ad76", W = "#fff6e6", B = "#3f6fb0", Bd = "#2c4f86", Bl = "#5f8fd0";
+  const G = "#d9a441", Gd = "#a87a2a", L = "#8fd0f0", Ld = "#5fa8d0", P = "#f0a8bc";
+  // shoulders in blue overalls: straps and brass buttons
+  g.oval(24, 53, 17, 13, B, Bd, Bl);
+  g.rect(15, 42, 3, 9, Bd);
+  g.rect(30, 42, 3, 9, Bd);
+  g.dots(G, [16, 46], [31, 46]);
+  // pointed ears, pink inside
+  for (const ex of [12, 36]) {
+    for (let i = 0; i < 10; i++) g.rect(ex - Math.floor(i / 2) - 1, 3 + i, 2 + i, 1, F);
+    for (let i = 4; i < 10; i++) g.rect(ex - Math.floor((i - 4) / 2), 3 + i, 1 + (i - 4), 1, P);
+  }
+  g.oval(24, 26, 15, 13, F, Fd, Fl);
+  // white cheek fluff and muzzle
+  g.oval(24, 32, 10, 6, W);
+  g.oval(14, 30, 4, 3, W);
+  g.oval(34, 30, 4, 3, W);
+  // brass goggles pushed up on the forehead
+  g.rect(9, 16, 30, 2, Gd);
+  for (const cx of [18, 30]) {
+    g.oval(cx, 17, 4.2, 3.6, G, Gd);
+    g.oval(cx, 17, 2.7, 2.2, L, Ld);
+    g.dots(SHINE, [cx - 1, 16]);
+  }
+  if (f === BLINK) {
+    g.rect(16, 25, 5, 1, K);
+    g.rect(28, 25, 5, 1, K);
+  } else {
+    g.oval(18.5, 25, 2, 2.5, K);
+    g.oval(29.5, 25, 2, 2.5, K);
+    g.dots(SHINE, [18, 24], [29, 24]);
+  }
+  g.oval(24, 29.5, 2, 1.4, K);
+  if (f === TALK) {
+    g.rect(22, 32, 4, 3, K);
+    g.rect(23, 34, 2, 1, P);
+  } else g.dots(K, [22, 32], [23, 33], [24, 33], [25, 33], [26, 32]);
+  // a smudge of grease
+  g.dots("#6b4a3a", [33, 27], [34, 28]);
+}
+
 const DRAW: Record<VillagerId, (g: Grid, f: PortraitFrame) => void> = {
   jade_rabbit: jadeRabbit,
   postmaster,
@@ -364,6 +406,7 @@ const DRAW: Record<VillagerId, (g: Grid, f: PortraitFrame) => void> = {
   stargazer,
   manager,
   dj,
+  mechanic,
 };
 
 export function drawPortrait(ctx: Ctx, v: VillagerId, f: PortraitFrame) {

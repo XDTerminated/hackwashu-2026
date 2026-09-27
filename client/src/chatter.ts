@@ -44,6 +44,7 @@ const REAL: Record<VillagerId, ((f: string) => string)[]> = {
   jade_rabbit: [(f) => `I heard: ${f}`],
   manager: [(f) => `Status update: ${f}.`],
   dj: [(f) => `Bzzt! ${f}.`, (f) => `Word on the airwaves: ${f}.`],
+  mechanic: [(f) => `Popped the hood: ${f}.`, (f) => `From the Workshop: ${f}.`],
 };
 
 const REACT: Record<VillagerId, string[]> = {
@@ -54,6 +55,7 @@ const REACT: Record<VillagerId, string[]> = {
   stargazer: ["Ooh, stellar.", "The stars agree.", "I'll look into it tonight."],
   manager: ["Noted. Adding it to the board.", "Love that. Ship it.", "Let's circle back on that."],
   dj: ["That's a banger of a fact.", "Bzzt! Noted.", "I'll write a song about it."],
+  mechanic: ["Huh! Good to know.", "I'll bolt that down.", "Sounds like it needs a tune-up."],
 };
 
 // ---------------------------------------------------------------- scripted
@@ -83,6 +85,7 @@ const SOLO: Record<VillagerId, string[]> = {
   stargazer: ["So many stars.", "Is that a comet? No. A smudge."],
   manager: ["Standup in five!", "Who touched the build?"],
   dj: ["*boots up a beat*", "Testing, testing... one two.", "Bzzt! Levels look good."],
+  mechanic: ["*clank* ...there we go.", "Where did I put that wrench?", "Tests are green. Probably."],
 };
 
 /** A short exchange between two villagers: [speaker, line][]. */

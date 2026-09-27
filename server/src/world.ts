@@ -104,7 +104,7 @@ function freshWorld(): World {
     lastChoreAt: {},
     progress,
     buildings,
-    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle(), dj: idle() },
+    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle(), dj: idle(), mechanic: idle() },
     clods: {},
     approvals: {},
     lanterns: [],
@@ -131,6 +131,7 @@ function load(file = DATA_FILE): World {
     w.villagers.scholar ??= idle();
     w.villagers.manager ??= idle();
     w.villagers.dj ??= idle();
+    w.villagers.mechanic ??= idle();
     w.chores ??= {};
     w.phones ??= {};
     w.choreOptIn ??= {};
@@ -336,7 +337,7 @@ export function snapshot(): Snapshot {
     progress: world.progress,
     materials: world.materials,
     // filled in by services.ts, which knows about connected accounts
-    connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
+    connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, github: { connected: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
     residents: [],
     rabbitTeamwork: false,
     chores: Object.values(world.chores),
@@ -528,7 +529,7 @@ export function moveLantern(id: string, x: number, y: number): boolean {
 /** Buildings (and revealed plots) can be moved anywhere their tiles fit. */
 export function moveBuilding(b: BuildingId, x: number, y: number): boolean {
   // The Mail Rocket is built onto the Post Office: it moves when the Post Office does.
-  if (b === "rocket_pad") return false;
+  if (b === "rocket_pad" || b === "workshop") return false;
   if (!SPOTS[b] || !onMap(b, world.progress, world.buildings)) return false;
   if (!canOccupy(buildingRects(b, { x, y }), occupied({ building: b }))) return false;
   world.layout[b] = { x, y };

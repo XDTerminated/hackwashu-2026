@@ -14,6 +14,7 @@ import {
   type VillagerId,
 } from "../../shared/game.js";
 import { waitForApproval } from "./approvals.js";
+import * as github from "./connectors/github.js";
 import * as spotify from "./connectors/spotify.js";
 import { MOCK, mockVillager } from "./mock.js";
 import { Groq, runVillagerGroq } from "./groq.js";
@@ -263,6 +264,120 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
     },
   },
 
+  // Tinker's Workshop: the player's GitHub, and the branch their Claude Code is on.
+  github_my_prs: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 0,
+    quiet: true,
+    def: { name: "github_my_prs", description: "The player's open pull requests, and the ones waiting on their review (repo, number, title, draft, last update).", input_schema: { type: "object", properties: {} } },
+    label: () => "checking the pull requests",
+    run: async () => {
+      const r = await github.myPullRequests();
+      return { text: JSON.stringify(r), summary: `${plural(r.yours.length, "open PR")}, ${r.waiting_on_your_review.length} awaiting review` };
+    },
+  },
+  github_issues: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "github_issues",
+      description: "Open issues in a repo (not pull requests).",
+      input_schema: { type: "object", properties: { repo: { type: "string", description: "owner/name, e.g. octocat/hello-world" } }, required: ["repo"] },
+    },
+    label: () => "reading the issue tracker",
+    run: async (i) => {
+      const r = await github.repoIssues(str(i.repo));
+      return { text: JSON.stringify(r), summary: plural(r.length, "open issue") };
+    },
+  },
+  github_pr_status: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "github_pr_status",
+      description: "One pull request: state, draft, mergeable, comments, and its checks (CI): passed, failed, still running.",
+      input_schema: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, number: { type: "number" } }, required: ["repo", "number"] },
+    },
+    label: () => "looking over a pull request",
+    run: async (i) => {
+      const r = await github.prStatus(str(i.repo), num(i.number, 0));
+      return { text: JSON.stringify(r), summary: `#${num(i.number, 0)}: ${r.checks.failed.length ? `${r.checks.failed.length} failing` : r.checks.running.length ? "checks running" : "checks green"}` };
+    },
+  },
+  github_commits: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "github_commits",
+      description: "The latest commits in a repo (on a branch, if given).",
+      input_schema: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, branch: { type: "string" } }, required: ["repo"] },
+    },
+    label: () => "reading the commit log",
+    run: async (i) => {
+      const r = await github.recentCommits(str(i.repo), str(i.branch) || undefined);
+      return { text: JSON.stringify(r), summary: plural(r.length, "commit") };
+    },
+  },
+  claude_code_branch: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "claude_code_branch",
+      description: "What Ada's Office is working on, on GitHub: the repo and branch of the player's live Claude Code session, its pull request (if any), and how the branch's checks are doing.",
+      input_schema: { type: "object", properties: {} },
+    },
+    label: () => "checking what the Office is working on",
+    run: async () => {
+      const s = agentsState().sessions.find((x) => x.source === "claude-code") ?? agentsState().sessions[0];
+      if (!s) return { text: JSON.stringify({ note: "No Claude Code session is running in the Office right now." }), summary: "the Office is quiet" };
+      const repo = await github.findRepo(s.project);
+      if (!repo) return { text: JSON.stringify({ project: s.project, branch: s.branch, note: "Couldn't find a GitHub repo of theirs with that project's name. Ask which repo it is." }), summary: "repo not found" };
+      const r = await github.branchStatus(repo, s.branch);
+      return { text: JSON.stringify({ project: s.project, ...r }), summary: `${repo}@${s.branch}` };
+    },
+  },
+  github_create_issue: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 6,
+    def: {
+      name: "github_create_issue",
+      description: "File a new issue in one of the player's repos. It waits for the player's OK first (a letter at their door), so just call it.",
+      input_schema: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, title: { type: "string" }, body: { type: "string" } }, required: ["repo", "title", "body"] },
+    },
+    label: () => "writing up an issue",
+    needsApproval: async (i) => ({ title: `File an issue in ${str(i.repo)}?`, body: `${str(i.title)}\n\n${str(i.body)}` }),
+    run: async (i) => {
+      const r = await github.createIssue(str(i.repo), str(i.title), str(i.body));
+      return { text: JSON.stringify(r), summary: `filed #${r.number}` };
+    },
+  },
+  github_comment: {
+    owner: "mechanic",
+    building: "workshop",
+    reward: 4,
+    def: {
+      name: "github_comment",
+      description: "Comment on an issue or pull request. It waits for the player's OK first (a letter at their door), so just call it.",
+      input_schema: { type: "object", properties: { repo: { type: "string", description: "owner/name" }, number: { type: "number" }, body: { type: "string" } }, required: ["repo", "number", "body"] },
+    },
+    label: () => "leaving a comment",
+    needsApproval: async (i) => ({ title: `Comment on ${str(i.repo)}#${num(i.number, 0)}?`, body: str(i.body) }),
+    run: async (i) => {
+      const r = await github.comment(str(i.repo), num(i.number, 0), str(i.body));
+      return { text: JSON.stringify(r), summary: "commented" };
+    },
+  },
+
   // Echo's Radio Tower: the player's Spotify, playing right in the game tab.
   play_music: {
     owner: "dj",
@@ -376,7 +491,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
 };
 
-const WORKERS: VillagerId[] = ["postmaster", "timekeeper", "scholar", "stargazer", "dj"];
+const WORKERS: VillagerId[] = ["postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const movedIn = services.isResident;
 
 export function toolsFor(v: VillagerId): Tool[] {
@@ -392,7 +507,8 @@ export function toolsFor(v: VillagerId): Tool[] {
           "timekeeper = Google Calendar (check free time, book events with the player's OK). " +
           "scholar = Canvas (courses, grades, due dates, announcements). " +
           "stargazer = web research. " +
-          "dj = Spotify music in the game (play, pause, skip, queue). Call several at once for independent pieces.",
+          "dj = Spotify music in the game (play, pause, skip, queue). " +
+          "mechanic = GitHub (pull requests, issues, CI checks, the branch Claude Code is on; files issues with the player's OK). Call several at once for independent pieces.",
         input_schema: {
           type: "object",
           properties: {
@@ -407,8 +523,9 @@ export function toolsFor(v: VillagerId): Tool[] {
   if (v === "stargazer") {
     return [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }];
   }
-  // (Echo can only play once the player's Spotify is connected)
+  // (Echo can only play once the player's Spotify is connected; Tinker needs their GitHub)
   if (v === "dj" && !spotify.spotifyStatus().connected) return [];
+  if (v === "mechanic" && !github.githubStatus().connected) return [];
   return Object.entries(LEAF_TOOLS)
     .filter(([, t]) => t.owner === v && owns(t.building))
     .map(([, t]) => t.def);

@@ -6,6 +6,7 @@
 
 import {
   BUILDINGS,
+  EXTENSIONS,
   MATERIALS,
   MATERIAL_NAME,
   MATERIAL_SOURCE,
@@ -27,6 +28,7 @@ import { SPOTS, applyLayout, buildingRects, buildingTiles, canOccupy, snapToTile
 import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, TASKS, stageName, digSpots, neighborCap, newNeighborCount, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
 import { buyBlocker, nextBuild, nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
+import * as github from "./connectors/github.js";
 import * as google from "./connectors/google.js";
 import * as spotify from "./connectors/spotify.js";
 import * as sandbox from "./sandbox.js";
@@ -47,13 +49,14 @@ export function setWebAvailable(v: boolean) {
 }
 
 export function connections(): Connections {
-  return { google: google.googleStatus(), spotify: spotify.spotifyStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
+  return { google: google.googleStatus(), spotify: spotify.spotifyStatus(), github: github.githubStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
 }
 
 function live(service: Service): boolean {
   if (service === "google") return google.googleStatus().connected;
   if (service === "canvas") return canvas.canvasStatus().connected;
   if (service === "spotify") return spotify.spotifyStatus().connected;
+  if (service === "github") return github.githubStatus().connected;
   return webAvailable;
 }
 
@@ -68,13 +71,15 @@ export function sourceOf(service: Service): Source {
 
 // ---------------------------------------------------------------- residents
 
-const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar", "dj"];
+const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar", "dj", "mechanic"];
 
 /** Yutu was here first; everyone else (Nova first, as the tutorial) moves in once their house is built. */
 export function isResident(v: VillagerId): boolean {
   if (v === "jade_rabbit") return true;
   // Ada runs the Office: she's there as soon as it is
   if (v === "manager") return !!world.buildings.office;
+  // Tinker lives in the Workshop, built onto the Office
+  if (v === "mechanic") return !!world.buildings.workshop;
   return world.progress.movedIn.includes(v);
 }
 
@@ -97,6 +102,8 @@ let lastResidents = new Set<VillagerId>();
 
 export function initResidents() {
   lastResidents = new Set(residents());
+  // (each extension is on the map once its neighbor lives here)
+  for (const [b, ext] of Object.entries(EXTENSIONS) as [BuildingId, NonNullable<(typeof EXTENSIONS)[BuildingId]>][]) if (isResident(ext.by) && !world.progress.revealed.includes(b)) world.progress.revealed.push(b);
 }
 
 /** Call after anything that could move someone in: building, connecting, choosing sandbox. */
@@ -106,6 +113,7 @@ export function checkArrivals() {
     if (lastResidents.has(v)) continue;
     emit({ type: "villager_arrived", villager: v, residents: now, rabbitTeamwork: rabbitTeamwork() });
     if (v === "postmaster" && !world.progress.revealed.includes("rocket_pad")) reveal("rocket_pad");
+    if (v === "manager" && !world.progress.revealed.includes("workshop")) reveal("workshop");
   }
   lastResidents = new Set(now);
 }
@@ -206,6 +214,25 @@ export function buildPlot(b: BuildingId): string | null {
   return null;
 }
 
+/** Build an extension onto a neighbor's home (the Mail Rocket, the Workshop) with materials. */
+export function buildExtension(b: BuildingId): string | null {
+  const ext = EXTENSIONS[b];
+  if (!ext) return null;
+  if (world.buildings[b]) return `The ${BUILDINGS[b].name} is already built.`;
+  if (!isResident(ext.by)) return `${VILLAGER_SHORT[ext.by]} has to live here first.`;
+  const missing = missingFor(ext.needs);
+  if (missing) return `The ${BUILDINGS[b].name} needs ${missing}.`;
+  for (const m of MATERIALS) world.materials[m as Material] -= ext.needs[m] ?? 0;
+  world.buildings[b] = true;
+  if (!world.progress.revealed.includes(b)) world.progress.revealed.push(b);
+  savePersist();
+  emit({ type: "building_built", building: b, coins: world.coins });
+  announceProgress();
+  // (the Workshop brings Tinker)
+  checkArrivals();
+  return null;
+}
+
 /** Is this neighbor's house grand (their work pays more)? */
 export const grandHome = (v: VillagerId) => MOVE_INS.some((m) => m.villager === v && world.progress.plots[m.home]?.stage === 2);
 
@@ -216,6 +243,7 @@ function moveIn(d: MoveInDef, gift = d.gift) {
   if (d.home === "post_office") world.buildings.mailbox = true;
   world.coins += gift;
   if (d.villager === "postmaster") reveal("rocket_pad");
+  if (d.villager === "manager") reveal("workshop");
   savePersist();
   const now = residents();
   lastResidents = new Set(now);
@@ -372,6 +400,11 @@ export const school = {
 export function accountNote(v: VillagerId): string {
   const service = VILLAGER_SERVICE[v];
   if (!service || service === "web") return "";
+  if (service === "github") {
+    const g = github.githubStatus();
+    if (!g.connected) return "\n\nThe player hasn't connected their GitHub yet, so you can't look at anything: chat about code and projects, and if they want you to check their repos, tell them to talk to you and press CONNECT GITHUB.";
+    return `\n\nYou're connected to the player's REAL GitHub (signed in as ${g.account}). Everything you read is their actual repos.`;
+  }
   if (service === "spotify") {
     const sp = spotify.spotifyStatus();
     if (!sp.connected) return "\n\nThe player hasn't connected their Spotify yet, so you can't play anything: chat about music and suggest songs, and if they want music, tell them to talk to you and press CONNECT SPOTIFY.";

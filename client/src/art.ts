@@ -510,6 +510,63 @@ export const dj: PixelSprite = {
   ],
 };
 
+/** Tinker the Mechanic: a fox in blue overalls, brass goggles up on the forehead, a wrench in hand. */
+const TINKER_HEAD = (eyes: string) => [
+  "...K..........K...",
+  "..KFK........KFK..",
+  "..KFFK......KFFK..",
+  "..KFFFKKKKKKFFFK..",
+  ".KFFFFFFFFFFFFFFK.",
+  ".KFGgGFFFFFFGgGFK.",
+  ".KFGGGFFFFFFGGGFK.",
+  ".KFFFFFFFFFFFFFFK.",
+  eyes,
+  "..KFFFWWWWWWFFFK..",
+  "..KfFWWWNNWWWFfK..",
+  "...KfWWWWWWWWfK...",
+  "....KKKKKKKKKK....",
+  "...KBBBBBBBBBBK...",
+  "..KFBbBBBBBBbBFK..",
+];
+
+export const mechanic: PixelSprite = {
+  palette: {
+    K: "#3b2a3a",
+    F: "#e8894a",
+    f: "#b8612e",
+    W: "#fff6e6",
+    k: "#241a16",
+    N: "#3b2a3a",
+    G: "#d9a441",
+    g: "#8fd0f0",
+    B: "#3f6fb0",
+    b: "#2c4f86",
+    S: "#c9cbd6",
+  },
+  frames: [
+    [
+      ...TINKER_HEAD(".KFFkFFFFFFFFkFFK."),
+      "..KFBBBGGBBBBBFKS.",
+      "..KFBBBBBBBBBBFKSS",
+      "...KBBBBBBBBBBK.S.",
+      "...KBBBBBBBBBBK...",
+      "....KbbK..KbbK....",
+      "....KbbK..KbbK....",
+      "...KkkkK..KkkkK...",
+    ],
+    [
+      ...TINKER_HEAD(".KFFFFFFFFFFFFFFK."),
+      "..KFBBBGGBBBBBFK.S",
+      "..KFBBBBBBBBBBFKSS",
+      "...KBBBBBBBBBBK...",
+      "...KBBBBBBBBBBK...",
+      "....KbbK..KbbK....",
+      "....KbbK..KbbK....",
+      "...KkkkK..KkkkK...",
+    ],
+  ],
+};
+
 // ------------------------------------------------------------------ scenery
 
 export const rocket: PixelSprite = {

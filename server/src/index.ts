@@ -3,7 +3,7 @@ import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
 import { createServer, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
-import { BUILDINGS, moveInAt } from "../../shared/game.js";
+import { BUILDINGS, EXTENSIONS, moveInAt } from "../../shared/game.js";
 import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
 import { agentsState, bridgeBye, bridgeUpdate, newLinkCode, onAgentsChange, pairBridge, reportEvent, startAgentWatch, startReplay, stopReplay, unlink as unlinkBridge, useLinking } from "./agentwatch.js";
@@ -16,6 +16,7 @@ import { DEFAULT_CANVAS, canvasBase, connectCanvas, disconnectCanvas, initCanvas
 import { canvasSignIn } from "./connectors/canvasLogin.js";
 import { testConnections } from "./selftest.js";
 import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle, setGoogleClient } from "./connectors/google.js";
+import { connectGithub, connectGithubCli, disconnectGithub, initGithub } from "./connectors/github.js";
 import { accessToken as spotifyToken, disconnectSpotify, finishSpotifyAuth, initSpotify, setDevice as setSpotifyDevice, setSpotifyClient, SPOTIFY_REDIRECT, spotifyAuthUrl, spotifyConfigured } from "./connectors/spotify.js";
 import { onPhoneLinked, phoneLinked, photonReady, startLink, startPhoton, unlink } from "./photon.js";
 import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
@@ -27,8 +28,8 @@ import { currentRequests, startRequests } from "./requests.js";
 import { build, clearRock, regrowRocks, resetWorld, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj"];
-const SERVICES: Service[] = ["google", "canvas", "spotify"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj", "mechanic"];
+const SERVICES: Service[] = ["google", "canvas", "spotify", "github"];
 
 function page(res: ServerResponse, status: number, title: string, body: string) {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
@@ -317,6 +318,12 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
 
       case "build": {
         if (!BUILDINGS[msg.building]) break;
+        // Extensions (the Mail Rocket, the Workshop) take materials, once their neighbor lives here.
+        if (EXTENSIONS[msg.building]) {
+          const problem = services.buildExtension(msg.building);
+          if (problem) send(ws, { type: "notice", text: problem });
+          break;
+        }
         // Neighbors' houses (Ada's Office too) go up on the plots you buy at the Town Hall.
         if (moveInAt(msg.building)) {
           send(ws, { type: "notice", text: "Buy their plot at the Town Hall, set it down, and build it there." });
@@ -354,6 +361,18 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         const problem =
           msg.type === "buy_plot" ? services.buyPlot(msg.building) : msg.type === "place_plot" ? services.placePlot(msg.building, Number(msg.x), Number(msg.y)) : services.buildPlot(msg.building);
         if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "connect_github":
+      case "github_cli": {
+        try {
+          const who = msg.type === "github_cli" ? await connectGithubCli() : await connectGithub(String(msg.token ?? ""));
+          services.announceConnections();
+          send(ws, { type: "notice", text: `GitHub connected as ${who}. Tinker can look at your repos now.`, tone: "ok" });
+        } catch (err) {
+          send(ws, { type: "notice", text: err instanceof Error ? err.message : String(err) });
+        }
         break;
       }
 
@@ -577,12 +596,13 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         if (msg.service === "google") disconnectGoogle();
         if (msg.service === "canvas") disconnectCanvas();
         if (msg.service === "spotify") disconnectSpotify();
+        if (msg.service === "github") disconnectGithub();
         services.announceConnections();
         break;
     }
 }
 
-await Promise.all([initGoogle(), initCanvas()]);
+await Promise.all([initGoogle(), initCanvas(), initGithub()]);
 initSpotify();
 services.setWebAvailable(BRAIN !== "mock");
 services.initResidents();

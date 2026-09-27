@@ -19,7 +19,7 @@ type Msg = { from: "you" | "them" | "sys"; text: string; tag?: string };
 type View = VillagerId | "phones" | "connect" | null;
 type TestResult = { name: string; ok: boolean | null; detail: string };
 
-const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "dj", "timekeeper", "scholar", "manager"];
+const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "dj", "timekeeper", "scholar", "manager", "mechanic"];
 const AVATAR: Record<VillagerId, string> = {
   jade_rabbit: "rabbit_0",
   stargazer: "stargazer_0",
@@ -28,6 +28,7 @@ const AVATAR: Record<VillagerId, string> = {
   scholar: "scholar_0",
   manager: "office_lead",
   dj: "dj_0",
+  mechanic: "mechanic_0",
 };
 const TAGS: Partial<Record<TaskSource, string>> = { game: "in person", phone: "from your phone" };
 const SAVE_KEY = "moonpad-v1";
@@ -374,6 +375,13 @@ class MoonPadView {
         line: c.canvas.connected ? `connected${c.canvas.account ? `: ${c.canvas.account}` : ""}` : sandbox.canvas ? "on sample data" : "courses, due dates (Mabel)",
         tests: result("Canvas"),
         btn: c.canvas.connected ? null : { label: "SIGN IN", act: () => openConnect("scholar", { fromAccounts: true }) },
+      },
+      {
+        title: "GitHub",
+        state: c.github.connected ? "ok" : "off",
+        line: c.github.connected ? `connected: ${c.github.account}` : "your repos (Tinker)",
+        tests: [],
+        btn: c.github.connected ? null : { label: "SIGN IN", act: () => openConnect("mechanic", { fromAccounts: true }) },
       },
       {
         title: "Spotify",

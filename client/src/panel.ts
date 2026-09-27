@@ -1035,6 +1035,28 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
     },
   };
 
+  if (service === "github") {
+    // Paste a token (the text box), or use the GitHub CLI's login on this computer.
+    dialog.open("CONNECT GITHUB", true, {
+      face,
+      secret: true,
+      placeholder: "paste a GitHub token (ghp_... or github_pat_...)",
+      onSubmit: (token) => {
+        net.send({ type: "connect_github", token });
+        dialog?.add("sys", "Checking that token with GitHub...");
+      },
+    });
+    dialog.add("them", `${home ? `${name} is all moved in! ` : ""}Connect your GitHub and Tinker keeps an eye on your pull requests, issues and checks, and on the branch your Claude Code is working on. Filing an issue or a comment always comes to your door first.`);
+    const cli = store.connections.github.cli;
+    dialog.add("sys", cli ? "The GitHub CLI is signed in on this computer: USE GITHUB CLI connects with that. Or make a token (GET A TOKEN) and paste it below." : "Make a token (GET A TOKEN: tick \"repo\", then Generate), and paste it below.");
+    dialog.setButtons([
+      ...(cli ? [{ label: "USE GITHUB CLI", kind: "ok" as const, onClick: () => (net.send({ type: "github_cli" }), dialog?.add("sys", "Connecting with the GitHub CLI's login...")) }] : []),
+      { label: "GET A TOKEN", kind: cli ? "" : "ok", onClick: () => window.open("https://github.com/settings/tokens/new?scopes=repo&description=Fl-AI%20Me%20to%20the%20Moon%20(Tinker)", "_blank", "noopener") },
+      { label: "JUST CHAT", onClick: () => (net.send({ type: "use_sandbox", service }), dialog?.add("sys", "OK - Tinker will talk shop until you connect GitHub (talk to Tinker any time to connect).")) },
+    ]);
+    toggleCb(true);
+    return;
+  }
   if (service === "spotify") {
     dialog.open("CONNECT SPOTIFY", false, { face });
     dialog.add("them", `${home ? `${name} is all moved in! ` : ""}Connect your Spotify and Echo plays it right here in the game: ask for a song, a mood, anything. (Spotify only allows that with Premium.)`);

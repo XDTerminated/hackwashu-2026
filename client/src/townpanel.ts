@@ -7,7 +7,7 @@
 // Lives in the UI scene; the world opens it with the "town-panel" event.
 
 import Phaser from "phaser";
-import { BUILDINGS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, MOVE_INS, VILLAGER_NAMES, VILLAGER_SHORT, moveInAt, plotsTaken, type BuildingId, type Material, type MoveInDef } from "../../shared/game";
+import { BUILDINGS, EXTENSIONS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, MOVE_INS, VILLAGER_NAMES, VILLAGER_SHORT, moveInAt, plotsTaken, type BuildingId, type Material, type MoveInDef } from "../../shared/game";
 import { buyBlocker, canAfford, nextBuild } from "../../shared/movein";
 import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, maxStage, neighborCap, stageName, upgradeBlocker, type LandmarkId, type TownItem, type TownTask } from "../../shared/town";
 import * as net from "./net";
@@ -16,7 +16,7 @@ import { inTutorial, store } from "./store";
 import { Button, C, Label, TOOLBAR_H, measure, pixBox, ptext, woodFrame } from "./widgets";
 
 /** The Town Hall's board has two tabs: the town's projects, and neighbors' homes (their plots). */
-export type TownPanelSpec = { kind: "board"; tab?: "projects" | "homes" } | { kind: "landmark"; id: LandmarkId } | { kind: "lot"; home: BuildingId };
+export type TownPanelSpec = { kind: "board"; tab?: "projects" | "homes" } | { kind: "landmark"; id: LandmarkId } | { kind: "lot"; home: BuildingId } | { kind: "extension"; b: BuildingId };
 
 const ITEM_SHORT: Record<TownItem, string> = { charter: "Charter", valve: "Valve", lens: "Lamp Lens", bell: "Shop Bell" };
 const TASK_SHORT: Record<TownTask, string> = { nova_search: "Nova search", real_job: "A real job" };
@@ -88,10 +88,11 @@ export class TownPanel {
     const g = s.add.graphics();
     woodFrame(g, x0, y0, pw, ph, C.paper);
     const cap = neighborCap(store.progress.town);
-    const title = spec.kind === "lot" ? `${VILLAGER_SHORT[moveInAt(spec.home)!.villager].toUpperCase()}'S HOME` : spec.kind === "board" ? "THE TOWN HALL" : LANDMARKS[spec.id].name.toUpperCase();
+    const title =
+      spec.kind === "lot" ? `${VILLAGER_SHORT[moveInAt(spec.home)!.villager].toUpperCase()}'S HOME` : spec.kind === "extension" ? BUILDINGS[spec.b].name.toUpperCase() : spec.kind === "board" ? "THE TOWN HALL" : LANDMARKS[spec.id].name.toUpperCase();
     const t = ptext(s, x0 + 12, y0 + 9, `★ ${title}`, C.coral, "pxb");
     const subText =
-      spec.kind === "lot" ? "build it, and they move right in" : homes ? `Room for ${cap} neighbor${cap === 1 ? "" : "s"}: ${Math.min(plotsTaken(store.progress), cap)} taken` : spec.kind === "landmark" && spec.id === "town_hall" ? "each level makes room for one more neighbor" : "Mayor Yutu's town: ruined, repaired, grand";
+      spec.kind === "lot" ? "build it, and they move right in" : spec.kind === "extension" ? `an extension of ${VILLAGER_SHORT[EXTENSIONS[spec.b]!.by]}'s ${BUILDINGS[EXTENSIONS[spec.b]!.of].name}` : homes ? `Room for ${cap} neighbor${cap === 1 ? "" : "s"}: ${Math.min(plotsTaken(store.progress), cap)} taken` : spec.kind === "landmark" && spec.id === "town_hall" ? "each level makes room for one more neighbor" : "Mayor Yutu's town: ruined, repaired, grand";
     const sub = ptext(s, 0, y0 + 11, subText, C.inkSoft, "sm");
     sub.setX(Math.max(t.x + measure(t).w + 10, x0 + pw - 30 - measure(sub).w));
     const x = ptext(s, x0 + pw - 16, y0 + 8, "x", C.ink, "pxb").setInteractive({ useHandCursor: true });
@@ -103,6 +104,7 @@ export class TownPanel {
     let cy = y0 + headH;
     if (spec.kind === "board") this.tabs(homes, cx, y0 + 26);
     if (spec.kind === "lot") this.lotCard(spec.home, cx, cy, cw, cardH);
+    else if (spec.kind === "extension") this.extensionCard(spec.b, cx, cy, cw, cardH);
     else if (homes)
       for (const d of MOVE_INS) {
         this.homeCard(d, cx, cy, cw, cardH);
@@ -297,6 +299,34 @@ export class TownPanel {
       bx -= 4;
       this.root.add(btn);
     }
+  }
+
+  /** An extension (the Mail Rocket, the Workshop): what it adds, what building it takes, and the button. */
+  private extensionCard(b: BuildingId, x: number, y: number, w: number, h: number) {
+    const s = this.scene;
+    const ext = EXTENSIONS[b]!;
+    const g = s.add.graphics();
+    pixBox(g, x, y, w, h, C.paperLight, C.paperDark);
+    const name = ptext(s, x + 8, y + 6, BUILDINGS[b].name, C.ink, "pxb");
+    const built = !!store.buildings[b];
+    const what = BUILDINGS[b].unlocks;
+    this.root.add([g, name, ptext(s, x + 8, y + 19, `${what[0].toUpperCase()}${what.slice(1)}.`, C.inkSoft, "sm").setMaxWidth(w - 90)]);
+    if (built) {
+      const done = ptext(s, 0, y + 7, "BUILT ✓", OK, "pxb");
+      done.setX(x + w - 8 - measure(done).w);
+      this.root.add(done);
+      return;
+    }
+    this.chips(this.materialChips(ext.needs), x + 8, y + h - 15);
+    const ready = canAfford(ext.needs, store.materials);
+    const btn = new Button(s, 0, y + h - 22, ready ? "BUILD" : "NEED MATERIALS", ready ? C.greenBtn : 0x9a93a8, () => {
+      if (!ready) return sfx.deny();
+      net.send({ type: "build", building: b });
+      sfx.hammer();
+      this.close();
+    }, 56);
+    btn.setX(x + w - 6 - btn.width);
+    this.root.add(btn);
   }
 
   /** A neighbor's plot or house, out on the map: what the next stage takes, and the button to build it. */

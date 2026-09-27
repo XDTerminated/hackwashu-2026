@@ -16,7 +16,7 @@ export const store: Snapshot & { connected: boolean } = {
   decos: [],
   lastSeq: 0,
   phoneLinked: false,
-  connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
+  connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, github: { connected: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
   progress: { town: freshTown(), revealed: [], sandbox: {}, movedIn: [], plots: {} },
   residents: ["jade_rabbit"],
   rabbitTeamwork: false,

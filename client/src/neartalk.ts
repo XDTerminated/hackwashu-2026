@@ -9,7 +9,6 @@
 
 import Phaser from "phaser";
 import { VILLAGER_SHORT, type VillagerId } from "../../shared/game";
-import type { VillagerActor } from "./actors";
 import { listenOpen, micSupported } from "./mic";
 import { spokenEmails } from "./spoken";
 import * as net from "./net";
@@ -18,10 +17,18 @@ import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import * as voice from "./voice";
 import { C, Label, TOOLBAR_H, measure, ptext, woodFrame } from "./widgets";
 
+/** Whoever you're talking with: where they stand, and a bubble over their head (a villager on the island, or Ada in the Office). */
+export interface Talker {
+  x: number;
+  y: number;
+  sprite: { scene?: unknown };
+  say(text: string, ms?: number, originX?: number): void;
+}
+
 export interface NearHost {
   scene: Phaser.Scene;
   player(): Phaser.GameObjects.Sprite;
-  actor(v: VillagerId): VillagerActor | undefined;
+  actor(v: VillagerId): Talker | undefined;
   /** The neighbor you're close enough to talk to (moved in and ready to work), if any. */
   nearest(): VillagerId | null;
   hold(v: VillagerId): void;
@@ -53,6 +60,7 @@ const EXAMPLES: Partial<Record<VillagerId, string>> = {
   scholar: "what's due this week?",
   stargazer: "when is the next full moon?",
   dj: "play Fly Me to the Moon",
+  mechanic: "any PRs waiting on me?",
 };
 
 // ---------------------------------------------------------------- the mic setting
@@ -112,6 +120,7 @@ const CALLS: Record<VillagerId, string[]> = {
   stargazer: ["nova", "nover", "noah", "stargazer"],
   manager: ["ada", "ayda", "aida"],
   dj: ["echo", "echoes", "eko", "dj", "deejay"],
+  mechanic: ["tinker", "tinkers", "tinka", "mechanic"],
 };
 const HELLO = /^(hey|hi|hello|hiya|yo|howdy|oh hey|excuse me|good (morning|afternoon|evening))\b/i;
 const words = (t: string) => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];
@@ -199,6 +208,12 @@ export class NearTalk {
     this.clearSpeech();
     this.mine?.destroy();
     this.destroyChat();
+  }
+
+  /** Stepping away somewhere else (into the Office): the chat closes and the mic stops listening here. */
+  hush() {
+    this.leave();
+    this.stopMic();
   }
 
   /** Who you're talking with right now, if anyone. */

@@ -113,6 +113,8 @@ export const SPOTS: Record<BuildingId, BuildingSpot> = {
   player_house: spot(1144, 912, "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
   // (neighbors' homes go wherever you set their plot down; these are just where they'd start)
   radio_tower: spot(1296, 780, "b_radio_tower", 28, 28, 132, { dx: 0, dy: 14 }),
+  // Tinker's Workshop: an extension built onto Ada's Office (placed beside it).
+  workshop: { x: 0, y: 0, texture: "b_workshop", fw: 24, fh: 24, tall: 92, door: { dx: 0, dy: 14 } },
 };
 
 export function buildingTiles(b: BuildingId): { w: number; h: number } {
@@ -125,17 +127,23 @@ export function buildingTiles(b: BuildingId): { w: number; h: number } {
  * outside the Post Office's doorway lamp, and the Mail Rocket (Hoot's upgrade)
  * is built onto the Post Office's other side. The Mail Rocket moves with it.
  */
-export const isAnnex = (b: BuildingId) => b === "mailbox" || b === "rocket_pad";
+export const isAnnex = (b: BuildingId) => b === "mailbox" || b === "rocket_pad" || b === "workshop";
 
 /** Where the Mail Rocket stands, for the Post Office at `po`. */
 export function mailRocketAt(po: Pt): Pt {
   return { x: po.x + ((buildingTiles("post_office").w + buildingTiles("rocket_pad").w) / 2) * TILE, y: po.y };
 }
 
+/** Where Tinker's Workshop stands, for the Office at `of`: built onto its west wall. */
+export function workshopAt(of: Pt): Pt {
+  return { x: of.x - ((buildingTiles("office").w + buildingTiles("workshop").w) / 2) * TILE, y: of.y };
+}
+
 // Snap the starting spots to the grid.
 for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snapToTiles(SPOTS[b].x, SPOTS[b].y, buildingTiles(b).w));
 Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
 Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
+Object.assign(SPOTS.workshop, workshopAt(SPOTS.office));
 
 /**
  * The ship you arrived in: parked south of Main Street, straight across from
@@ -269,6 +277,7 @@ export function applyLayout(layout: Layout) {
   for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], layout[b] ?? DEFAULT_POS[b]);
   // The Mail Rocket is part of the Post Office: it goes wherever the Post Office goes.
   Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
+  Object.assign(SPOTS.workshop, workshopAt(SPOTS.office));
 }
 
 /** The building's own tiles plus the row in front of its door (kept clear for the door). */
@@ -280,10 +289,11 @@ export function buildingFootprint(b: BuildingId, at: Pt = SPOTS[b]): Rect {
 /** Every tile a building claims: its footprint, and the tiles of its doorway lamp and doorbell. */
 export function buildingRects(b: BuildingId, at: Pt = SPOTS[b]): Rect[] {
   // The Mail Rocket's tiles belong to the Post Office (kept free for it, and moved with it).
-  if (b === "rocket_pad") return [];
+  if (b === "rocket_pad" || b === "workshop") return [];
   const rects = [buildingFootprint(b, at)];
   if (b !== "mailbox") rects.push(tileAt(besideDoor(b, -1, at)), tileAt(besideDoor(b, 1, at)));
   if (b === "post_office") rects.push(buildingFootprint("rocket_pad", mailRocketAt(at)));
+  if (b === "office") rects.push(buildingFootprint("workshop", workshopAt(at)));
   return rects;
 }
 

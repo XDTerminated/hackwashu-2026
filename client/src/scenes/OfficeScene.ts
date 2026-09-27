@@ -9,7 +9,8 @@ import Phaser from "phaser";
 import type { AgentInfo, AgentSession } from "../../../shared/game";
 import { BOARD, DESKS, ELEVATOR, ROOM_H, ROOM_W, WORKER_LOOKS } from "../officeart";
 import * as net from "../net";
-import { isMoonPadOpen, openMoonPad } from "../tablet";
+import { NearTalk, type Talker } from "../neartalk";
+import { isMoonPadOpen } from "../tablet";
 import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard } from "../panel";
 import { sfx } from "../sfx";
 import { agents, focusedSession } from "../store";
@@ -75,6 +76,12 @@ export class OfficeScene extends Phaser.Scene {
   /** The first look after walking in: agents already at work are sitting down, not arriving. */
   private settled = false;
   private unsubs: Array<() => void> = [];
+  /** Talking with Ada: the same as with any neighbor outside (speak or type; her answers over her head). */
+  private near!: NearTalk;
+  private ada!: Talker;
+  private talkBubble: Label | null = null;
+  private talkTimer: Phaser.Time.TimerEvent | null = null;
+  private typingCapture = false;
 
   constructor() {
     super("Office");
@@ -120,6 +127,48 @@ export class OfficeScene extends Phaser.Scene {
     new Label(this, lx + 9, 84, "Ada", { bg: C.paper, border: C.paperDark, originX: 0, originY: 0, padX: 2 }).setDepth(96);
 
     this.player = this.add.sprite(ELEVATOR.x, ELEVATOR.y - 18, "astro_3").setOrigin(0.5, 1);
+    // Ada, as someone to talk to: where she stands, and her words in a bubble over her head.
+    const lead = this.lead;
+    const scene = this;
+    this.ada = {
+      get x() {
+        return lead.x;
+      },
+      get y() {
+        return lead.y;
+      },
+      sprite: lead,
+      say: (text: string, ms = 3200, originX = 0.5) => {
+        scene.talkBubble?.destroy();
+        scene.talkTimer?.remove();
+        const clipped = text.length > 120 ? text.slice(0, 117) + "..." : text;
+        scene.talkBubble = new Label(scene, lead.x, lead.y - 30, clipped, { maxWidth: 130, tail: true, originX }).setDepth(99996);
+        scene.talkTimer = scene.time.delayedCall(Math.max(ms, clipped.length * 45), () => {
+          scene.talkBubble?.destroy();
+          scene.talkBubble = null;
+        });
+      },
+    };
+    const nearAda = (r: number) => Math.hypot(this.player.x - lead.x, this.player.y - 8 - lead.y) < r;
+    this.near = new NearTalk({
+      scene: this,
+      player: () => this.player,
+      actor: (v) => (v === "manager" ? this.ada : undefined),
+      nearest: () => (nearAda(40) ? "manager" : null),
+      around: (r) => (nearAda(r) ? ["manager"] : []),
+      hold: () => {},
+      release: () => {},
+      blocked: () => this.frozen(false),
+      greeting: () => "Ada, Team Lead. I keep an eye on your coding agents. Want the status report?",
+    });
+    // Her answers come back as she thinks them up.
+    this.unsubs.push(
+      net.onEvent((e) => {
+        if (e.type !== "say" || e.villager !== "manager") return;
+        if (this.near.isWith("manager")) this.near.reply("manager", e.text);
+        else this.ada.say(e.text, 4000);
+      }),
+    );
     this.prompt = new Label(this, 0, 0, "", { bg: C.wood, border: C.woodDark, color: C.paperLight, font: "pxb" }).setDepth(99999).setVisible(false);
 
     const cam = this.cameras.main;
@@ -150,7 +199,12 @@ export class OfficeScene extends Phaser.Scene {
       this.sync();
     };
     this.events.on(Phaser.Scenes.Events.WAKE, onWake);
+    // Heading back outside: the chat with Ada closes and the mic stops listening in here.
+    const onSleep = () => this.near.hush();
+    this.events.on(Phaser.Scenes.Events.SLEEP, onSleep);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.SLEEP, onSleep);
+      this.near.destroy();
       this.events.off(Phaser.Scenes.Events.WAKE, onWake);
       tick.remove();
       this.unsubs.forEach((u) => u());
@@ -348,8 +402,8 @@ export class OfficeScene extends Phaser.Scene {
     const add = (sp: Spot, r: number) => sp.d < r && options.push(sp);
     add({ verb: "BOARD", label: s ? "[E] the board" : agents.state.link ? "[E] link your Claude Code" : "[E] replay a session", x: BOARD.x, y: 80, d: Math.hypot(px - BOARD.x, py - 84), act: () => openAgentBoard() }, 70);
     const lx = this.lead.x;
-    // Ada the Team Lead: talk to her like any neighbor (her chat opens on your MoonPad).
-    add({ verb: "TALK", label: "[E] talk to Ada", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => openMoonPad("manager") }, 26);
+    // Ada the Team Lead: talk to her like any neighbor (speak, or type; her answers over her head).
+    add({ verb: "TALK", label: "[E] talk to Ada", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => this.near.start("manager") }, 26);
     for (const v of this.workers.values()) {
       if (v.leaving || !s) continue;
       add({ verb: "WATCH", label: `[E] watch ${clip(v.a.name, 24)}`, x: v.sprite.x, y: v.sprite.y + 4, d: Math.hypot(px - v.sprite.x, py - v.sprite.y - 6), act: () => openAgent(s.id, v.a.id) }, 30);
@@ -368,9 +422,9 @@ export class OfficeScene extends Phaser.Scene {
     });
   }
 
-  /** A window is up (dialog, MoonPad or shop): keys belong to it, not to walking. */
-  private frozen() {
-    return isPanelOpen() || isMoonPadOpen() || !!this.registry.get("shopOpen");
+  /** A window is up (dialog, MoonPad or shop), or you're typing to Ada: keys belong to it, not to walking. */
+  private frozen(typing = true) {
+    return isPanelOpen() || isMoonPadOpen() || !!this.registry.get("shopOpen") || (typing && !!this.near?.typing);
   }
 
   /** The first time in: one sentence on what this place is. */
@@ -415,6 +469,16 @@ export class OfficeScene extends Phaser.Scene {
       v.bubble.setDepth(close ? 99995 : 99990).place(Math.round(v.sprite.x), Math.round(v.sprite.y) - 46);
     }
     this.target = frozen ? null : this.findTarget();
+    this.near.update();
+    this.talkBubble?.place(this.lead.x, this.lead.y - 30);
+    // (while she's answering you, her status bubble steps aside)
+    this.leadBubble.setAlpha(this.talkBubble ? 0 : 1);
+    // While you type, keys go to your words (not to walking).
+    if (this.near.typing !== this.typingCapture) {
+      this.typingCapture = this.near.typing;
+      if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
+      else this.input.keyboard!.enableGlobalCapture();
+    }
     const action = this.target ? this.target.verb : "";
     if (action !== this.lastAction) {
       this.lastAction = action;

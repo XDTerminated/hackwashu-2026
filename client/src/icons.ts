@@ -400,6 +400,10 @@ export const VILLAGER_ICONS: Record<string, PixelSprite> = {
     palette: { K: "#3b2a3a", H: "#3b2a2a", S: "#f0c09a", B: "#3f4f8a" },
     frames: [[".KKKKK.", "KHHHHHK", "KHSSSHK", "KHKSKHK", "KHSSSHK", ".KBBBK.", ".KKKKK."]],
   },
+  mechanic: {
+    palette: { K: "#3b2a3a", F: "#e8894a", G: "#d9a441", k: "#241a16", W: "#fff6e6", N: "#3b2a3a" },
+    frames: [[".K...K.", "KFK.KFK", "KFFFFFK", "KGFFFGK", "KFkFkFK", "KFWNWFK", ".KKKKK."]],
+  },
   dj: {
     palette: { K: "#3b2a3a", H: "#e0708a", M: "#c3cbe0", S: "#1f2a44", E: "#7ff0e8" },
     frames: [[".HHHHH.", "HKKKKKH", "HKSSSKH", "HKESEKH", "HKSSSKH", ".KMMMK.", ".KKKKK."]],

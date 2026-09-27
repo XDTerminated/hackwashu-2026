@@ -3,7 +3,7 @@
 
 import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
 
-export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj";
+export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj" | "mechanic";
 
 /** Ada the Team Lead lives and works in the Office, not out on the island. */
 export const IN_OFFICE = (v: VillagerId) => v === "manager";
@@ -20,7 +20,8 @@ export type BuildingId =
   | "office"
   | "town_hall"
   | "market"
-  | "radio_tower";
+  | "radio_tower"
+  | "workshop";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -47,6 +48,17 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   market: { id: "market", name: "Market", price: 0, starter: true, unlocks: "decorations: upgrade it for more stock" },
   office: { id: "office", name: "Office", price: 0, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
   radio_tower: { id: "radio_tower", name: "Radio Tower", price: 0, starter: false, resident: "dj", unlocks: "Echo the DJ: plays your Spotify right here in the game" },
+  workshop: { id: "workshop", name: "Workshop", price: 0, starter: false, unlocks: "an extension of Ada's Office: Tinker the Mechanic moves in and keeps an eye on your GitHub (pull requests, issues, checks)" },
+};
+
+/**
+ * Extensions, built onto a neighbor's home once they live there: the Mail
+ * Rocket on Hoot's Post Office (he can send your emails), and the Workshop on
+ * Ada's Office (Tinker moves in, for your GitHub). What building one takes.
+ */
+export const EXTENSIONS: Partial<Record<BuildingId, { of: BuildingId; by: VillagerId; needs: Partial<Materials> }>> = {
+  rocket_pad: { of: "post_office", by: "postmaster", needs: { moonstone: 3, stardust: 2, ore: 1 } },
+  workshop: { of: "office", by: "manager", needs: { moonstone: 4, stardust: 2, ore: 2 } },
 };
 
 // ---------------------------------------------------------------- the office
@@ -156,6 +168,7 @@ export const VILLAGER_SHORT: Record<VillagerId, string> = {
   stargazer: "Nova",
   manager: "Ada",
   dj: "Echo",
+  mechanic: "Tinker",
 };
 
 /** ...their job in the colony... */
@@ -167,6 +180,7 @@ export const VILLAGER_ROLE: Record<VillagerId, string> = {
   stargazer: "Stargazer",
   manager: "Team Lead",
   dj: "DJ",
+  mechanic: "Mechanic",
 };
 
 /** ...and how they're shown: "Nova the Stargazer". */
@@ -182,10 +196,11 @@ export const VILLAGER_HOME: Record<VillagerId, BuildingId> = {
   stargazer: "observatory",
   manager: "office",
   dj: "radio_tower",
+  mechanic: "workshop",
 };
 
 /** Which real account each villager needs before they'll move in. */
-export type Service = "google" | "canvas" | "web" | "spotify";
+export type Service = "google" | "canvas" | "web" | "spotify" | "github";
 export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
   jade_rabbit: null,
   stargazer: "web",
@@ -194,8 +209,9 @@ export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
   scholar: "canvas",
   manager: null,
   dj: "spotify",
+  mechanic: "github",
 };
-export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web", spotify: "Spotify" };
+export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web", spotify: "Spotify", github: "GitHub" };
 
 // ---------------------------------------------------------------- moving in
 // Every neighbor still on Earth needs a home on the Moon: buy their plot (a
@@ -363,6 +379,8 @@ export interface Connections {
   google: { connected: boolean; account?: string; configured: boolean };
   /** Spotify: plays inside the game tab (Spotify only allows that for Premium accounts). */
   spotify: { connected: boolean; account?: string; configured: boolean; premium?: boolean };
+  /** GitHub (for Tinker): a token you paste, or the GitHub CLI's login on this computer (`cli`: it's there to use). */
+  github: { connected: boolean; account?: string; cli?: boolean };
   canvas: { connected: boolean; account?: string; baseUrl?: string };
   photon: { connected: boolean; phoneLinked: boolean; phones: LinkedPhone[] };
   web: { connected: boolean };
@@ -544,6 +562,9 @@ export type ClientMessage =
   | { type: "buy_plot"; building: BuildingId }
   | { type: "place_plot"; building: BuildingId; x: number; y: number }
   | { type: "build_plot"; building: BuildingId }
+  /** GitHub for Tinker: a token you pasted, or the GitHub CLI's login on this computer. */
+  | { type: "connect_github"; token: string }
+  | { type: "github_cli" }
   /** The game's Spotify player is ready (its device id), so Echo can play to it. */
   | { type: "spotify_device"; id: string }
   | { type: "place_deco"; item: string; x: number; y: number }
@@ -575,7 +596,7 @@ export type ClientMessage =
   | { type: "harvest"; id: string }
   | { type: "dig"; id: string }
   | { type: "dev"; action: "move_in" | "materials" | "meteor" | "dust" | "town" }
-  | { type: "disconnect"; service: "google" | "canvas" | "spotify" };
+  | { type: "disconnect"; service: "google" | "canvas" | "spotify" | "github" };
 
 export type ServerMessage =
   | { type: "connection_test"; results: { name: string; ok: boolean | null; detail: string }[] }

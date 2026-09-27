@@ -21,7 +21,7 @@ export function heartsOf(v: VillagerId): number {
   return heartsFor(memoryOf(v).points + happiness(v).score);
 }
 
-const ALL: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj"];
+const ALL: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 
 export function happinessAll(): Record<VillagerId, number> {
   return Object.fromEntries(ALL.map((v) => [v, happiness(v).score])) as Record<VillagerId, number>;

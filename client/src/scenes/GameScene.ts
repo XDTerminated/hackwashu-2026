@@ -3,6 +3,7 @@ import { TownView } from "../townview";
 import Phaser from "phaser";
 import {
   BUILDINGS,
+  EXTENSIONS,
   MATERIALS,
   MATERIAL_NAME,
   MOVE_INS,
@@ -41,7 +42,7 @@ import { clearListener, setListener, sfx, sfxAt } from "../sfx";
 import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
 import { inTutorial, pendingApprovalFor, store } from "../store";
 
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
 
 /** What each plot is for, on its sign. */
@@ -50,7 +51,8 @@ const PLOT_PURPOSE: Partial<Record<BuildingId, string>> = {
   clock_tower: "Cog's home: your calendar",
   library: "Mabel's home: your Canvas",
   radio_tower: "Echo's home: your Spotify",
-  rocket_pad: "Hoot's upgrade: send your emails (you OK each one)",
+  workshop: "Ada's Office extension: Tinker moves in, for your GitHub",
+  rocket_pad: "Hoot's Post Office extension: he can send your emails (you OK each one)",
   office: "watch your coding agents work",
 };
 
@@ -63,6 +65,7 @@ const HELLOS: Record<VillagerId, string[]> = {
   scholar: ["Oh! Hello! *adjusts glasses*", "Did you know the Moon has quakes?", "Reading anything good?"],
   manager: ["Hey! Busy day at the Office.", "Your agents are hard at work."],
   dj: ["Bzzt! Hey hey!", "Want a song? Just ask!", "Feeling a groove today."],
+  mechanic: ["Hey there! Mind the grease.", "Got any PRs for me?", "The Workshop's open!"],
 };
 
 /**
@@ -82,6 +85,7 @@ const GREETINGS: Record<VillagerId, string> = {
   stargazer: "The Observatory's dish is pointed at Earth's web. What should I look up?",
   manager: "Ada, Team Lead. I keep an eye on your coding agents. Want the status report?",
   dj: "Bzzt! Echo on the decks. Name a song, a mood, anything, and I'll put it on.",
+  mechanic: "Tinker, at your service! I keep an eye on your GitHub: pull requests, issues, checks. What should we look at?",
 };
 
 /** Something you can do where you're standing. Drives the world prompt and the action button. */
@@ -442,7 +446,8 @@ export class GameScene extends Phaser.Scene {
   private refreshNeedSign(b: BuildingId) {
     const def = moveInAt(b);
     const sign = this.needSigns.get(b);
-    if (!def || !store.buildings[b] || store.progress.movedIn.includes(def.villager)) {
+    // (only while a built house waits on things its neighbor loves in the yard: nobody does, these days)
+    if (!def || !def.loves || !store.buildings[b] || store.progress.movedIn.includes(def.villager)) {
       sign?.destroy();
       this.needSigns.delete(b);
       return;
@@ -809,7 +814,9 @@ export class GameScene extends Phaser.Scene {
       const purpose = PLOT_PURPOSE[b];
       const text = move
         ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name} (${move.app})\nBuild it: ${needsText(move.build[0])} (E)`
-        : `${def.name}${purpose ? `\n${purpose}` : ""}\n${def.price ? `${def.price}¢ - ` : ""}E to build`;
+        : EXTENSIONS[b]
+          ? `${def.name}${purpose ? `\n${purpose}` : ""}\nBuild it: ${needsText(EXTENSIONS[b]!.needs)} (E)`
+          : `${def.name}${purpose ? `\n${purpose}` : ""}\n${def.price ? `${def.price}¢ - ` : ""}E to build`;
       // A neighbor's sign hangs above the plot (clear of you and the rocks around it); other plots' signs sit below.
       const top = s.y - buildingTiles(b).h * TILE - 18;
       const sign = move
@@ -1442,7 +1449,15 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(8500, () =>
             this.game.events.emit("npc-toast", {
               who: VILLAGER_NAMES.postmaster,
-              text: "Hoo! I'd love a Mail Rocket on the side of my Post Office. Build it (free) and I can send your replies to Earth. I'll bring each one to your door for your OK first.",
+              text: "Hoo! I'd love a Mail Rocket on the side of my Post Office. Build it (press E at its plot: a few materials) and I can send your replies to Earth. I'll bring each one to your door for your OK first.",
+            }),
+          );
+        // Ada suggests the Workshop: her friend Tinker would move in, for your GitHub.
+        if (e.building === "workshop")
+          this.time.delayedCall(8500, () =>
+            this.game.events.emit("npc-toast", {
+              who: VILLAGER_NAMES.manager,
+              text: "There's room for a Workshop on the Office's west wall. Build it (E at its plot: a few materials) and my friend Tinker moves in: pull requests, issues, CI, the works. Your agents code, Tinker keeps GitHub tidy.",
             }),
           );
         break;
@@ -1803,6 +1818,11 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
       if (store.buildings[b] || !onMap(b, store.progress, store.buildings) || b === "mailbox") continue;
+      // An extension's plot (the Mail Rocket, the Workshop): its card, with what it takes.
+      if (EXTENSIONS[b]) {
+        add({ verb: "BUILD", label: `[E] build the ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.game.events.emit("town-panel", { kind: "extension", b }) }, 46);
+        continue;
+      }
       // A neighbor's plot you've set down: build their house on it.
       if (move) {
         add({ verb: "BUILD", label: `[E] build ${VILLAGER_SHORT[move.villager]}'s ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showPlot(move), tut: true }, 46);
@@ -1953,6 +1973,7 @@ export class GameScene extends Phaser.Scene {
   /** Step through the Office doors into the interior scene. */
   private enterOffice() {
     if (!store.buildings.office) return;
+    this.near.hush();
     sfx.blip();
     this.game.events.emit("action", null);
     this.cameras.main.fadeOut(220, 11, 10, 26);

@@ -10,13 +10,14 @@ import {
   stargazer,
   scholar,
   dj,
+  mechanic,
   rocket,
 } from "./art";
 import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
 import { ICON_SPRITES, ITEM_ICONS, MATERIAL_ICONS, VILLAGER_ICONS } from "./icons";
 import { decorById } from "../../shared/decor";
 import { drawMailbox, drawPlot, drawRuins, drawFoundation, drawRubble } from "./buildings";
-import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawMailRocket, drawManor, drawRadioTower } from "./estate";
+import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawMailRocket, drawManor, drawRadioTower, drawWorkshop } from "./estate";
 import { SPOTS, TILE, buildingTiles, isAnnex } from "./layout";
 import type { BuildingId, VillagerId } from "../../shared/game";
 import { type Ctx, INK, box, disc, hash, rect } from "./pix";
@@ -666,9 +667,10 @@ export function buildTextures(scene: Phaser.Scene) {
   registerSprite(scene, "stargazer", stargazer);
   registerSprite(scene, "scholar", scholar);
   registerSprite(scene, "dj", dj);
+  registerSprite(scene, "mechanic", mechanic);
   registerSprite(scene, "rocket", rocket);
   // Talk-dialog portraits: portrait_<villager>_<0 rest | 1 talk | 2 blink>.
-  const portraitOf: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj"];
+  const portraitOf: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj", "mechanic"];
   for (const v of portraitOf)
     for (const f of [0, 1, 2] as PortraitFrame[]) canvasTex(scene, `portrait_${v}_${f}`, PORTRAIT, PORTRAIT, (ctx) => drawPortrait(ctx, v, f));
   canvasTex(scene, "portrait_sky", PORTRAIT + 8, PORTRAIT + 8, (ctx) => drawPortraitSky(ctx, PORTRAIT + 8));
@@ -698,6 +700,7 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "b_library", 128, 120, drawGrandLibrary);
   canvasTex(scene, "b_office", 128, 156, drawOfficeTower);
   canvasTex(scene, "b_radio_tower", 64, 132, drawRadioTower);
+  canvasTex(scene, "b_workshop", 48, 92, drawWorkshop);
   // A grand house's gold pennant, on a little pole.
   canvasTex(scene, "grand_pennant", 9, 14, (ctx) => {
     rect(ctx, INK, 0, 0, 2, 14);
@@ -936,6 +939,7 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("stargazer-idle", ["stargazer_0", "stargazer_1"], 2);
   mk("scholar-idle", ["scholar_0", "scholar_0", "scholar_0", "scholar_1"], 2);
   mk("dj-idle", ["dj_0", "dj_0", "dj_1", "dj_0", "dj_1"], 3);
+  mk("mechanic-idle", ["mechanic_0", "mechanic_0", "mechanic_0", "mechanic_1"], 2);
   for (const id of DECOR_ART_IDS) {
     const n = decorArt(id)!.frames;
     if (n > 1) mk(`deco_${id}`, Array.from({ length: n }, (_, f) => `deco_${id}_${f}`), id === "flag" ? 3 : 1.5);

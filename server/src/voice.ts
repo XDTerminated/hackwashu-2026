@@ -48,6 +48,8 @@ const VOICES: Record<VillagerId, VoiceDef> = {
   manager: { id: "FGY2WhTYpPnrIDTdsKH5", stability: 0.5, similarity: 0.8, style: 0.35, speed: 1.05 },
   // Charlie: laid-back and cheerful
   dj: { id: "IKne3meq5aSn9XLyUdCD", stability: 0.45, similarity: 0.75, style: 0.4, speed: 1.05 },
+  // Will: friendly and easygoing
+  mechanic: { id: "bIHbv24MWmeRgasZH58o", stability: 0.45, similarity: 0.8, style: 0.35, speed: 1.05 },
 };
 
 function voiceFor(v: VillagerId): VoiceDef {

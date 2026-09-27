@@ -698,6 +698,62 @@ export function drawMailRocket(ctx: Ctx) {
 }
 
 /**
+ * Tinker's Workshop, built onto the Office's west wall: a garage with a gear
+ * sign, a roll-up door half open with the lamps on inside, a little crane on
+ * the roof, a window and a toolboard. 48 x 92.
+ */
+export function drawWorkshop(ctx: Ctx) {
+  const STEEL = { base: "#8f93a3", dark: "#5b5470", light: "#c9cbd6" };
+  const BLUE = { base: "#3f6fb0", dark: "#2c4f86", light: "#5f8fd0" };
+  // the crane on the roof: a mast, an arm, a cable and a hook
+  rect(ctx, O, 34, 8, 3, 36);
+  rect(ctx, STEEL.light, 35, 9, 1, 34);
+  rect(ctx, O, 8, 8, 29, 3);
+  rect(ctx, STEEL.base, 9, 9, 27, 1);
+  rect(ctx, O, 12, 11, 1, 13);
+  rect(ctx, O, 10, 24, 5, 3);
+  rect(ctx, GOLD, 11, 25, 3, 1);
+  // the building: plaster walls under a blue roof edge
+  plaster(ctx, 2, 46, 44, 40);
+  rect(ctx, O, 0, 42, 48, 5);
+  rect(ctx, BLUE.base, 1, 43, 46, 3);
+  rect(ctx, BLUE.light, 1, 43, 46, 1);
+  // a gear sign over the door
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    rect(ctx, O, Math.round(24 + Math.cos(a) * 6) - 1, Math.round(54 + Math.sin(a) * 6) - 1, 3, 3);
+  }
+  disc(ctx, O, 24, 54, 6);
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    rect(ctx, GOLD, Math.round(24 + Math.cos(a) * 6), Math.round(54 + Math.sin(a) * 6), 1, 1);
+  }
+  disc(ctx, GOLD, 24, 54, 5);
+  disc(ctx, GOLD_DARK, 24, 54, 2.2);
+  disc(ctx, O, 24, 54, 1);
+  // the roll-up door, half up, with the lamps on inside
+  rect(ctx, O, 12, 62, 24, 24);
+  rect(ctx, "#ffd98a", 13, 74, 22, 12);
+  rect(ctx, "#fff3c4", 13, 74, 22, 1);
+  for (let y = 63; y < 74; y += 2) {
+    rect(ctx, STEEL.base, 13, y, 22, 1);
+    rect(ctx, STEEL.dark, 13, y + 1, 22, 1);
+  }
+  for (let x = 13; x < 35; x += 4) rect(ctx, "#e6b53e", x, 73, 2, 1);
+  // a window, and a toolboard with a wrench and a hammer on it
+  rect(ctx, O, 3, 63, 8, 9);
+  rect(ctx, "#8fd0f0", 4, 64, 6, 7);
+  rect(ctx, "#cfe8f5", 4, 64, 2, 2);
+  rect(ctx, O, 37, 63, 8, 13);
+  rect(ctx, "#c98f5a", 38, 64, 6, 11);
+  rect(ctx, STEEL.light, 39, 65, 1, 7);
+  rect(ctx, STEEL.light, 38, 65, 3, 1);
+  rect(ctx, STEEL.dark, 42, 66, 1, 7);
+  rect(ctx, STEEL.dark, 41, 66, 3, 2);
+  stoneBase(ctx, 0, 85, 48, 7);
+}
+
+/**
  * Echo's Radio Tower: a little studio with a vinyl record in its round window
  * and an ON AIR lamp over the door, under a steel lattice mast with a dish
  * and a beacon on top (it blinks in the game). 64 x 132.
