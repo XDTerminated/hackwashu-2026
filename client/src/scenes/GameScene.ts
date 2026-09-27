@@ -176,6 +176,8 @@ export class GameScene extends Phaser.Scene {
     // The town: rockfalls over the parts the roads haven't reached, things to gather, things to dig up.
     this.town = new TownView(this);
     this.town.refresh();
+    this.nodeSolids = [];
+    this.refreshNodeSolids();
     this.townStages = { ...store.progress.town.stages };
     this.tutorialStep = undefined;
     this.time.delayedCall(1500, () => this.tutorialLine());
@@ -580,9 +582,22 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(was === undefined ? 800 : done ? 4000 : 700, show);
   }
 
+  private nodeSolids: Phaser.Geom.Rectangle[] = [];
+
+  /** Ice crystals, scrap and glow-ore craters are solid (until picked for the day); helium-3 is dust you walk over. */
+  private refreshNodeSolids() {
+    this.solids = this.solids.filter((r) => !this.nodeSolids.includes(r));
+    const town = store.progress.town;
+    const picked = town.day === new Date().toDateString() ? town.harvested : [];
+    this.nodeSolids = NODES.filter((n) => n.kind !== "helium" && !picked.includes(n.id)).map((n) => new Phaser.Geom.Rectangle(n.x - 8, n.y - 6, 16, 6));
+    this.solids.push(...this.nodeSolids);
+    this.navGrid = null;
+  }
+
   /** After any progress: redraw what's gathered or dug, and celebrate any landmark that went up a stage. */
   private townChanged() {
     this.town.refresh();
+    this.refreshNodeSolids();
     this.tutorialLine();
     const now = store.progress.town.stages;
     for (const id of LANDMARK_IDS) {
@@ -1763,9 +1778,9 @@ export class GameScene extends Phaser.Scene {
       this.game.events.emit("town-panel", spec.kind === "board" && inTutorial() ? (store.progress.town.stages.town_hall === 0 ? { kind: "landmark", id: "town_hall" } : { kind: "board", tab: "homes" }) : spec);
     add({ verb: "BOARD", label: "[E] the Town Hall", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: town({ kind: "board" }), tut: true }, 40);
     const mk = this.doorOf("market");
-    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }) }, 36);
+    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }), tut: true }, 36);
     const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
-    add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }) }, 26);
+    add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }), tut: true }, 26);
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
     if (store.buildings.office) {
       const od = this.doorOf("office");

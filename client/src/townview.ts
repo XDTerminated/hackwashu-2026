@@ -19,6 +19,8 @@ export interface TownTarget {
   y: number;
   d: number;
   act: () => void;
+  /** Allowed in the tutorial too (gathering is part of it). */
+  tut?: boolean;
 }
 
 const VERB: Record<HarvestNode["kind"], string> = { ice: "chip ice", scrap: "salvage scrap", helium: "scoop helium-3", ore: "dig out glow ore" };
@@ -115,12 +117,12 @@ export class TownView {
     for (const n of NODES) {
       const d = Math.hypot(px - n.x, py - n.y);
       if (d > 26 || picked.includes(n.id) || !openAt(town, n.x, n.y) || this.sent.has(n.id)) continue;
-      out.push({ verb: "GRAB", label: `[E] ${VERB[n.kind]}`, x: n.x, y: n.y + 6, d, act: () => this.harvest(n) });
+      out.push({ verb: "GRAB", label: `[E] ${VERB[n.kind]}`, x: n.x, y: n.y + 6, d, act: () => this.harvest(n), tut: true });
     }
     for (const s of digSpots(SPOTS.town_hall)) {
       const d = Math.hypot(px - s.x, py - s.y);
       if (d > 26 || !s.when(town) || town.dug.includes(s.id) || this.sent.has(s.id)) continue;
-      out.push({ verb: "CLEAR", label: "[E] dig it up", x: s.x, y: s.y + 6, d, act: () => this.dig(s.id) });
+      out.push({ verb: "CLEAR", label: "[E] dig it up", x: s.x, y: s.y + 6, d, act: () => this.dig(s.id), tut: true });
     }
     // Standing at a rockfall: say what clears it.
     for (const area of ["north", "south"] as Area[]) {
