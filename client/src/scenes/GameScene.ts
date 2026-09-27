@@ -13,6 +13,7 @@ import {
   VILLAGER_SHORT,
   moveInAt,
   moveInFor,
+  onMap,
   type BuildingId,
   type Material,
   type Materials,
@@ -22,7 +23,7 @@ import {
   IN_OFFICE,
   TUTORIAL_VILLAGER,
 } from "../../../shared/game";
-import { checklist, lovedCount, nextStep, type MoveInState } from "../../../shared/movein";
+import { lovedCount, needsText, nextBuild, nextStep, type MoveInState } from "../../../shared/movein";
 import { ClodActor, VillagerActor, puff } from "../actors";
 import { conversation, mutter } from "../chatter";
 import { ChoreView } from "../choreviews";
@@ -41,7 +42,7 @@ import { clearListener, setListener, sfx, sfxAt } from "../sfx";
 import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
 import { inTutorial, pendingApprovalFor, store } from "../store";
 
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
 
 /** What each plot is for, on its sign. */
@@ -49,6 +50,7 @@ const PLOT_PURPOSE: Partial<Record<BuildingId, string>> = {
   post_office: "Hoot's home: your Gmail",
   clock_tower: "Cog's home: your calendar",
   library: "Mabel's home: your Canvas",
+  radio_tower: "Echo's home: your Spotify",
   rocket_pad: "Hoot's upgrade: send your emails (you OK each one)",
   office: "watch your coding agents work",
 };
@@ -61,6 +63,7 @@ const HELLOS: Record<VillagerId, string[]> = {
   timekeeper: ["Right on time. *tick*", "Hello! Tock.", "You're three minutes early. Good!"],
   scholar: ["Oh! Hello! *adjusts glasses*", "Did you know the Moon has quakes?", "Reading anything good?"],
   manager: ["Hey! Busy day at the Office.", "Your agents are hard at work."],
+  dj: ["Bzzt! Hey hey!", "Want a song? Just ask!", "Feeling a groove today."],
 };
 
 /**
@@ -79,6 +82,7 @@ const GREETINGS: Record<VillagerId, string> = {
   scholar: "Ahem! The Library has your courses on file. Deadlines, announcements, grades — ask away.",
   stargazer: "The Observatory's dish is pointed at Earth's web. What should I look up?",
   manager: "Ada, Team Lead. I keep an eye on your coding agents. Want the status report?",
+  dj: "Bzzt! Echo on the decks. Name a song, a mood, anything, and I'll put it on.",
 };
 
 /** Something you can do where you're standing. Drives the world prompt and the action button. */
@@ -114,7 +118,7 @@ const WINDOW_GLOWS: Partial<Record<BuildingId, [number, number][]>> = {
 };
 
 /** Something picked up to be set down elsewhere: a new purchase, a placed decoration, or a building. */
-type Held = { kind: "new"; item: ShopItem } | { kind: "deco"; id: string; item: ShopItem } | { kind: "building"; b: BuildingId } | { kind: "lantern"; id: string };
+type Held = { kind: "new"; item: ShopItem } | { kind: "deco"; id: string; item: ShopItem } | { kind: "building"; b: BuildingId } | { kind: "plot"; b: BuildingId } | { kind: "lantern"; id: string };
 
 type Deferred = { promise: Promise<void>; resolve: () => void };
 function deferred(): Deferred {
@@ -272,6 +276,9 @@ export class GameScene extends Phaser.Scene {
       this.cancelHeld();
     };
     this.game.events.on("begin-place", buy);
+    const placePlot = (b: BuildingId) => this.sys.isActive() && this.pickUp({ kind: "plot", b });
+    this.game.events.on("place-plot", placePlot);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off("place-plot", placePlot));
     this.game.events.on("edit-toggle", toggleEdit);
     this.game.events.on("arrange-cancel", cancel);
     this.game.events.on("arrange-sell", sell);
@@ -297,21 +304,22 @@ export class GameScene extends Phaser.Scene {
     });
 
     const rabbit = this.villagers.get("jade_rabbit");
-    if (rabbit && store.connected && !welcomed && !inTutorial()) {
+    // (in the tutorial Yutu's own window says hello, and that counts)
+    if (store.connected && inTutorial()) welcomed = true;
+    if (rabbit && store.connected && !welcomed) {
       welcomed = true;
       const ready = store.clods.filter((c) => c.status === "ready").length;
       this.time.delayedCall(900, () => {
         const text = ready
           ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
-          : "Welcome to the Moon! I'm Yutu, the mayor. The old town's in ruins, but we'll bring it back. First, let's get Nova moved in: follow the gold ★.";
+          : "Welcome back to the Moon! The gold ★ points at what's next.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
         const seen = rabbit.x > v.x + 40 && rabbit.x < v.right - 40 && rabbit.y - 40 > v.y + 30 && rabbit.y < v.bottom - 60;
         if (seen) rabbit.say(text, 5000);
         // A fresh start: Nova says who's coming, once.
         const first = MOVE_INS[0];
-        const lot = store.progress.lots[first.home];
-        if (!store.progress.movedIn.length && !lot?.cleared.length && !lot?.repaired)
+        if (!store.progress.movedIn.length && !store.progress.plots[first.home])
           this.time.delayedCall(6500, () => {
             try {
               if (localStorage.getItem("moon-first-teaser") === "1") return;
@@ -352,17 +360,6 @@ export class GameScene extends Phaser.Scene {
   /** Everything the moving-in checklist looks at. */
   private moveState(): MoveInState {
     return { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
-  }
-
-  /**
-   * Rubble heaps blocking a neighbor's lot: a row along its front edge, where
-   * you walk up to it (and where nothing else ever stands), evenly spaced.
-   */
-  private rubbleSpots(def: MoveInDef) {
-    const s = SPOTS[def.home];
-    const w = buildingTiles(def.home).w * TILE;
-    const gap = Math.min(30, Math.max(26, (w + 16) / def.rubble));
-    return Array.from({ length: def.rubble }, (_, i) => ({ i, x: Math.round(s.x + (i - (def.rubble - 1) / 2) * gap), y: s.y + 6 }));
   }
 
   /** Short on a material: the nearest place to get some (for the ★). */
@@ -410,47 +407,31 @@ export class GameScene extends Phaser.Scene {
       if (src) return src;
       return { ...this.landmarkAt(n.id), label: `Upgrade the ${LANDMARKS[n.id].name}` };
     }
-    const { def, step } = n;
-    const s = SPOTS[def.home];
-    if (step.key === "rubble") {
-      const cleared = store.progress.lots[def.home]?.cleared ?? [];
-      const r = this.rubbleSpots(def).find((x) => !cleared.includes(x.i));
-      if (r) return { x: r.x, y: r.y - 14, label: "Clear rubble" };
-    }
-    if (!step.ready) {
-      const short = MATERIALS.find((m) => (def.repair[m] ?? 0) > store.materials[m]);
+    // A neighbor's plot: buy it at the Town Hall, set it down, then build it up.
+    const { def, action } = n;
+    const who = VILLAGER_SHORT[def.villager];
+    if (action === "buy") return { ...this.landmarkAt("town_hall"), label: `Buy ${who}'s plot` };
+    if (action === "place") return this.held?.kind === "plot" ? null : { ...this.landmarkAt("town_hall"), label: `Set ${who}'s plot down` };
+    const needs = nextBuild(def, store.progress.plots[def.home]) ?? {};
+    if (!n.ready) {
+      const short = MATERIALS.find((m) => (needs[m] ?? 0) > store.materials[m]);
       const src = short && this.materialSource(short);
       if (src) return src;
     }
-    return { x: s.x, y: s.y - 24, label: "Repair" };
+    const s = SPOTS[def.home];
+    return { x: s.x, y: s.y - 24, label: action === "build" ? `Build ${who}'s house` : "Make it grand" };
   }
 
   /** Moved in, but their account isn't connected (and no sample data chosen) yet. */
   private needsConnect(v: VillagerId) {
     const service = VILLAGER_SERVICE[v];
     if (!service || service === "web") return false;
-    const live = service === "google" ? store.connections.google.connected : store.connections.canvas.connected;
-    return !live && !store.progress.sandbox[service];
+    return !store.connections[service].connected && !store.progress.sandbox[service];
   }
 
-  /** A neighbor's lot: its card (rubble, what the repair takes, room at the Town Hall, and the REPAIR button). */
-  private showNeeds(def: MoveInDef) {
+  /** A neighbor's plot: its card (what the next stage takes, and the BUILD button). */
+  private showPlot(def: MoveInDef) {
     this.game.events.emit("town-panel", { kind: "lot", home: def.home });
-  }
-
-  private showRepair(def: MoveInDef) {
-    this.showNeeds(def);
-  }
-
-  private rubbleSent = new Set<string>();
-
-  private clearRubble(def: MoveInDef, r: { i: number; x: number; y: number }) {
-    const key = `${def.home}:${r.i}`;
-    if (this.rubbleSent.has(key)) return;
-    this.rubbleSent.add(key);
-    net.send({ type: "clear_rubble", building: def.home, index: r.i });
-    sfx.thunk();
-    for (let i = 0; i < 8; i++) this.time.delayedCall(i * 40, () => puff(this, r.x + Phaser.Math.Between(-8, 8), r.y - Phaser.Math.Between(0, 6)));
   }
 
   /** A neighbor's house is built but they haven't moved in: what's still missing, by the door. */
@@ -572,18 +553,19 @@ export class GameScene extends Phaser.Scene {
   /** Nova's tutorial: Yutu says a word as each step comes up (and once it's all done). */
   private tutorialLine() {
     const n = nextStep(this.moveState());
-    const step = n?.kind === "lot" && n.tutorial ? n.tutorial : null;
+    const step = n?.tutorial ?? null;
     const was = this.tutorialStep;
     this.tutorialStep = step;
     // (on arrival, only if there's a tutorial step to pick up)
     if (step === was || (was === undefined && !step)) return;
     const LINES: Record<number, string> = {
-      1: "Let's get you started! Nova the Stargazer wants to move up, but her Observatory is a ruin. Walk to her lot (follow the gold ★) and press E by each heap of rubble.",
-      2: "Rubble breaks into moonstone! The repair needs a little more: press E by any boulder to break it up.",
-      3: "Now stardust: moondust drifts settle around the lamps. Stand on one and hold E to sweep it.",
-      4: "That's everything the repair needs. Walk up to Nova's lot and press E to repair it!",
+      1: "Let's get you started! The old Market is a collapsed cart, and fixing it takes a little moonstone and stardust. Press E by a boulder to break it up, then stand on a moondust drift and hold E to sweep it.",
+      2: "That's enough for the stall! Walk over to the Market (follow the gold ★) and press E to repair it.",
+      3: "The Market's back! Now a neighbor: Nova the Stargazer wants to move up from Earth. Head to the Town Hall (the glass dome) and press E to buy her plot.",
+      4: "It's yours! Now pick a spot for it: move it around and click to set it down. Anywhere with room will do.",
+      5: "Now build Nova's Observatory. It takes a little moonstone and stardust: gather what you need (follow the ★), then press E at her plot to build it.",
     };
-    const text = step ? LINES[step] : was ? "Nova's home, and that's the ropes: gather, sweep, repair. The town's all yours now! Press E at the Town Hall (the glass dome) to see its projects: each one you fix makes room for more neighbors." : null;
+    const text = step ? LINES[step] : was ? "Nova's home, and that's the ropes: gather, build, and buy plots for new neighbors at the Town Hall. The Shop's open at the Market too. The town's all yours now!" : null;
     if (!text) return;
     const done = !step;
     // Yutu's window, with her portrait: once whatever's on screen now is out of the way.
@@ -796,30 +778,18 @@ export class GameScene extends Phaser.Scene {
       }
       if (animate) this.construct(b, img, [tag, ...objs.filter((o) => o !== img && o !== tag)]);
       this.refreshNeedSign(b);
-    } else if (store.progress.revealed.includes(b) && b !== "mailbox") {
-      // A neighbor's lot is an old ruin: rubble to clear, then a foundation to repair.
+    } else if (onMap(b, store.progress, store.buildings) && b !== "mailbox") {
+      // A plot waiting to be built: a neighbor's you've set down, or one of the colony's.
       const move = moveInAt(b);
-      const lot = move && !store.progress.movedIn.includes(move.villager) ? (store.progress.lots[b] ?? { cleared: [], repaired: false }) : null;
-      if (move && lot) {
-        objs.push(this.add.image(s.x, s.y, lot.repaired ? `foundation_${b}` : `ruins_${b}`).setOrigin(0.5, 1).setDepth(s.y - 21));
-        for (const r of this.rubbleSpots(move)) {
-          if (lot.cleared.includes(r.i)) continue;
-          // A soft, cool shimmer that breathes in and out, so the heaps are easy to spot (not a campfire).
-          const glow = this.add.image(r.x, r.y - 6, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xb8ccff).setAlpha(0.1).setDepth(r.y - 1);
-          const spark = this.add.image(r.x, r.y - 8, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setAlpha(0.15).setDepth(r.y + 1);
-          this.tweens.add({ targets: [glow, spark], alpha: { from: 0.08, to: 0.42 }, duration: 1100, yoyo: true, repeat: -1, ease: "sine.inout", delay: r.i * 300 });
-          objs.push(glow, this.add.image(r.x, r.y, `rubble_${r.i % 2}`).setOrigin(0.5, 1).setDepth(r.y), spark);
-        }
-      }
       const plot = this.add.image(s.x, s.y, `plot_${b}`).setOrigin(0.5, 1).setDepth(s.y - 20);
       // The sign says what it's for (and, for a neighbor's lot, what's left to do).
       const purpose = PLOT_PURPOSE[b];
-      const text = move && lot
-        ? `${VILLAGER_SHORT[move.villager]}'s lot: ${def.name}\n${checklist(move, this.moveState()).map((st) => `${st.done ? "✓" : "○"} ${st.text}`).join("\n")}`
+      const text = move
+        ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name}\nBuild it: ${needsText(move.build[0])} (E)`
         : `${def.name}${purpose ? `\n${purpose}` : ""}\n${def.price ? `${def.price}¢ - ` : ""}E to build`;
-      // A neighbor's checklist hangs above the lot (clear of you and the rocks around it); other plots' signs sit below.
+      // A neighbor's sign hangs above the plot (clear of you and the rocks around it); other plots' signs sit below.
       const top = s.y - buildingTiles(b).h * TILE - 18;
-      const sign = move && lot
+      const sign = move
         ? new Label(this, s.x, top, text, { bg: C.paperLight, border: C.woodDark, originY: 1, maxWidth: 170, align: "left" }).setDepth(99970).setAlpha(0)
         : new Label(this, s.x, s.y + 2, text, { bg: C.paperLight, border: C.woodDark, originY: 0, maxWidth: 130 }).setDepth(s.y + 1).setAlpha(0);
       this.signs.push({ label: sign, x: s.x, y: s.y - 10, r: 150 });
@@ -875,12 +845,37 @@ export class GameScene extends Phaser.Scene {
       pulse(beacon, 0.1, 0.9, 700);
       return [beacon];
     }
+    const grand = this.grandTouches(b, s, pulse);
     if (b === "observatory") {
       const star = this.add.image(s.x + 44, s.y - 113, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0x6fe3e1).setDepth(s.y + 1);
       pulse(star, 0.15, 0.7, 1300);
-      return [star];
+      return [star, ...grand];
     }
-    return [];
+    if (b === "radio_tower") {
+      // the beacon on the mast, and the ON AIR lamp over the door
+      const beacon = this.add.image(s.x, s.y - 130, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff4a3a).setDepth(s.y + 1);
+      pulse(beacon, 0.1, 0.9, 800);
+      const onAir = this.add.image(s.x, s.y - 34, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff6a5a).setDepth(s.y + 1);
+      pulse(onAir, 0.15, 0.45, 1600);
+      return [beacon, onAir, ...grand];
+    }
+    return grand;
+  }
+
+  /** A grand house: gold pennants flying from its roof, and a warm shimmer. */
+  private grandTouches(b: BuildingId, s: { x: number; y: number }, pulse: (img: Phaser.GameObjects.Image, from: number, to: number, ms: number) => void): Phaser.GameObjects.GameObject[] {
+    if (!moveInAt(b) || store.progress.plots[b]?.stage !== 2) return [];
+    const tex = this.textures.get(SPOTS[b].texture).getSourceImage();
+    const top = s.y - tex.height;
+    const out: Phaser.GameObjects.GameObject[] = [];
+    for (const dx of [-1, 1]) {
+      const x = Math.round(s.x + dx * (tex.width / 2 - 6));
+      out.push(this.add.image(x, top + 14, "grand_pennant").setOrigin(0.5, 1).setDepth(s.y + 1).setFlipX(dx < 0));
+      const g = this.add.image(x, top + 6, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xf5c542).setDepth(s.y + 1);
+      pulse(g, 0.1, 0.45, 1400 + dx * 200);
+      out.push(g);
+    }
+    return out;
   }
 
   private clockHands: { g: Phaser.GameObjects.Graphics; x: number; y: number; drawn: string } | null = null;
@@ -1346,15 +1341,28 @@ export class GameScene extends Phaser.Scene {
 
       case "building_built": {
         if (e.building === "post_office") this.placeBuilding("mailbox", true);
-        this.placeBuilding(e.building, true);
-        // A new neighbor's house: now the yard needs something they love (unless it already has it).
+        // (a house made grand gets its pennants without scaffolding going up again)
+        const grand = moveInAt(e.building) && store.progress.plots[e.building]?.stage === 2;
+        this.placeBuilding(e.building, !grand);
+        if (grand) {
+          const move = moveInAt(e.building)!;
+          const s = SPOTS[e.building];
+          for (let i = 0; i < 10; i++) this.time.delayedCall(i * 60, () => puff(this, s.x + Phaser.Math.Between(-30, 30), s.y - Phaser.Math.Between(10, 60)));
+          sfx.buy();
+          this.game.events.emit("npc-toast", { who: VILLAGER_NAMES[move.villager], text: `A grand ${BUILDINGS[e.building].name}! ${move.perk[0].toUpperCase()}${move.perk.slice(1)}.` });
+        }
+        break;
+      }
+
+      case "plot": {
         const move = moveInAt(e.building);
-        if (move)
-          this.time.delayedCall(4200, () => {
-            if (store.progress.movedIn.includes(move.villager)) return;
-            const who = VILLAGER_SHORT[move.villager];
-            this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${BUILDINGS[e.building].name} is up! Last step: put ${move.loves} thing${move.loves === 1 ? "" : "s"} ${who} loves in the yard (the Shop shows who loves what). Then ${who} moves in.` });
-          });
+        if (!move) break;
+        if (!e.plot.placed) {
+          // Just bought: pick a spot for it right away.
+          this.cancelHeld();
+          this.pickUp({ kind: "plot", b: e.building });
+          sfx.buy();
+        }
         break;
       }
 
@@ -1436,12 +1444,8 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case "progress": {
-        // Lots redraw (rubble gone, a repaired foundation, the sign's checklist), and pickups float up.
-        for (const m of MOVE_INS_HOMES()) {
-          if (!store.progress.revealed.includes(m)) continue;
-          if (store.buildings[m]) this.refreshNeedSign(m);
-          else this.placeBuilding(m, false);
-        }
+        // Plots' signs redraw (what building them takes), and pickups float up.
+        for (const m of MOVE_INS_HOMES()) if (onMap(m, store.progress, store.buildings) && !store.buildings[m] && !this.constructing.has(m)) this.placeBuilding(m, false);
         this.townChanged();
         if (e.gained) {
           const at = e.at ?? { x: this.player.x, y: this.player.y };
@@ -1716,7 +1720,7 @@ export class GameScene extends Phaser.Scene {
         // Built, but they haven't moved in: what's still missing (the yard, usually).
         const move = moveInFor(v);
         const door = this.doorOf(home);
-        if (move) add({ verb: "CHECK", label: `[E] what ${VILLAGER_SHORT[v]} needs`, x: door.x, y: door.y + 18, d: dist(door.x, door.y), act: () => this.showNeeds(move) }, 44);
+        if (move) add({ verb: "CHECK", label: `[E] what ${VILLAGER_SHORT[v]} needs`, x: door.x, y: door.y + 18, d: dist(door.x, door.y), act: () => this.showPlot(move) }, 44);
         continue;
       }
       // Not home? Ring the doorbell and they'll walk back.
@@ -1730,10 +1734,10 @@ export class GameScene extends Phaser.Scene {
     }
     // The town's landmarks: the Town Hall's board, the Market, the Fountain. Gathering and digging.
     const th = this.doorOf("town_hall");
-    const town = (spec: { kind: "board" } | { kind: "landmark"; id: LandmarkId }) => () => this.game.events.emit("town-panel", spec);
-    add({ verb: "BOARD", label: "[E] town projects", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: town({ kind: "board" }) }, 40);
+    const town = (spec: { kind: "board"; tab?: "homes" } | { kind: "landmark"; id: LandmarkId }) => () => this.game.events.emit("town-panel", spec.kind === "board" && inTutorial() ? { kind: "board", tab: "homes" } : spec);
+    add({ verb: "BOARD", label: "[E] the Town Hall", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: town({ kind: "board" }), tut: true }, 40);
     const mk = this.doorOf("market");
-    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }) }, 36);
+    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }), tut: true }, 36);
     const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
     add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }) }, 26);
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
@@ -1746,25 +1750,22 @@ export class GameScene extends Phaser.Scene {
       add({ verb: "READ LETTER", label: `[E] ${store.approvals.length} letter(s)`, x: houseDoor.x, y: houseDoor.y - 50, d: dist(houseDoor.x, houseDoor.y), act: () => openLetter(store.approvals[0]) }, 40);
     }
     for (const b of BUILDING_IDS) {
-      if (store.buildings[b] || !store.progress.revealed.includes(b) || b === "mailbox") continue;
+      const move = moveInAt(b);
       const s = SPOTS[b];
       const def = BUILDINGS[b];
-      // A neighbor's lot: clear the rubble, then repair the foundation, then build.
-      const move = moveInAt(b);
-      if (move && !store.progress.movedIn.includes(move.villager)) {
-        const lot = store.progress.lots[b] ?? { cleared: [], repaired: false };
-        for (const r of this.rubbleSpots(move)) {
-          if (lot.cleared.includes(r.i) || this.rubbleSent.has(`${b}:${r.i}`)) continue;
-          add({ verb: "CLEAR", label: "[E] clear rubble", x: r.x, y: r.y - 26, d: dist(r.x, r.y - 6) - 4, act: () => this.clearRubble(move, r), tut: move.villager === TUTORIAL_VILLAGER }, 24);
+      // A neighbor's house: make it grand (by the door, behind talking to them).
+      if (move && store.buildings[b]) {
+        if (store.progress.plots[b]?.stage === 1) {
+          const d = this.doorOf(b);
+          add({ verb: "UPGRADE", label: `[E] ${VILLAGER_SHORT[move.villager]}'s house`, x: d.x, y: d.y + 18, d: dist(d.x, d.y) + 14, act: () => this.showPlot(move) }, 40);
         }
-        if (lot.cleared.length < move.rubble) {
-          add({ verb: "CHECK", label: `[E] ${VILLAGER_SHORT[move.villager]}'s lot`, x: s.x, y: s.y - 36, d: dist(s.x, s.y) + 10, act: () => this.showNeeds(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
-          continue;
-        }
-        if (!lot.repaired) {
-          add({ verb: "BUILD", label: "[E] repair the foundation", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showRepair(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
-          continue;
-        }
+        continue;
+      }
+      if (store.buildings[b] || !onMap(b, store.progress, store.buildings) || b === "mailbox") continue;
+      // A neighbor's plot you've set down: build their house on it.
+      if (move) {
+        add({ verb: "BUILD", label: `[E] build ${VILLAGER_SHORT[move.villager]}'s ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showPlot(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
+        continue;
       }
       if (b === "office" && !officeAllowed(store.progress.town)) {
         add({ verb: "CHECK", label: "[E] the Office lot", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => openInfo("THE OFFICE", [`Unlocks: ${def.unlocks}.`, "The Office can go up once the Town Hall is repaired (E at the Town Hall for the town's projects)."]) }, 46);
@@ -1959,31 +1960,32 @@ export class GameScene extends Phaser.Scene {
       const l = store.lanterns.find((l) => l.id === h.id);
       return l ? `${VILLAGER_NAMES[l.villager]}'s lantern` : "lantern";
     }
+    if (h.kind === "plot") return `${VILLAGER_SHORT[moveInAt(h.b)!.villager]}'s plot`;
     return h.kind === "building" ? BUILDINGS[h.b].name : h.item.name;
   }
 
   private heldTiles(h: Held): { w: number; h: number; apron: number } {
-    if (h.kind === "building") return { ...buildingTiles(h.b), apron: isAnnex(h.b) ? 0 : 1 };
+    if (h.kind === "building" || h.kind === "plot") return { ...buildingTiles(h.b), apron: isAnnex(h.b) ? 0 : 1 };
     if (h.kind === "lantern") return { w: 1, h: 1, apron: 0 };
     return { w: h.item.tiles[0], h: h.item.tiles[1], apron: 0 };
   }
 
   /** Every tile the held thing would claim at (x, y). */
   private heldRects(h: Held, x: number, y: number): Rect[] {
-    if (h.kind === "building") return buildingRects(h.b, { x, y });
+    if (h.kind === "building" || h.kind === "plot") return buildingRects(h.b, { x, y });
     const t = this.heldTiles(h);
     return [footprint(x, y, t.w, t.h, t.apron)];
   }
 
   /** Buildings you can see: built ones, and plots waiting to be built. */
   private isShown(b: BuildingId) {
-    return !!store.buildings[b] || (store.progress.revealed.includes(b) && b !== "mailbox");
+    return onMap(b, store.progress, store.buildings);
   }
 
   /** Footprints of everything placed, except what you're holding. */
   private occupied(h: Held | null): Rect[] {
     const out: Rect[] = [];
-    for (const b of BUILDING_IDS) if (this.isShown(b) && !(h?.kind === "building" && h.b === b)) out.push(...buildingRects(b));
+    for (const b of BUILDING_IDS) if (this.isShown(b) && !((h?.kind === "building" || h?.kind === "plot") && h.b === b)) out.push(...buildingRects(b));
     for (const [id, v] of this.decoViews) if (!(h?.kind === "deco" && h.id === id)) out.push(decorFootprint(v.item, v.x, v.y));
     for (const [id, v] of this.lanternViews) if (!(h?.kind === "lantern" && h.id === id)) out.push(footprint(v.x, v.y, 1, 1));
     for (const r of this.rocks) out.push(rockRect(r));
@@ -2003,7 +2005,7 @@ export class GameScene extends Phaser.Scene {
     const t = this.heldTiles(h);
     if (!canOccupy(this.heldRects(h, x, y), this.occupied(h))) return false;
     const solid =
-      h.kind === "building"
+      h.kind === "building" || h.kind === "plot"
         ? { x: x - SPOTS[h.b].fw, y: y - SPOTS[h.b].fh, w: SPOTS[h.b].fw * 2, h: SPOTS[h.b].fh }
         : h.kind === "lantern" || h.item.flat
           ? null
@@ -2045,7 +2047,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fadeOriginal(h: Held, alpha: number) {
-    if (h.kind === "building") this.buildingObjs.get(h.b)?.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(alpha));
+    if (h.kind === "building" || h.kind === "plot") this.buildingObjs.get(h.b)?.forEach((o) => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(alpha));
     else if (h.kind === "deco") this.decoViews.get(h.id)?.objs.forEach((o) => o.setAlpha(alpha));
     else if (h.kind === "lantern") this.lanternViews.get(h.id)?.objs.forEach((o, i) => o.setAlpha(i === 2 ? alpha * 0.45 : alpha));
   }
@@ -2055,7 +2057,7 @@ export class GameScene extends Phaser.Scene {
     this.held = h;
     this.grabOffset = grab;
     this.fadeOriginal(h, 0.35);
-    const key = h.kind === "building" ? (store.buildings[h.b] ? SPOTS[h.b].texture : `plot_${h.b}`) : h.kind === "lantern" ? "task_lantern" : h.item.texture;
+    const key = h.kind === "plot" ? `plot_${h.b}` : h.kind === "building" ? (store.buildings[h.b] ? SPOTS[h.b].texture : `plot_${h.b}`) : h.kind === "lantern" ? "task_lantern" : h.item.texture;
     this.ghost = this.add.image(this.player.x, this.player.y, key).setOrigin(0.5, 1).setAlpha(0.8).setDepth(99998);
     sfx.blip();
     this.emitArrange();
@@ -2085,7 +2087,9 @@ export class GameScene extends Phaser.Scene {
           ? net.send({ type: "move_deco", id: h.id, x, y })
           : h.kind === "lantern"
             ? net.send({ type: "move_lantern", id: h.id, x, y })
-            : net.send({ type: "move_building", building: h.b, x, y });
+            : h.kind === "plot"
+              ? net.send({ type: "place_plot", building: h.b, x, y })
+              : net.send({ type: "move_building", building: h.b, x, y });
     if (!sent) {
       sfx.deny();
       return;

@@ -1,19 +1,19 @@
 // The line between the game and the player's real accounts. Every read or
 // write goes through here: live account if connected, labeled sample data if
 // the player chose "use sandbox for now". Also owns the town and who has moved
-// in: each neighbor's lot is a ruin to clear and repair (as many as the Town
-// Hall has room for), and the town's landmarks go up stage by stage.
+// in: each neighbor's plot is bought at the Town Hall (as many as it has room
+// for), set down anywhere, and built up; the town's landmarks go up stage by stage.
 
 import {
   BUILDINGS,
   MATERIALS,
   MATERIAL_NAME,
   MATERIAL_SOURCE,
-
   VILLAGER_SERVICE,
+  VILLAGER_SHORT,
   MOVE_INS,
-  currentMoveIn,
   moveInAt,
+  plotsTaken,
   type BuildingId,
   type Connections,
   type Material,
@@ -23,13 +23,14 @@ import {
   type VillagerId,
 } from "../../shared/game.js";
 import { happinessFor } from "../../shared/decor.js";
-import { SPOTS } from "../../shared/layout.js";
+import { SPOTS, applyLayout, buildingRects, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, STAGE_NAME, TASKS, digSpots, neighborCap, newNeighborCount, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
-import { nextStep as sharedNextStep } from "../../shared/movein.js";
+import { buyBlocker, nextBuild, nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
 import * as google from "./connectors/google.js";
+import * as spotify from "./connectors/spotify.js";
 import * as sandbox from "./sandbox.js";
-import { emit, owns, savePersist, world } from "./world.js";
+import { emit, occupied, owns, savePersist, world } from "./world.js";
 
 export type Source = "live" | "sandbox";
 
@@ -46,12 +47,13 @@ export function setWebAvailable(v: boolean) {
 }
 
 export function connections(): Connections {
-  return { google: google.googleStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
+  return { google: google.googleStatus(), spotify: spotify.spotifyStatus(), canvas: canvas.canvasStatus(), photon: photonState, web: { connected: webAvailable } };
 }
 
 function live(service: Service): boolean {
   if (service === "google") return google.googleStatus().connected;
   if (service === "canvas") return canvas.canvasStatus().connected;
+  if (service === "spotify") return spotify.spotifyStatus().connected;
   return webAvailable;
 }
 
@@ -66,9 +68,9 @@ export function sourceOf(service: Service): Source {
 
 // ---------------------------------------------------------------- residents
 
-const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar"];
+const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar", "dj"];
 
-/** Yutu was here first; everyone else (Nova first, as the tutorial) moves in once their lot is repaired. */
+/** Yutu was here first; everyone else (Nova first, as the tutorial) moves in once their house is built. */
 export function isResident(v: VillagerId): boolean {
   if (v === "jade_rabbit") return true;
   // Ada runs the Office: she's there as soon as it is
@@ -141,52 +143,71 @@ export function gain(what: Partial<Materials>, at?: { x: number; y: number }) {
   announceProgress(what, at);
 }
 
-const lotOf = (d: MoveInDef) => (world.progress.lots[d.home] ??= { cleared: [], repaired: false });
-
-/** The lot you can work on: revealed and not yet anyone's home. */
-function workable(b: BuildingId): MoveInDef | null {
-  const d = moveInAt(b);
-  if (!d || !world.progress.revealed.includes(b) || world.progress.movedIn.includes(d.villager)) return null;
-  return d;
-}
-
-export function clearRubble(b: BuildingId, index: number): string | null {
-  const d = workable(b);
-  if (!d) return "There's nothing to clear there.";
-  const lot = lotOf(d);
-  if (!Number.isInteger(index) || index < 0 || index >= d.rubble || lot.cleared.includes(index)) return null;
-  lot.cleared.push(index);
-  world.materials.moonstone += 1;
-  savePersist();
-  emit({ type: "rubble_cleared", building: b, index });
-  announceProgress({ moonstone: 1 });
-  return null;
-}
-
-/** What's still missing for a repair ("2 more stardust (sweep moondust drifts)"), or null. */
+/** What's still missing ("2 more stardust (sweep moondust drifts)"), or null. */
 export function missingFor(needs: Partial<Materials>): string | null {
   const short = MATERIALS.filter((m) => (needs[m] ?? 0) > world.materials[m]);
   if (!short.length) return null;
   return short.map((m) => `${(needs[m] ?? 0) - world.materials[m]} more ${MATERIAL_NAME[m]} (${MATERIAL_SOURCE[m]})`).join(", ");
 }
 
-/** Repairing a lot moves its neighbor right in (if the Town Hall has room). */
-export function repairLot(b: BuildingId): string | null {
-  const d = workable(b);
-  if (!d) return "There's nothing to repair there.";
-  const lot = lotOf(d);
-  if (lot.repaired) return null;
-  if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
-  const cap = neighborCap(world.progress.town);
-  // (Nova's the tutorial: she never waits on the Town Hall)
-  if (d.villager !== "stargazer" && newNeighborCount(world.progress.movedIn) >= cap) return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"} right now. Upgrade it to make room.`;
-  const missing = missingFor(d.repair);
-  if (missing) return `The foundation needs ${missing}.`;
-  for (const m of MATERIALS) world.materials[m as Material] -= d.repair[m] ?? 0;
-  lot.repaired = true;
-  moveIn(d);
+const moveState = () => ({ progress: world.progress, materials: world.materials, buildings: world.buildings, coins: world.coins, decos: world.decos });
+
+/** Buy a neighbor's plot (the deed) at the Town Hall: you set it down next. */
+export function buyPlot(b: BuildingId): string | null {
+  const d = moveInAt(b);
+  if (!d) return "There's no plot like that for sale.";
+  const blocked = buyBlocker(d, moveState());
+  if (blocked) return blocked;
+  world.coins -= d.price;
+  const plot = (world.progress.plots[b] = { placed: false, stage: 0 as const });
+  savePersist();
+  emit({ type: "plot", building: b, plot: { ...plot } });
+  announceProgress();
   return null;
 }
+
+/** Set a bought plot down on the map (anywhere it fits). */
+export function placePlot(b: BuildingId, x: number, y: number): string | null {
+  const d = moveInAt(b);
+  const plot = world.progress.plots[b];
+  if (!d || !plot) return "Buy the plot at the Town Hall first.";
+  if (plot.placed) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const at = snapToTiles(x, y, buildingTiles(b).w);
+  if (!canOccupy(buildingRects(b, at), occupied({ building: b }))) return "That spot's taken. Try somewhere with a little more room.";
+  world.layout[b] = at;
+  applyLayout(world.layout);
+  plot.placed = true;
+  savePersist();
+  emit({ type: "building_moved", building: b, x: at.x, y: at.y });
+  emit({ type: "plot", building: b, plot: { ...plot } });
+  announceProgress();
+  return null;
+}
+
+/** Build a placed plot up a stage: their house (and they move right in), then a grand house. */
+export function buildPlot(b: BuildingId): string | null {
+  const d = moveInAt(b);
+  const plot = world.progress.plots[b];
+  if (!d || !plot) return "Buy the plot at the Town Hall first.";
+  const needs = nextBuild(d, plot);
+  if (!needs) return plot.placed ? `${VILLAGER_SHORT[d.villager]}'s house is as grand as it gets.` : "Set the plot down first.";
+  const missing = missingFor(needs);
+  if (missing) return `It needs ${missing}.`;
+  for (const m of MATERIALS) world.materials[m as Material] -= needs[m] ?? 0;
+  plot.stage = (plot.stage + 1) as 1 | 2;
+  savePersist();
+  emit({ type: "plot", building: b, plot: { ...plot } });
+  if (plot.stage === 1) moveIn(d);
+  else {
+    emit({ type: "building_built", building: b, coins: world.coins });
+    announceProgress();
+  }
+  return null;
+}
+
+/** Is this neighbor's house grand (their work pays more)? */
+export const grandHome = (v: VillagerId) => MOVE_INS.some((m) => m.villager === v && world.progress.plots[m.home]?.stage === 2);
 
 /** They're home: the house stands, they arrive (with a gift), and the town may hand you a story item. */
 function moveIn(d: MoveInDef, gift = d.gift) {
@@ -289,22 +310,7 @@ export function townNote(): string {
   const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${STAGE_NAME[town.stages[id]]}`).join(", ");
   const cap = neighborCap(town);
   const held = town.items.map((i) => ITEMS[i].name);
-  return `The town (you're its mayor): ${stages}. The Town Hall has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${newNeighborCount(world.progress.movedIn)} moved in).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
-}
-
-/** Why a house can't be built yet (its lot isn't ready), or null. */
-export function lotBlocker(b: BuildingId): string | null {
-  const d = moveInAt(b);
-  if (!d || world.progress.movedIn.includes(d.villager)) return null;
-  const lot = lotOf(d);
-  if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
-  if (!lot.repaired) return "Repair the old foundation first.";
-  return null;
-}
-
-/** Rubble still on the neighbors' lots (for the daily "clear a rock" request). */
-export function rubbleLeft(): number {
-  return MOVE_INS.filter((d) => !world.progress.movedIn.includes(d.villager) && world.progress.revealed.includes(d.home)).reduce((n, d) => n + d.rubble - (world.progress.lots[d.home]?.cleared.length ?? 0), 0);
+  return `The town (you're its mayor): ${stages}. The Town Hall sells neighbors' plots and has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${plotsTaken(world.progress)} plot${plotsTaken(world.progress) === 1 ? "" : "s"} bought).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
 }
 
 /** Different things this neighbor loves, in their yard. */
@@ -312,11 +318,12 @@ export function lovedInYard(v: VillagerId) {
   return happinessFor(v, world.decos).items.filter((i) => i.loved).length;
 }
 
-/** Dev/demo prep: the next neighbor not home yet moves in outright (never mind the Town Hall). */
+/** Dev/demo prep: the next neighbor not home yet moves in outright, at their usual spot (never mind the Town Hall). */
 export function devMoveIn() {
-  const d = currentMoveIn(world.progress);
+  const d = MOVE_INS.find((m) => !world.progress.movedIn.includes(m.villager));
   if (!d) return;
-  world.progress.lots[d.home] = { cleared: [...Array(d.rubble).keys()], repaired: true };
+  world.progress.plots[d.home] = { placed: true, stage: 1 };
+  emit({ type: "plot", building: d.home, plot: { placed: true, stage: 1 } });
   moveIn(d, 0);
 }
 
@@ -365,6 +372,11 @@ export const school = {
 export function accountNote(v: VillagerId): string {
   const service = VILLAGER_SERVICE[v];
   if (!service || service === "web") return "";
+  if (service === "spotify") {
+    const sp = spotify.spotifyStatus();
+    if (!sp.connected) return "\n\nThe player hasn't connected their Spotify yet, so you can't play anything: chat about music and suggest songs, and if they want music, tell them to talk to you and press CONNECT SPOTIFY.";
+    return `\n\nYou're connected to the player's REAL Spotify${sp.account ? ` (${sp.account})` : ""}${sp.premium === false ? ", but it isn't Premium, and Spotify only lets Premium accounts play in other apps: say so if playing fails" : ""}. Music you put on plays right here in the game. Keep what you say short: the music does the talking.`;
+  }
   if (live(service)) {
     const who = service === "google" ? google.googleStatus().account : canvas.canvasStatus().account;
     return `\n\nYou are connected to the player's REAL ${service === "google" ? "Google account" : "Canvas"}${who ? ` (${who})` : ""}. Everything you read is their actual data; be careful and concise.`;

@@ -52,6 +52,7 @@ const EXAMPLES: Partial<Record<VillagerId, string>> = {
   timekeeper: "am I free Tuesday afternoon?",
   scholar: "what's due this week?",
   stargazer: "when is the next full moon?",
+  dj: "play Fly Me to the Moon",
 };
 
 // ---------------------------------------------------------------- the mic setting
@@ -110,6 +111,7 @@ const CALLS: Record<VillagerId, string[]> = {
   scholar: ["mabel", "maple", "mable", "maybelle", "scholar"],
   stargazer: ["nova", "nover", "noah", "stargazer"],
   manager: ["ada", "ayda", "aida"],
+  dj: ["echo", "echoes", "eko", "dj", "deejay"],
 };
 const HELLO = /^(hey|hi|hello|hiya|yo|howdy|oh hey|excuse me|good (morning|afternoon|evening))\b/i;
 const words = (t: string) => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];

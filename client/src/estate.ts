@@ -696,3 +696,77 @@ export function drawMailRocket(ctx: Ctx) {
   rect(ctx, STEEL.base, cx - 9, 95, 19, 4);
   rect(ctx, STEEL.light, cx - 9, 95, 19, 1);
 }
+
+/**
+ * Echo's Radio Tower: a little studio with a vinyl record in its round window
+ * and an ON AIR lamp over the door, under a steel lattice mast with a dish
+ * and a beacon on top (it blinks in the game). 64 x 132.
+ */
+export function drawRadioTower(ctx: Ctx) {
+  const STEEL = { base: "#8f93a3", dark: "#5b5470", light: "#c9cbd6" };
+  const ROSE = { base: "#e0708a", dark: "#b44f6c", light: "#f2a3b8" };
+  const line = (x0: number, y0: number, x1: number, y1: number, c: string) => {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    for (let i = 0; i <= n; i++) rect(ctx, c, Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), 1, 1);
+  };
+  // the mast: two legs tapering from the roof to the top, braced in X's
+  const top = 8;
+  const base = 84;
+  const half = (y: number) => 2 + Math.round(((y - top) / (base - top)) * 11);
+  for (let y = top; y <= base; y++) {
+    const h = half(y);
+    rect(ctx, O, 31 - h, y, 2, 1);
+    rect(ctx, O, 32 + h, y, 2, 1);
+    rect(ctx, STEEL.light, 32 - h, y, 1, 1);
+    rect(ctx, STEEL.base, 32 + h, y, 1, 1);
+  }
+  for (let y = top + 4; y + 10 <= base; y += 10) {
+    line(32 - half(y), y, 32 + half(y + 10), y + 10, STEEL.dark);
+    line(32 + half(y), y, 32 - half(y + 10), y + 10, STEEL.dark);
+    rect(ctx, STEEL.base, 32 - half(y + 10), y + 10, half(y + 10) * 2 + 1, 1);
+  }
+  // the beacon on top
+  rect(ctx, O, 31, 2, 3, 7);
+  rect(ctx, "#ff5a4a", 30, 1, 5, 3);
+  rect(ctx, "#ffb0a0", 31, 1, 1, 1);
+  // a dish, turned toward Earth
+  disc(ctx, O, 46, 38, 7.5, 7.5);
+  disc(ctx, "#e9e9f2", 46, 38, 6.5, 6.5);
+  disc(ctx, STEEL.light, 47, 39, 4, 4);
+  rect(ctx, O, 46, 38, 1, 1);
+  line(46, 38, 50, 34, O);
+  rect(ctx, ROSE.base, 50, 33, 2, 2);
+  line(40, 42, 35, 46, O);
+  // the studio: plaster walls, a flat roof with a rail, a rose trim
+  rect(ctx, O, 3, 84, 58, 4);
+  rect(ctx, STEEL.base, 4, 85, 56, 2);
+  rect(ctx, STEEL.light, 4, 85, 56, 1);
+  for (let x = 6; x < 60; x += 6) rect(ctx, O, x, 81, 1, 3);
+  rect(ctx, O, 5, 80, 54, 1);
+  plaster(ctx, 5, 88, 54, 36);
+  rect(ctx, ROSE.base, 6, 89, 52, 3);
+  rect(ctx, ROSE.light, 6, 89, 52, 1);
+  // the round window, with a record spinning on the deck inside
+  disc(ctx, O, 15, 106, 8.5, 8.5);
+  disc(ctx, "#2b2440", 15, 106, 7.5, 7.5);
+  disc(ctx, "#15111f", 15, 106, 6, 6);
+  disc(ctx, "#3a3350", 15, 106, 4.5, 4.5);
+  disc(ctx, "#15111f", 15, 106, 3.5, 3.5);
+  disc(ctx, ROSE.base, 15, 106, 1.8, 1.8);
+  rect(ctx, "#8a84a0", 11, 102, 2, 1);
+  // ON AIR: a red lamp over the door
+  rect(ctx, O, 25, 95, 15, 7);
+  rect(ctx, "#c93a3a", 26, 96, 13, 5);
+  rect(ctx, "#ff8a7a", 27, 97, 11, 1);
+  for (const x of [27, 30, 33, 36]) rect(ctx, "#ffd6cc", x, 98, 2, 2);
+  // the door
+  door(ctx, 27, 104, 10, 20, ROSE.dark);
+  // a speaker stack by the wall
+  rect(ctx, O, 45, 102, 10, 22);
+  rect(ctx, "#2e2a3a", 46, 103, 8, 21);
+  for (const y of [109, 118]) {
+    disc(ctx, "#6b6f86", 50, y, 3, 3);
+    rect(ctx, "#a3a7c0", 49, y - 2, 1, 1);
+  }
+  stoneBase(ctx, 1, 124, 62, 8);
+}

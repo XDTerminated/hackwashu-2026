@@ -52,7 +52,8 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   market: {
     name: "Market",
     perks: ["A collapsed cart: no shop yet", "A proper stall: the Shop opens (Garden and Cozy decorations)", "A real shop: everything, Sci-Fi and Party too"],
-    up: [{ needs: { moonstone: 2, stardust: 2, shard: 1 } }, { needs: { scrap: 2, helium: 2 }, item: "bell" }],
+    // (the stall is the tutorial's first build: just what a boulder and a sweep turn up)
+    up: [{ needs: { moonstone: 2, stardust: 2 } }, { needs: { scrap: 2, helium: 2 }, item: "bell" }],
   },
 };
 
@@ -83,8 +84,8 @@ export interface Town {
 
 export const freshTown = (): Town => ({ stages: { town_hall: 0, fountain: 0, roads: 0, market: 0 }, items: [], used: [], tasks: [], dug: [], harvested: [], day: "" });
 
-/** How many new neighbors the Town Hall has room for (Nova, the tutorial, doesn't count). */
-export const neighborCap = (t: Town) => [1, 2, 3][t.stages.town_hall];
+/** How many new neighbors' plots the Town Hall has room for (Nova, the tutorial, doesn't count). */
+export const neighborCap = (t: Town) => [1, 2, 4][t.stages.town_hall];
 /** New neighbors home so far (not counting Nova). */
 export const newNeighborCount = (movedIn: VillagerId[]) => movedIn.filter((v) => v !== "stargazer").length;
 export const officeAllowed = (t: Town) => t.stages.town_hall >= 1;

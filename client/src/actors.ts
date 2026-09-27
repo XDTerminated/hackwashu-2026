@@ -14,6 +14,7 @@ const TEX: Record<VillagerId, string> = {
   scholar: "scholar_0",
   stargazer: "stargazer_0",
   manager: "office_lead",
+  dj: "dj_0",
 };
 
 type Alert = "none" | "bang" | "smoke";

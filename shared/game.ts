@@ -3,7 +3,7 @@
 
 import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
 
-export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager";
+export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj";
 
 /** Ada the Team Lead lives and works in the Office, not out on the island. */
 export const IN_OFFICE = (v: VillagerId) => v === "manager";
@@ -19,7 +19,8 @@ export type BuildingId =
   | "observatory"
   | "office"
   | "town_hall"
-  | "market";
+  | "market"
+  | "radio_tower";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -45,6 +46,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   town_hall: { id: "town_hall", name: "Town Hall", price: 0, starter: true, unlocks: "Yutu's office as mayor: upgrade it to make room for more neighbors" },
   market: { id: "market", name: "Market", price: 0, starter: true, unlocks: "decorations: upgrade it for more stock" },
   office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
+  radio_tower: { id: "radio_tower", name: "Radio Tower", price: 0, starter: false, resident: "dj", unlocks: "Echo the DJ: plays your Spotify right here in the game" },
 };
 
 // ---------------------------------------------------------------- the office
@@ -153,6 +155,7 @@ export const VILLAGER_SHORT: Record<VillagerId, string> = {
   scholar: "Mabel",
   stargazer: "Nova",
   manager: "Ada",
+  dj: "Echo",
 };
 
 /** ...their job in the colony... */
@@ -163,6 +166,7 @@ export const VILLAGER_ROLE: Record<VillagerId, string> = {
   scholar: "Scholar",
   stargazer: "Stargazer",
   manager: "Team Lead",
+  dj: "DJ",
 };
 
 /** ...and how they're shown: "Nova the Stargazer". */
@@ -177,10 +181,11 @@ export const VILLAGER_HOME: Record<VillagerId, BuildingId> = {
   scholar: "library",
   stargazer: "observatory",
   manager: "office",
+  dj: "radio_tower",
 };
 
 /** Which real account each villager needs before they'll move in. */
-export type Service = "google" | "canvas" | "web";
+export type Service = "google" | "canvas" | "web" | "spotify";
 export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
   jade_rabbit: null,
   stargazer: "web",
@@ -188,13 +193,15 @@ export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
   timekeeper: "google",
   scholar: "canvas",
   manager: null,
+  dj: "spotify",
 };
-export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web" };
+export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web", spotify: "Spotify" };
 
 // ---------------------------------------------------------------- moving in
-// Each neighbor still on Earth has a lot on the Moon, and it's a ruin: clear
-// the rubble and repair it with materials you collect, and they move in (as
-// many as the Town Hall has room for; you pick who). Connecting your real
+// Every neighbor still on Earth needs a home on the Moon: buy their plot (a
+// deed) at the Town Hall, as many as it has room for; set it down wherever you
+// like; then build their house with materials you collect, and they move right
+// in. Later, upgrade it to a grand house for a perk. Connecting your real
 // account comes after, when you want them to work with your real stuff.
 
 export type Material = "moonstone" | "stardust" | "shard" | "ore" | "ice" | "scrap" | "helium";
@@ -216,13 +223,15 @@ export const MATERIAL_SOURCE: Record<Material, string> = {
 export interface MoveInDef {
   villager: VillagerId;
   home: BuildingId;
-  /** Rubble piles on the lot to clear first. */
-  rubble: number;
-  /** What rebuilding the old foundation takes. */
-  repair: Partial<Materials>;
+  /** What their plot (the deed) costs at the Town Hall. */
+  price: number;
+  /** What building their house takes, then what making it grand takes. */
+  build: [Partial<Materials>, Partial<Materials>];
+  /** What the grand house gives you. */
+  perk: string;
   /** Different things they love, in their yard. */
   loves: number;
-  /** Said when their lot opens up (by whoever lives here already). */
+  /** Said when their plot goes up for sale (by whoever lives here already). */
   teaser: { by: VillagerId; text: string };
   /** Said when they move in. */
   hello: string;
@@ -230,47 +239,65 @@ export interface MoveInDef {
   gift: number;
 }
 
-/** Nova's Observatory is the first lot: the tutorial (it doesn't count toward the Town Hall's room). */
+/** Nova's Observatory is the first plot: the tutorial (it doesn't take up room at the Town Hall). */
 export const TUTORIAL_VILLAGER: VillagerId = "stargazer";
+
+/** A grand house pays out more for its neighbor's work. */
+export const GRAND_BONUS = 1.5;
 
 export const MOVE_INS: MoveInDef[] = [
   {
     villager: "stargazer",
     home: "observatory",
-    rubble: 2,
-    repair: { moonstone: 3, stardust: 2 },
+    price: 30,
+    build: [{ moonstone: 3, stardust: 2 }, { moonstone: 4, shard: 1, ice: 1 }],
+    perk: "a bigger telescope: you and Nova become friends faster, and her research pays 50% more",
     loves: 0,
-    teaser: { by: "jade_rabbit", text: "Nova the Stargazer wants to come up from Earth, but her old Observatory is a ruin. Let's fix it up together!" },
+    teaser: { by: "jade_rabbit", text: "Nova the Stargazer wants to come up from Earth! Buy her plot at the Town Hall, pick a spot, and build her an Observatory." },
     hello: "Oh, what a view of Earth's web! I'm Nova. Ask me anything and I'll look it up for you.",
     gift: 20,
   },
   {
     villager: "postmaster",
     home: "post_office",
-    rubble: 2,
-    repair: { moonstone: 3, stardust: 2 },
+    price: 50,
+    build: [{ moonstone: 3, stardust: 2 }, { moonstone: 4, scrap: 1, ore: 1 }],
+    perk: "a grand sorting hall: you and Hoot become friends faster, and his mail work pays 50% more",
     loves: 0,
-    teaser: { by: "stargazer", text: "My telescope caught a signal: an owl postmaster on Earth wants to move up! The old post office lot is a wreck, though (follow the gold ★). Clear it, fix the foundation, build, and make it cozy." },
+    teaser: { by: "stargazer", text: "My telescope caught a signal: an owl postmaster on Earth wants to move up! His plot's for sale at the Town Hall." },
     hello: "Hoo! What a lovely little post office. I'm moving in! Connect your Google when you'd like me to read your mail.",
+    gift: 20,
+  },
+  {
+    villager: "dj",
+    home: "radio_tower",
+    price: 60,
+    build: [{ moonstone: 3, stardust: 2, ore: 1 }, { moonstone: 4, helium: 1, ore: 1 }],
+    perk: "a bigger antenna and a light show: you and Echo become friends faster",
+    loves: 0,
+    teaser: { by: "jade_rabbit", text: "A little robot DJ called Echo keeps sending us mixtapes from Earth. Buy their plot at the Town Hall and they'll bring the music!" },
+    hello: "Bzzt! Levels checked, antenna up. I'm Echo! Connect your Spotify and tell me what to play.",
     gift: 20,
   },
   {
     villager: "timekeeper",
     home: "clock_tower",
-    rubble: 2,
-    repair: { moonstone: 3, stardust: 2, ore: 1 },
+    price: 80,
+    build: [{ moonstone: 3, stardust: 2, ore: 1 }, { moonstone: 4, ore: 2, ice: 1 }],
+    perk: "a grand clock face: you and Cog become friends faster, and his scheduling pays 50% more",
     loves: 0,
-    teaser: { by: "postmaster", text: "Hoo! Invitations, deadlines, meetings... this colony needs someone to keep time. My friend Cog, a clockwork fellow on Earth, would come if the old clock tower lot were fixed up." },
+    teaser: { by: "postmaster", text: "Hoo! Invitations, deadlines, meetings... this colony needs someone to keep time. My friend Cog would come up if you bought him a plot." },
     hello: "Tick... tock! A tower of my own. I'm home. Connect your Google Calendar and I'll keep your week in order.",
     gift: 25,
   },
   {
     villager: "scholar",
     home: "library",
-    rubble: 2,
-    repair: { moonstone: 3, stardust: 2, shard: 1 },
+    price: 100,
+    build: [{ moonstone: 3, stardust: 2, shard: 1 }, { moonstone: 4, shard: 2, scrap: 1 }],
+    perk: "a reading room: you and Mabel become friends faster, and her coursework help pays 50% more",
     loves: 0,
-    teaser: { by: "timekeeper", text: "Tick... your week is packed with classes. Mabel the Scholar knows Canvas inside out, and the old library lot is waiting for her. It needs work, mind you." },
+    teaser: { by: "timekeeper", text: "Tick... your week is packed with classes. Mabel the Scholar knows Canvas inside out, and she'd love a library of her own." },
     hello: "Books! Shelves! A reading nook! I'm staying. Connect your Canvas and I'll tell you what's due.",
     gift: 30,
   },
@@ -279,10 +306,10 @@ export const MOVE_INS: MoveInDef[] = [
 export const moveInFor = (v: VillagerId) => MOVE_INS.find((m) => m.villager === v);
 export const moveInAt = (b: BuildingId) => MOVE_INS.find((m) => m.home === b);
 
-/** A lot's progress: which rubble piles are gone, and whether the foundation is fixed. */
-export interface LotState {
-  cleared: number[];
-  repaired: boolean;
+/** A neighbor's plot once you've bought it: set down yet? and 0 empty, 1 their house, 2 a grand house. */
+export interface PlotState {
+  placed: boolean;
+  stage: 0 | 1 | 2;
 }
 
 export interface Progress {
@@ -293,13 +320,19 @@ export interface Progress {
   sandbox: Partial<Record<Service, boolean>>;
   /** Neighbors who've moved in (Yutu was here first; Nova's the tutorial). */
   movedIn: VillagerId[];
-  lots: Partial<Record<BuildingId, LotState>>;
+  /** Neighbors' plots you've bought. */
+  plots: Partial<Record<BuildingId, PlotState>>;
 }
 
-/** The lot being worked on now (the first neighbor not home yet), or null once everyone's home. */
-export function currentMoveIn(p: Progress): MoveInDef | null {
-  return MOVE_INS.find((m) => !p.movedIn.includes(m.villager)) ?? null;
+/** Is this building (or its plot) on the map? A neighbor's home only once its plot is set down. */
+export function onMap(b: BuildingId, p: Progress, built: Partial<Record<BuildingId, boolean>>): boolean {
+  if (moveInAt(b)) return !!p.plots[b]?.placed;
+  if (b === "mailbox") return !!built.mailbox;
+  return !!built[b] || p.revealed.includes(b);
 }
+
+/** New neighbors with a plot (bought, placed or built) so far: each takes up room at the Town Hall (Nova doesn't). */
+export const plotsTaken = (p: Progress) => MOVE_INS.filter((m) => m.villager !== TUTORIAL_VILLAGER && p.plots[m.home]).length;
 
 /** A phone linked to the colony over iMessage (co-op: any number of them). Numbers are masked for display. */
 export interface LinkedPhone {
@@ -312,6 +345,8 @@ export interface LinkedPhone {
 /** Real accounts the colony is wired to. When one isn't connected, its villager uses labeled sandbox data. */
 export interface Connections {
   google: { connected: boolean; account?: string; configured: boolean };
+  /** Spotify: plays inside the game tab (Spotify only allows that for Premium accounts). */
+  spotify: { connected: boolean; account?: string; configured: boolean; premium?: boolean };
   canvas: { connected: boolean; account?: string; baseUrl?: string };
   photon: { connected: boolean; phoneLinked: boolean; phones: LinkedPhone[] };
   web: { connected: boolean };
@@ -466,7 +501,10 @@ export type GameEvent =
   | { type: "progress"; progress: Progress; materials: Materials; coins: number; gained?: Partial<Materials>; at?: { x: number; y: number } }
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean; hello?: string; gift?: number; next?: VillagerId | null }
   | { type: "plot_revealed"; building: BuildingId }
-  | { type: "rubble_cleared"; building: BuildingId; index: number }
+  /** A neighbor's plot: bought (set it down next), placed, or built up a stage. */
+  | { type: "plot"; building: BuildingId; plot: PlotState }
+  /** What Echo just put on (or paused), for the game's Spotify player to show. */
+  | { type: "music"; action: "playing" | "paused"; track?: string; artist?: string }
   | { type: "landmark_upgraded"; landmark: LandmarkId; stage: Stage }
   | { type: "item_found"; item: TownItem; by?: VillagerId; text?: string; x?: number; y?: number }
   | { type: "harvested"; id: string; x: number; y: number }
@@ -484,8 +522,12 @@ export type ClientMessage =
   | { type: "approve"; approvalId: string; approved: boolean }
   | { type: "pop"; clodId: string }
   | { type: "build"; building: BuildingId }
-  | { type: "clear_rubble"; building: BuildingId; index: number }
-  | { type: "repair_lot"; building: BuildingId }
+  /** Neighbors' plots: buy the deed at the Town Hall, set it down, build it up a stage. */
+  | { type: "buy_plot"; building: BuildingId }
+  | { type: "place_plot"; building: BuildingId; x: number; y: number }
+  | { type: "build_plot"; building: BuildingId }
+  /** The game's Spotify player is ready (its device id), so Echo can play to it. */
+  | { type: "spotify_device"; id: string }
   | { type: "place_deco"; item: string; x: number; y: number }
   | { type: "move_deco"; id: string; x: number; y: number }
   | { type: "move_building"; building: BuildingId; x: number; y: number }
@@ -513,7 +555,7 @@ export type ClientMessage =
   | { type: "harvest"; id: string }
   | { type: "dig"; id: string }
   | { type: "dev"; action: "move_in" | "materials" | "meteor" | "dust" | "town" }
-  | { type: "disconnect"; service: "google" | "canvas" };
+  | { type: "disconnect"; service: "google" | "canvas" | "spotify" };
 
 export type ServerMessage =
   | { type: "connection_test"; results: { name: string; ok: boolean | null; detail: string }[] }

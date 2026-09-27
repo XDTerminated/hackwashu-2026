@@ -144,6 +144,7 @@ const SIGNATURE: Record<VillagerId, string> = {
   timekeeper: "⏰ Cog",
   scholar: "🎓 Mabel",
   manager: "💼 Ada",
+  dj: "🎧 Echo",
 };
 
 /** "Nova: ...", "@stargazer ...", "hoot, ..." → that villager + the rest (by name or by role). */

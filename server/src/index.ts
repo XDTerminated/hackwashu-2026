@@ -16,6 +16,7 @@ import { DEFAULT_CANVAS, canvasBase, connectCanvas, disconnectCanvas, initCanvas
 import { canvasSignIn } from "./connectors/canvasLogin.js";
 import { testConnections } from "./selftest.js";
 import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle, setGoogleClient } from "./connectors/google.js";
+import { accessToken as spotifyToken, disconnectSpotify, finishSpotifyAuth, initSpotify, setDevice as setSpotifyDevice, setSpotifyClient, SPOTIFY_REDIRECT, spotifyAuthUrl, spotifyConfigured } from "./connectors/spotify.js";
 import { onPhoneLinked, phoneLinked, photonReady, startLink, startPhoton, unlink } from "./photon.js";
 import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
 import { handleVoice, voiceStatus, voiceSummary } from "./voice.js";
@@ -26,8 +27,8 @@ import { currentRequests, startRequests } from "./requests.js";
 import { build, clearRock, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager"];
-const SERVICES: Service[] = ["google", "canvas"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj"];
+const SERVICES: Service[] = ["google", "canvas", "spotify"];
 
 function page(res: ServerResponse, status: number, title: string, body: string) {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
@@ -66,6 +67,74 @@ const httpServer = createServer(async (req, res) => {
     }
     res.writeHead(problem ? 400 : 200, { "content-type": "application/json" });
     return res.end(JSON.stringify(problem ? { ok: false, error: problem } : { ok: true }));
+  }
+
+  // Echo's Spotify: one-time host setup, then each player signs in (like Google).
+  if (url.pathname === "/setup/spotify") {
+    if (HOSTED) return page(res, 404, "Not here", "<p>Nothing to set up here.</p>");
+    if (!isLocal(req.socket.remoteAddress)) return page(res, 403, "Not here", "<p>Spotify can only be set up from the computer running the colony.</p>");
+    if (req.method === "POST") {
+      const origin = req.headers.origin;
+      if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return page(res, 403, "Not here", "<p>That form has to come from this page.</p>");
+      const raw = await readBody(req, 4096);
+      if (raw === null) return page(res, 413, "Too long", "<p>That's more than a Client ID and secret.</p>");
+      const form = new URLSearchParams(raw);
+      try {
+        setSpotifyClient(form.get("id") ?? "", form.get("secret") ?? "");
+      } catch (err) {
+        return page(res, 400, "Almost", `<p>${err instanceof Error ? err.message : err}</p><p><a style="color:#f5c542" href="/setup/spotify">Try again</a></p>`);
+      }
+      services.announceConnections();
+      return page(res, 200, "Spotify is ready", `<p>Saved (privately, on this computer). Talk to Echo in the game and press <b>CONNECT SPOTIFY</b>, or:</p>
+<p><a style="color:#f5c542;font-size:1.1em" href="/connect/spotify">Sign in with Spotify now →</a></p>`);
+    }
+    const step = (n: number, html: string) => `<li style="margin:0 0 14px"><b style="color:#f2a3b8">${n}.</b> ${html}</li>`;
+    const link = (href: string, text: string) => `<a style="color:#f5c542" target="_blank" rel="noopener" href="${href}">${text}</a>`;
+    return page(res, 200, "Set up Spotify for Echo", `<p>Do this once and Echo the DJ can play your Spotify right in the game. About 3 minutes. (Playing inside another app needs <b>Spotify Premium</b>.)</p>
+<ol style="list-style:none;padding:0">
+${step(1, `Open the ${link("https://developer.spotify.com/dashboard", "Spotify Developer Dashboard")} and log in with your Spotify account.`)}
+${step(2, `<b>Create app</b>: name "Fl-AI Me to the Moon", any description, and under Redirect URIs add<br><code style="user-select:all;background:#0b0a1a;padding:2px 6px">${SPOTIFY_REDIRECT}</code><br>Tick <b>Web API</b> and <b>Web Playback SDK</b>, agree, and Save.`)}
+${step(3, `On the app's <b>Settings</b> page, copy the Client ID, press <b>View client secret</b>, and paste both below.`)}
+${step(4, `While the app is in Development mode, only people you add can sign in: <b>User Management</b> → add the email of each Spotify account that will play (yours included).`)}
+</ol>
+<form method="post" style="display:grid;gap:8px">
+<label>Client ID<br><input name="id" required style="width:100%;padding:6px;font:inherit" placeholder="32 letters and numbers"></label>
+<label>Client secret<br><input name="secret" type="password" required style="width:100%;padding:6px;font:inherit" placeholder="32 letters and numbers"></label>
+<button style="padding:8px;font:inherit;background:#5aa860;color:#fff;border:0;cursor:pointer">Save and turn on Spotify</button>
+</form>
+<p style="opacity:.7;font-size:.9em">Stored in <code>server/data/spotify-client.json</code> (only readable by you), never sent to the game.</p>`);
+  }
+  if (url.pathname === "/connect/spotify") {
+    res.writeHead(302, { location: spotifyConfigured() ? spotifyAuthUrl() : "/setup/spotify" });
+    return res.end();
+  }
+  if (url.pathname === "/oauth/spotify/callback") {
+    const code = url.searchParams.get("code");
+    if (!code) return page(res, 400, "Sign-in cancelled", `<p>${url.searchParams.get("error") ?? "No code from Spotify."} You can close this tab.</p>`);
+    try {
+      const account = await finishSpotifyAuth(code, url.searchParams.get("state"));
+      services.announceConnections();
+      return page(res, 200, "Connected! 🎧", `<p>Echo can play <b>${account ?? "your Spotify"}</b> now. Close this tab, head back to the Moon, and ask Echo for a song.</p>`);
+    } catch (err) {
+      console.error("[spotify] sign-in failed:", err);
+      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p><p>If it says the user isn't registered, add your Spotify email under User Management in your app on the Spotify Developer Dashboard.</p>`);
+    }
+  }
+  // The game's own Spotify player asks for a fresh token here (only the game itself may read it).
+  if (url.pathname === "/spotify/token") {
+    const origin = req.headers.origin;
+    const allowed = !origin || originAllowed(origin, req.headers.host);
+    if (!allowed || (!HOSTED && !isLocal(req.socket.remoteAddress))) return page(res, 403, "Not here", "<p>Only the game can ask for that.</p>");
+    const headers: Record<string, string> = { "content-type": "application/json", "cache-control": "no-store" };
+    if (origin) Object.assign(headers, { "access-control-allow-origin": origin, vary: "origin" });
+    try {
+      const access_token = await spotifyToken();
+      res.writeHead(200, headers);
+      return res.end(JSON.stringify({ access_token }));
+    } catch (err) {
+      res.writeHead(409, headers);
+      return res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+    }
   }
 
   // One-time host setup for "Sign in with Google" (only from this computer).
@@ -248,9 +317,9 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
 
       case "build": {
         if (!BUILDINGS[msg.building]) break;
-        // Neighbors' houses go up when their lot is repaired; the Office needs a repaired Town Hall.
+        // Neighbors' houses go up on the plots you buy at the Town Hall; the Office needs a repaired Town Hall.
         if (moveInAt(msg.building)) {
-          send(ws, { type: "notice", text: "Clear and repair the lot, and they'll move right in." });
+          send(ws, { type: "notice", text: "Buy their plot at the Town Hall, set it down, and build it there." });
           break;
         }
         if (msg.building === "office" && !officeAllowed(world.progress.town)) {
@@ -282,19 +351,19 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         break;
       }
 
-      case "clear_rubble": {
+      case "buy_plot":
+      case "place_plot":
+      case "build_plot": {
         if (!BUILDINGS[msg.building]) break;
-        const problem = services.clearRubble(msg.building, Number(msg.index));
+        const problem =
+          msg.type === "buy_plot" ? services.buyPlot(msg.building) : msg.type === "place_plot" ? services.placePlot(msg.building, Number(msg.x), Number(msg.y)) : services.buildPlot(msg.building);
         if (problem) send(ws, { type: "notice", text: problem });
         break;
       }
 
-      case "repair_lot": {
-        if (!BUILDINGS[msg.building]) break;
-        const problem = services.repairLot(msg.building);
-        if (problem) send(ws, { type: "notice", text: problem });
+      case "spotify_device":
+        if (typeof msg.id === "string" && msg.id) setSpotifyDevice(msg.id);
         break;
-      }
 
       case "place_deco": {
         const before = happinessAll();
@@ -501,12 +570,14 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       case "disconnect":
         if (msg.service === "google") disconnectGoogle();
         if (msg.service === "canvas") disconnectCanvas();
+        if (msg.service === "spotify") disconnectSpotify();
         services.announceConnections();
         break;
     }
 }
 
 await Promise.all([initGoogle(), initCanvas()]);
+initSpotify();
 services.setWebAvailable(BRAIN !== "mock");
 services.initResidents();
 startChores();

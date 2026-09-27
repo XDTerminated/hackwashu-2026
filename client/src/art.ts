@@ -447,6 +447,69 @@ export const stargazer: PixelSprite = {
   ],
 };
 
+/** Echo the DJ: a little retro robot in rose headphones, with a speaker for a chest. */
+const DJ_BODY = (cone: string) => [
+  "......KmmmmK......",
+  "...KKKKKKKKKKKK...",
+  "..KMMMMMMMMMMMMK..",
+  ".KKMMMKssssKMMMKK.",
+  `.KMMMKs${cone}${cone}${cone}${cone}sKMMMK.`,
+  `.KMMMKs${cone}${cone}${cone}${cone}sKMMMK.`,
+  ".KKMMMKssssKMMMKK.",
+  "..KMMMMMMMMMMMMK..",
+  "...KKKKKKKKKKKK...",
+  "....KmmK..KmmK....",
+  "...KkkkK..KkkkK...",
+];
+
+export const dj: PixelSprite = {
+  palette: {
+    K: "#3b2a3a",
+    Y: "#f5c542",
+    y: "#a8863a",
+    H: "#e0708a",
+    h: "#b44f6c",
+    M: "#c3cbe0",
+    m: "#8a93ab",
+    S: "#1f2a44",
+    E: "#7ff0e8",
+    s: "#2e2a3a",
+    c: "#6b6f86",
+    C: "#a3a7c0",
+    k: "#241a16",
+  },
+  frames: [
+    [
+      ".........Y........",
+      ".........K........",
+      "...hHHHHHHHHHHh...",
+      "..HhKKKKKKKKKKhH..",
+      ".HHKMMMMMMMMMMKHH.",
+      ".HHKMSSSSSSSSMKHH.",
+      ".HHKMSEESSEESMKHH.",
+      ".HHKMSEESSEESMKHH.",
+      ".HHKMSSSSSSSSMKHH.",
+      "...KMMMMMMMMMMK...",
+      "....KKKKKKKKKK....",
+      ...DJ_BODY("c"),
+    ],
+    [
+      ".........y........",
+      ".........K........",
+      "...hHHHHHHHHHHh...",
+      "..HhKKKKKKKKKKhH..",
+      ".HHKMMMMMMMMMMKHH.",
+      ".HHKMSSSSSSSSMKHH.",
+      ".HHKMSEESSEESMKHH.",
+      ".HHKMSSSSSSSSMKHH.",
+      ".HHKMSSSSSSSSMKHH.",
+      "...KMMMMMMMMMMK...",
+      "....KKKKKKKKKK....",
+      ...DJ_BODY("C"),
+    ],
+  ],
+};
+
 // ------------------------------------------------------------------ scenery
 
 export const rocket: PixelSprite = {

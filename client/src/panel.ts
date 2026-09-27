@@ -1035,6 +1035,34 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
     },
   };
 
+  if (service === "spotify") {
+    dialog.open("CONNECT SPOTIFY", false, { face });
+    dialog.add("them", `${home ? `${name} is all moved in! ` : ""}Connect your Spotify and Echo plays it right here in the game: ask for a song, a mood, anything. (Spotify only allows that with Premium.)`);
+    const chat = {
+      label: "JUST CHAT FOR NOW",
+      onClick: () => {
+        net.send({ type: "use_sandbox", service });
+        dialog?.add("sys", "OK - Echo will talk music with you until you connect Spotify (talk to Echo any time to connect).");
+      },
+    };
+    if (!store.connections.spotify.configured) {
+      dialog.add("sys", "Spotify isn't set up for this colony yet. If you're the one running it, SET UP SPOTIFY walks you through it once (about 3 minutes).");
+      dialog.setButtons([{ label: "SET UP SPOTIFY", kind: "ok", onClick: () => (window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank"), dialog?.add("sys", "Follow the steps in the new tab, then come back and talk to Echo again.")) }, chat]);
+    } else
+      dialog.setButtons([
+        {
+          label: "CONNECT SPOTIFY",
+          kind: "ok",
+          onClick: () => {
+            window.open(`${net.SERVER_HTTP}/connect/spotify`, "_blank");
+            dialog?.add("sys", "Finish signing in with Spotify in the new tab, then come back and ask Echo for a song.");
+          },
+        },
+        chat,
+      ]);
+    toggleCb(true);
+    return;
+  }
   if (service === "google") {
     dialog.open(title, false, { face });
     dialog.add(

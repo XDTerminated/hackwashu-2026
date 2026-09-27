@@ -5,6 +5,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BUILDINGS,
+  GRAND_BONUS,
   VILLAGER_HOME,
   type Approval,
   type BuildingId,
@@ -13,6 +14,7 @@ import {
   type VillagerId,
 } from "../../shared/game.js";
 import { waitForApproval } from "./approvals.js";
+import * as spotify from "./connectors/spotify.js";
 import { MOCK, mockVillager } from "./mock.js";
 import { Groq, runVillagerGroq } from "./groq.js";
 import * as services from "./services.js";
@@ -260,9 +262,121 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
       return { text: JSON.stringify({ source, announcements: data }), summary: plural(data.length, "announcement") };
     },
   },
+
+  // Echo's Radio Tower: the player's Spotify, playing right in the game tab.
+  play_music: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "play_music",
+      description: "Find something on Spotify and play it in the game now. kind: track for a specific song, playlist for a mood or genre, album for a whole record, artist for their top songs.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: 'What to search for: "fly me to the moon sinatra", "chill lo-fi beats", "abbey road".' },
+          kind: { type: "string", enum: ["track", "playlist", "album", "artist"], description: "Default track." },
+        },
+        required: ["query"],
+      },
+    },
+    label: () => "cueing up a record",
+    run: async (i) => {
+      const kind = (["track", "playlist", "album", "artist"] as const).find((k) => k === i.kind) ?? "track";
+      const f = await spotify.play(str(i.query), kind);
+      emit({ type: "music", action: "playing", track: f.name, artist: f.by });
+      return { text: JSON.stringify({ playing: f.name, by: f.by, kind }), summary: `playing ${f.name}` };
+    },
+  },
+  pause_music: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: { name: "pause_music", description: "Pause the music.", input_schema: { type: "object", properties: {} } },
+    label: () => "pausing the music",
+    run: async () => {
+      await spotify.pause();
+      emit({ type: "music", action: "paused" });
+      return { text: "paused", summary: "paused" };
+    },
+  },
+  resume_music: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: { name: "resume_music", description: "Carry on playing whatever was paused.", input_schema: { type: "object", properties: {} } },
+    label: () => "back to the music",
+    run: async () => {
+      await spotify.resume();
+      return { text: "playing again", summary: "resumed" };
+    },
+  },
+  skip_track: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "skip_track",
+      description: "Skip to the next song, or back to the previous one.",
+      input_schema: { type: "object", properties: { back: { type: "boolean", description: "true to go back a song. Default false." } } },
+    },
+    label: () => "flipping the record",
+    run: async (i) => {
+      await spotify.skip(i.back === true);
+      return { text: i.back === true ? "went back a song" : "skipped", summary: "skipped" };
+    },
+  },
+  queue_song: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "queue_song",
+      description: "Find a song on Spotify and add it to the queue, to play after the current one.",
+      input_schema: { type: "object", properties: { query: { type: "string", description: "The song (and artist, if known)." } }, required: ["query"] },
+    },
+    label: () => "queueing a song",
+    run: async (i) => {
+      const f = await spotify.queue(str(i.query));
+      return { text: JSON.stringify({ queued: f.name, by: f.by }), summary: `queued ${f.name}` };
+    },
+  },
+  set_volume: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "set_volume",
+      description: "Set the music's volume, 0 to 100.",
+      input_schema: { type: "object", properties: { percent: { type: "number" } }, required: ["percent"] },
+    },
+    label: () => "turning the dial",
+    run: async (i) => {
+      await spotify.volume(num(i.percent, 50));
+      return { text: `volume ${Math.round(num(i.percent, 50))}%`, summary: "volume set" };
+    },
+  },
+  now_playing: {
+    owner: "dj",
+    building: "radio_tower",
+    reward: 0,
+    quiet: true,
+    def: { name: "now_playing", description: "What's playing right now (song, artist, how far in), if anything.", input_schema: { type: "object", properties: {} } },
+    label: () => "checking the deck",
+    run: async () => {
+      const n = await spotify.nowPlaying();
+      return { text: JSON.stringify(n ?? { playing: false }), summary: n?.track ? `${n.track}` : "nothing on" };
+    },
+  },
 };
 
-const WORKERS: VillagerId[] = ["postmaster", "timekeeper", "scholar", "stargazer"];
+const WORKERS: VillagerId[] = ["postmaster", "timekeeper", "scholar", "stargazer", "dj"];
 const movedIn = services.isResident;
 
 export function toolsFor(v: VillagerId): Tool[] {
@@ -277,7 +391,8 @@ export function toolsFor(v: VillagerId): Tool[] {
           "postmaster = Gmail (read inbox, draft, send with the player's OK). " +
           "timekeeper = Google Calendar (check free time, book events with the player's OK). " +
           "scholar = Canvas (courses, grades, due dates, announcements). " +
-          "stargazer = web research. Call several at once for independent pieces.",
+          "stargazer = web research. " +
+          "dj = Spotify music in the game (play, pause, skip, queue). Call several at once for independent pieces.",
         input_schema: {
           type: "object",
           properties: {
@@ -292,6 +407,8 @@ export function toolsFor(v: VillagerId): Tool[] {
   if (v === "stargazer") {
     return [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }];
   }
+  // (Echo can only play once the player's Spotify is connected)
+  if (v === "dj" && !spotify.spotifyStatus().connected) return [];
   return Object.entries(LEAF_TOOLS)
     .filter(([, t]) => t.owner === v && owns(t.building))
     .map(([, t]) => t.def);
@@ -299,7 +416,7 @@ export function toolsFor(v: VillagerId): Tool[] {
 
 export function missingBuildingsNote(v: VillagerId): string {
   if (v === "jade_rabbit") {
-    const quest = `\n\n${services.townNote()} The player's next goal: ${services.nextStep()} (Materials: moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust; moon shards from the wilds; glow ore from meteors and the old glowing craters; ice crystals in the north and scrap metal and helium-3 in the south, once the roads are fixed. Coins from popping the stars neighbors leave after real work, sweeping, meteors and requests.)`;
+    const quest = `\n\n${services.townNote()} The player's next goal: ${services.nextStep()} (Neighbors' plots are bought at the Town Hall, set down anywhere, and built with materials. Materials: moonstone from boulders and fallen meteors; stardust from sweeping moondust; moon shards from the wilds; glow ore from meteors and the old glowing craters; ice crystals in the north and scrap metal and helium-3 in the south, once the roads are fixed. Coins from popping the stars neighbors leave after real work, sweeping, meteors and requests.)`;
     const guide = services.rabbitTeamwork()
       ? ""
       : "\n\nRight now you're just the guide: you can't hand out work until two neighbors live here. Point the player at their current goal instead.";
@@ -335,7 +452,8 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
     building: tool.building,
     label: tool.label(input),
     status: "working",
-    reward: tool.reward,
+    // (a grand house pays more for its neighbor's work)
+    reward: Math.round(tool.reward * (services.grandHome(v) ? GRAND_BONUS : 1)),
   };
   putClod(clod);
   setVillager(v, { status: "working", activity: clod.label });

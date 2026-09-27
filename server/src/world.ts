@@ -18,7 +18,8 @@ import {
   MOVE_INS,
   type Materials,
   type Progress,
-  currentMoveIn,
+  moveInAt,
+  onMap,
   type SeqEvent,
   type Snapshot,
   type VillagerId,
@@ -77,8 +78,8 @@ const idle = (): VillagerState => ({ status: "idle", activity: "relaxing" });
 function freshWorld(): World {
   const buildings: Partial<Record<BuildingId, boolean>> = {};
   for (const b of Object.values(BUILDINGS)) if (b.starter) buildings[b.id] = true;
-  // Every neighbor's lot is there from the start, in ruins: the Town Hall decides how many can move in.
-  const progress: Progress = { town: freshTown(), revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office", ...MOVE_INS.map((m) => m.home)], sandbox: {}, movedIn: [], lots: {} };
+  // Neighbors' homes aren't on the map until you buy their plot at the Town Hall and set it down.
+  const progress: Progress = { town: freshTown(), revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office"], sandbox: {}, movedIn: [], plots: {} };
   // Demo prep / testing: everything built and revealed, everyone home.
   if (process.env.UNLOCK_ALL === "1") {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
@@ -101,7 +102,7 @@ function freshWorld(): World {
     lastChoreAt: {},
     progress,
     buildings,
-    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle() },
+    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle(), dj: idle() },
     clods: {},
     approvals: {},
     lanterns: [],
@@ -127,6 +128,7 @@ function load(file = DATA_FILE): World {
     }
     w.villagers.scholar ??= idle();
     w.villagers.manager ??= idle();
+    w.villagers.dj ??= idle();
     w.chores ??= {};
     w.phones ??= {};
     w.choreOptIn ??= {};
@@ -148,20 +150,28 @@ function load(file = DATA_FILE): World {
     w.progress.town ??= freshTown();
     // Nova used to be here from the start; in older town saves she's already home.
     if (w.buildings.observatory && !w.progress.movedIn.includes("stargazer")) w.progress.movedIn.unshift("stargazer");
-    // Saves from the old quest chain: whoever had a house then has moved in
-    // (their lot counts as cleared and repaired). The quest counters go.
+    // Saves from the old quest chain: whoever had a house then has moved in. The quest counters go.
     if (!Array.isArray(w.progress.movedIn)) {
       const old = w.progress as Progress & { quest?: number; count?: number };
       w.progress.movedIn = MOVE_INS.filter((m) => w.buildings[m.home]).map((m) => m.villager);
-      w.progress.lots = {};
-      for (const m of MOVE_INS) if (w.buildings[m.home]) w.progress.lots[m.home] = { cleared: [...Array(m.rubble).keys()], repaired: true };
       delete old.quest;
       delete old.count;
     }
-    w.progress.lots ??= {};
-    // The lot being worked on is always on the map.
-    const next = currentMoveIn(w.progress);
-    if (next && !w.progress.revealed.includes(next.home)) w.progress.revealed.push(next.home);
+    // Neighbors' lots used to be fixed ruins to clear and repair; now you buy
+    // their plot and set it down. Whoever's home keeps their house where it
+    // stands; the rest are off the map, their plots for sale at the Town Hall.
+    if (!w.progress.plots) {
+      w.progress.plots = {};
+      for (const m of MOVE_INS) {
+        if (w.progress.movedIn.includes(m.villager)) w.progress.plots[m.home] = { placed: true, stage: 1 };
+        else {
+          delete w.buildings[m.home];
+          delete w.layout[m.home];
+        }
+      }
+      w.progress.revealed = w.progress.revealed.filter((b) => !moveInAt(b) || w.progress.plots[b]);
+    }
+    delete (w.progress as Progress & { lots?: unknown }).lots;
     // The old brief-a-project Office kept its projects in the save; the Office
     // is a live view of your coding agents now, with nothing to save.
     delete (w as { office?: unknown }).office;
@@ -209,10 +219,10 @@ export function isDevWorld() {
   return saveFile === DEV_FILE;
 }
 
-/** Every lot cleared and repaired, everyone moved in. */
+/** Everyone moved in, in grand houses where they usually stand. */
 function everyoneHome(p: Progress) {
   p.movedIn = MOVE_INS.map((m) => m.villager);
-  for (const m of MOVE_INS) p.lots[m.home] = { cleared: [...Array(m.rubble).keys()], repaired: true };
+  for (const m of MOVE_INS) p.plots[m.home] = { placed: true, stage: 2 };
 }
 
 /** Everything built and revealed, everyone moved in, sample data so they all work, coins and materials to spend. */
@@ -300,7 +310,7 @@ export function snapshot(): Snapshot {
     progress: world.progress,
     materials: world.materials,
     // filled in by services.ts, which knows about connected accounts
-    connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
+    connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
     residents: [],
     rabbitTeamwork: false,
     chores: Object.values(world.chores),
@@ -389,8 +399,7 @@ export function occupied(except?: { building?: BuildingId; deco?: string; lanter
   const out: Rect[] = [];
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     if (b === except?.building) continue;
-    const shown = owns(b) || (world.progress.revealed.includes(b) && b !== "mailbox");
-    if (shown) out.push(...buildingRects(b));
+    if (onMap(b, world.progress, world.buildings)) out.push(...buildingRects(b));
   }
   for (const d of world.decos) {
     const def = decorById(d.item);
@@ -470,7 +479,7 @@ export function moveLantern(id: string, x: number, y: number): boolean {
 export function moveBuilding(b: BuildingId, x: number, y: number): boolean {
   // The Mail Rocket is built onto the Post Office: it moves when the Post Office does.
   if (b === "rocket_pad") return false;
-  if (!SPOTS[b] || (!owns(b) && !world.progress.revealed.includes(b))) return false;
+  if (!SPOTS[b] || !onMap(b, world.progress, world.buildings)) return false;
   if (!canOccupy(buildingRects(b, { x, y }), occupied({ building: b }))) return false;
   world.layout[b] = { x, y };
   applyLayout(world.layout);

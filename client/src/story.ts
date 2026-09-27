@@ -25,8 +25,8 @@ export const CHAPTER_AFTER: Record<number, Chapter> = {
   },
   2: {
     n: 3,
-    title: "THE LAST LOT",
-    line: "Two new neighbors home. Make the Town Hall grand and there's room for the last one.",
+    title: "THE LAST PLOTS",
+    line: "Two new neighbors home. Make the Town Hall grand and there's room for everyone else.",
   },
 };
 

@@ -2,7 +2,7 @@ import { TownPanel, type TownPanelSpec } from "../townpanel";
 import { inStock } from "../../../shared/town";
 import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, newNeighborCount, shopOpen } from "../../../shared/town";
 import Phaser from "phaser";
-import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, type VillagerId, type VillagerStatus } from "../../../shared/game";
+import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, plotsTaken, type VillagerId, type VillagerStatus } from "../../../shared/game";
 import { PHONE } from "../font";
 import { DECOR_CATEGORIES, type DecorCategory } from "../../../shared/decor";
 import { SHOP_ITEMS } from "../items";
@@ -19,7 +19,7 @@ import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 import { isMicOn, onMicToggle, toggleMic } from "../neartalk";
 import { micSupported } from "../mic";
 import { CHAPTER_AFTER, FINALE_AT, newNeighbors, pending, setFinalePending, type Chapter } from "../story";
-import { checklist, nextStep } from "../../../shared/movein";
+import { needsText, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
 type ArrangeState = { edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
@@ -744,7 +744,7 @@ export class UIScene extends Phaser.Scene {
       [
         ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => openMoonPad()))],
         // (the Shop button only once the Market's repaired: there's no shop before that)
-        ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", click(() => this.toggleShop())] as [string, string, string, () => void]] : []),
+        ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", later(click(() => this.toggleShop()))] as [string, string, string, () => void]] : []),
         ["icon_quests_0", "quests", "Quests", later(click(() => this.showQuests()))],
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
@@ -774,7 +774,8 @@ export class UIScene extends Phaser.Scene {
     }
     const byWord = (w: string) => made[groups.flat().findIndex((g) => g[1] === w)];
     const [moonpad, quests, mic, edit, music, sound] = ["phone", "quests", "mic", "edit", "music", "sound"].map(byWord);
-    this.tutorialLocked = [moonpad, quests, mic, edit];
+    const shop = byWord("shop");
+    this.tutorialLocked = [moonpad, quests, mic, edit, ...(shop ? [shop] : [])];
     const showMic = (on: boolean) => mic.setIcon(on ? "icon_mic_on_0" : "icon_mic_0").setTooltip(MIC_TIP(on)).setLabel("mic", on ? 0x9dff8a : undefined);
     showMic(isMicOn());
     this.unsubs.push(onMicToggle(showMic));
@@ -828,7 +829,7 @@ export class UIScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     const text = a.holding
-      ? `${a.holding.isNew ? "Place" : "Move"} the ${a.holding.name}: click where the tiles turn green.`
+      ? `${a.holding.isNew ? `Place the ${a.holding.name}` : a.holding.name.endsWith("'s plot") ? `Set ${a.holding.name} down` : `Move the ${a.holding.name}`}: click where the tiles turn green.`
       : "EDIT MODE: drag anything to move it, or click a decoration to sell it.";
     const buttons: [string, number, () => void][] = [];
     if (a.holding?.refund != null) buttons.push([`SELL +${a.holding.refund}¢`, C.woodMid, () => this.game.events.emit("arrange-sell")]);
@@ -897,17 +898,22 @@ export class UIScene extends Phaser.Scene {
       return `${stage === 2 ? "✓" : "○"} ${LANDMARKS[id].name}: ${STAGE_NAME[stage]}${stage < 2 ? ` → ${STAGE_NAME[stage + 1]}` : ""}`;
     });
     const cap = neighborCap(town);
-    const home = newNeighborCount(store.progress.movedIn);
+    const taken = plotsTaken(store.progress);
     const neighborLines = MOVE_INS.map((m) => {
       const who = VILLAGER_NAMES[m.villager];
-      if (store.progress.movedIn.includes(m.villager)) return `✓ ${who} moved in`;
-      return `○ ${who}: the old ${BUILDINGS[m.home].name} lot\n   ${checklist(m, state).map((st) => `${st.done ? "✓" : "○"} ${st.text}`).join("\n   ")}`;
+      const plot = store.progress.plots[m.home];
+      const home = BUILDINGS[m.home].name;
+      if (plot?.stage === 2) return `✓ ${who}: a grand ${home}`;
+      if (plot?.stage === 1) return `✓ ${who} moved in (make the ${home} grand: ${needsText(m.build[1])})`;
+      if (plot?.placed) return `○ ${who}: build the ${home} on their plot (${needsText(m.build[0])})`;
+      if (plot) return `○ ${who}: set their plot down (PLACE at the Town Hall)`;
+      return `○ ${who}: their plot is for sale at the Town Hall (${m.price}¢)`;
     });
     const held = town.items.map((i) => `${ITEMS[i].name}: "${ITEMS[i].line}"`);
     const lines = [
       `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
       ...townLines,
-      `NEIGHBORS (the Town Hall has room for ${cap} new, ${home} moved in)`,
+      `NEIGHBORS (the Town Hall has room for ${cap} new, ${Math.min(taken, cap)} taken)`,
       ...neighborLines,
       ...(held.length ? ["STORY ITEMS", ...held] : []),
       `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
@@ -922,7 +928,7 @@ export class UIScene extends Phaser.Scene {
       ? `★ Moon Shards: ${found}/${SHARD_COUNT}. Pieces of the old colony's beacon, glinting out in the wilds: ${SHARD_REWARD}¢ each, and all ${SHARD_COUNT} relight the beacon for +${SHARD_BONUS}¢.`
       : `★ Moon Shards: all ${SHARD_COUNT} found. The beacon shines again.`;
     const buttons = [
-      { label: "TOWN PROJECTS", onClick: () => (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
+      { label: "TOWN HALL", onClick: () => (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
       { label: "WATCH INTRO", onClick: () => this.playCutscene("Intro") },
     ];
     if (finished) buttons.push({ label: "WATCH FINALE", onClick: () => this.playCutscene("Ending") });
@@ -933,9 +939,9 @@ export class UIScene extends Phaser.Scene {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new neighbors, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
-      "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot. Clear its rubble and repair it with materials, and they move right in (as many as the Town Hall has room for; you pick who).",
-      "MATERIALS: moonstone (boulders, rubble, meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a neighbor's gift), and a couple need a real job done by a neighbor.",
-      "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
+      "NEW NEIGHBORS: buy a neighbor's plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. The Town Hall has room for so many new neighbors; upgrade it for more.",
+      "MATERIALS: moonstone (boulders and meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a neighbor's gift), and a couple need a real job done by a neighbor.",
+      "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",
@@ -1138,6 +1144,11 @@ export class UIScene extends Phaser.Scene {
   }
 
   private toggleShop() {
+    // (the B key too: the Shop waits till the tutorial's done, so Nova's plot money stays put)
+    if (!this.shopOpen && inTutorial()) {
+      this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get Nova moved in first, then it's all yours.", C.coral);
+      return;
+    }
     if (!this.shopOpen && !shopOpen(store.progress.town)) {
       this.toast("The Market", "There's no shop yet: repair the Market first (E at the Market, or the Town Hall's board).", C.red);
       return;

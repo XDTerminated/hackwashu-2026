@@ -19,7 +19,7 @@ type Msg = { from: "you" | "them" | "sys"; text: string; tag?: string };
 type View = VillagerId | "phones" | "connect" | null;
 type TestResult = { name: string; ok: boolean | null; detail: string };
 
-const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "timekeeper", "scholar", "manager"];
+const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "dj", "timekeeper", "scholar", "manager"];
 const AVATAR: Record<VillagerId, string> = {
   jade_rabbit: "rabbit_0",
   stargazer: "stargazer_0",
@@ -27,6 +27,7 @@ const AVATAR: Record<VillagerId, string> = {
   timekeeper: "timekeeper_0",
   scholar: "scholar_0",
   manager: "office_lead",
+  dj: "dj_0",
 };
 const TAGS: Partial<Record<TaskSource, string>> = { game: "in person", phone: "from your phone" };
 const SAVE_KEY = "moonpad-v1";
@@ -373,6 +374,13 @@ class MoonPadView {
         line: c.canvas.connected ? `connected${c.canvas.account ? `: ${c.canvas.account}` : ""}` : sandbox.canvas ? "on sample data" : "courses, due dates (Mabel)",
         tests: result("Canvas"),
         btn: c.canvas.connected ? null : { label: "SIGN IN", act: () => openConnect("scholar", { fromAccounts: true }) },
+      },
+      {
+        title: "Spotify",
+        state: c.spotify.connected ? "ok" : "off",
+        line: c.spotify.connected ? `connected${c.spotify.account ? `: ${c.spotify.account}` : ""}${c.spotify.premium === false ? " (needs Premium to play)" : ""}` : "music in the game (Echo)",
+        tests: [],
+        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/spotify`, "_blank") } : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
       },
       {
         title: "Your phone",

@@ -316,6 +316,46 @@ function manager(g: Grid, f: PortraitFrame) {
   } else g.dots(K, [22, 32], [23, 33], [24, 33], [25, 33], [26, 32]);
 }
 
+function dj(g: Grid, f: PortraitFrame) {
+  const M = "#c3cbe0", Md = "#8a93ab", Ml = "#e4e9f4", S = "#1f2a44", E = "#7ff0e8", Ed = "#3fb8b0";
+  const H = "#e0708a", Hd = "#b44f6c", Hl = "#f2a3b8", Y = "#f5c542", sp = "#2e2a3a", cone = "#6b6f86";
+  // shoulders, with a speaker in the chest
+  g.oval(24, 53, 18, 13, M, Md, Ml);
+  g.oval(24, 47, 6, 5, sp);
+  g.oval(24, 47, 3.5, 3, f === TALK ? "#a3a7c0" : cone);
+  g.rect(21, 35, 6, 5, Md);
+  // antenna and its light
+  g.line(24, 10, 24, 4, Md);
+  g.oval(24, 3, 2.2, 2.2, f === BLINK ? "#a8863a" : Y, "#d9a441");
+  // the head: a rounded box
+  g.rect(12, 11, 25, 25, M);
+  g.rect(36, 11, 1, 25, Md);
+  g.rect(12, 35, 25, 1, Md);
+  g.rect(12, 11, 25, 1, Ml);
+  g.rect(12, 11, 1, 25, Ml);
+  g.dots(null, [12, 11], [13, 11], [12, 12], [36, 11], [35, 11], [36, 12], [12, 35], [13, 35], [12, 34], [36, 35], [35, 35], [36, 34]);
+  // the screen face
+  g.rect(15, 15, 19, 17, S);
+  if (f === BLINK) {
+    // happy ^ ^
+    g.dots(E, [17, 22], [18, 21], [19, 20], [20, 21], [21, 22], [27, 22], [28, 21], [29, 20], [30, 21], [31, 22]);
+  } else {
+    g.oval(19.5, 21, 2.5, 3, E, Ed);
+    g.oval(29.5, 21, 2.5, 3, E, Ed);
+    g.dots(SHINE, [18, 20], [28, 20]);
+  }
+  g.dots(H, [17, 26], [32, 26]);
+  // the mouth is a little equalizer (jumping while they talk)
+  const bars = f === TALK ? [2, 4, 3, 5, 2] : [1, 1, 1, 1, 1];
+  bars.forEach((h, i) => g.rect(20 + i * 2, 30 - h, 1, h, E));
+  // headphones: the band over the top, the cups on the sides
+  for (let a = Math.PI; a <= Math.PI * 2 + 0.001; a += 0.02) {
+    for (const r of [15, 16]) g.set(24.5 + Math.cos(a) * r, 22 + Math.sin(a) * 13, a < Math.PI * 1.5 ? H : Hd);
+  }
+  g.oval(9.5, 23, 3.5, 6, H, Hd, Hl);
+  g.oval(39.5, 23, 3.5, 6, H, Hd, Hl);
+}
+
 const DRAW: Record<VillagerId, (g: Grid, f: PortraitFrame) => void> = {
   jade_rabbit: jadeRabbit,
   postmaster,
@@ -323,6 +363,7 @@ const DRAW: Record<VillagerId, (g: Grid, f: PortraitFrame) => void> = {
   scholar,
   stargazer,
   manager,
+  dj,
 };
 
 export function drawPortrait(ctx: Ctx, v: VillagerId, f: PortraitFrame) {

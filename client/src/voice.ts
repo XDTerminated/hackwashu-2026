@@ -11,7 +11,7 @@ const SERVER = SERVER_HTTP;
 const MUTE_KEY = "moon-voice-muted";
 
 /** Server (ElevenLabs) clips play a touch quicker so conversations keep moving. */
-const PITCH: Record<VillagerId, number> = { jade_rabbit: 1.08, stargazer: 1.05, postmaster: 1.05, timekeeper: 1.06, scholar: 1.05, manager: 1.05 };
+const PITCH: Record<VillagerId, number> = { jade_rabbit: 1.08, stargazer: 1.05, postmaster: 1.05, timekeeper: 1.06, scholar: 1.05, manager: 1.05, dj: 1.05 };
 
 /**
  * Browser voices: near-natural pitch, a slightly brisk pace, and a real
@@ -25,6 +25,7 @@ const BROWSER: Record<VillagerId, { pitch: number; rate: number; prefer: string[
   scholar: { pitch: 1.03, rate: 1.1, prefer: ["Moira", "Fiona", "Serena", "Google UK English Female", "Microsoft Sonia", "Kate", "Karen"] },
   stargazer: { pitch: 1.06, rate: 1.08, prefer: ["Karen", "Tessa", "Nicky", "Microsoft Natasha", "Google UK English Female", "Samantha", "Zoe"] },
   manager: { pitch: 1.0, rate: 1.14, prefer: ["Ava", "Allison", "Google US English", "Microsoft Jenny", "Microsoft Aria", "Susan", "Samantha"] },
+  dj: { pitch: 1.1, rate: 1.12, prefer: ["Aaron", "Alex", "Google US English", "Microsoft Guy", "Microsoft Davis", "Evan", "Tom"] },
 };
 
 const NOVELTY = /albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|fred|junior|kathy|ralph|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley/i;

@@ -263,7 +263,7 @@ export function startMusic() {
   }
   started = true;
   master = ctx.createGain();
-  master.gain.value = muted ? 0 : 0.8;
+  master.gain.value = level();
   // Take the fizz off the top, and add a soft slapback echo for warmth.
   const soften = ctx.createBiquadFilter();
   soften.type = "lowpass";
@@ -286,6 +286,16 @@ export function startMusic() {
   timer = window.setInterval(tick, 500);
 }
 
+/** Echo's Spotify is playing: the colony's tune steps aside (and comes back when it stops). */
+let ducked = false;
+const level = () => (muted || ducked ? 0 : 0.8);
+
+export function duckMusic(on: boolean) {
+  if (on === ducked) return;
+  ducked = on;
+  if (ctx && master) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.5);
+}
+
 export function isMusicMuted() {
   return muted;
 }
@@ -297,7 +307,7 @@ export function toggleMusic() {
   } catch {
     /* storage unavailable: the choice just won't be remembered */
   }
-  if (ctx && master) master.gain.setTargetAtTime(muted ? 0 : 0.8, ctx.currentTime, 0.3);
+  if (ctx && master) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.3);
   listeners.forEach((fn) => fn(muted));
 }
 

@@ -3,7 +3,7 @@
 // saved with the colony so it survives restarts and new browsers.
 
 import { happinessFor } from "../../shared/decor.js";
-import { heartsFor, type VillagerId } from "../../shared/game.js";
+import { MOVE_INS, heartsFor, type VillagerId } from "../../shared/game.js";
 import { emit, savePersist, world, type VillagerMemory } from "./world.js";
 
 const LOG_MAX = 60;
@@ -21,7 +21,7 @@ export function heartsOf(v: VillagerId): number {
   return heartsFor(memoryOf(v).points + happiness(v).score);
 }
 
-const ALL: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+const ALL: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj"];
 
 export function happinessAll(): Record<VillagerId, number> {
   return Object.fromEntries(ALL.map((v) => [v, happiness(v).score])) as Record<VillagerId, number>;
@@ -80,8 +80,9 @@ export function befriend(v: VillagerId, via: "text" | "visit") {
     m.day = today;
     m.dayPoints = 0;
   }
-  // (the grand fountain: friendships grow faster)
-  const grand = world.progress.town.stages.fountain >= 2 ? 1 : 0;
+  // (the grand fountain, and their own grand house: friendships grow faster)
+  const grandHome = MOVE_INS.some((d) => d.villager === v && world.progress.plots[d.home]?.stage === 2);
+  const grand = (world.progress.town.stages.fountain >= 2 ? 1 : 0) + (grandHome ? 1 : 0);
   const gain = Math.min((via === "visit" ? 2 : 1) + grand, POINTS_PER_DAY + grand - (m.dayPoints ?? 0));
   if (gain <= 0) return;
   const bonus = happiness(v).score;

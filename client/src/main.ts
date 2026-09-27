@@ -9,6 +9,7 @@ import { EndingScene } from "./scenes/EndingScene";
 import * as net from "./net";
 import { initChatter } from "./chatter";
 import { startMusic } from "./music";
+import { startSpotify } from "./spotify";
 import { initPanel } from "./panel";
 import { initMoonPad } from "./tablet";
 import { initTextInput } from "./textinput";
@@ -50,6 +51,7 @@ initPanel();
 initMoonPad();
 initChatter();
 net.start();
+startSpotify();
 
 const initial = fitToWindow();
 const game = new Phaser.Game({

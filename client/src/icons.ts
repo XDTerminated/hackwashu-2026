@@ -359,6 +359,7 @@ export const VERB_ICON: Record<string, string> = {
   TALK: "icon_talk_0",
   "READ LETTER": "icon_letter_0",
   BUILD: "icon_build_0",
+  UPGRADE: "icon_build_0",
   POP: "clod_icon",
   GRAB: "icon_grab_0",
   SWEEP: "icon_sweep_0",
@@ -398,6 +399,10 @@ export const VILLAGER_ICONS: Record<string, PixelSprite> = {
   manager: {
     palette: { K: "#3b2a3a", H: "#3b2a2a", S: "#f0c09a", B: "#3f4f8a" },
     frames: [[".KKKKK.", "KHHHHHK", "KHSSSHK", "KHKSKHK", "KHSSSHK", ".KBBBK.", ".KKKKK."]],
+  },
+  dj: {
+    palette: { K: "#3b2a3a", H: "#e0708a", M: "#c3cbe0", S: "#1f2a44", E: "#7ff0e8" },
+    frames: [[".HHHHH.", "HKKKKKH", "HKSSSKH", "HKESEKH", "HKSSSKH", ".KMMMK.", ".KKKKK."]],
   },
 };
 

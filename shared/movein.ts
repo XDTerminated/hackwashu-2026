@@ -1,13 +1,15 @@
 // What to do next, worked out the same way everywhere: the server (Yutu's
-// hints), the HUD's goal line, the Quests list, the lots' signs and the ★.
-// A neighbor's lot: clear the rubble, then repair it and they move right in
-// (as many as the Town Hall has room for). Otherwise: dig up a story item
-// that's waiting, or take the next landmark up a stage.
+// hints), the game's goal line, the Quests list, the plots' signs and the ★.
+// First the tutorial: fix up the Market stall, then buy Nova's plot at the Town
+// Hall, set it down, and build her Observatory. After that: set down and build
+// any plot you've bought, buy the next neighbor's plot (as many as the Town
+// Hall has room for), dig up a story item that's waiting, or take the next
+// landmark up a stage, and make the houses grand.
 
 import { happinessFor } from "./decor.js";
 import { SPOTS } from "./layout.js";
-import { LANDMARKS, STAGE_NAME, digSpots, neighborCap, newNeighborCount, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
-import { MATERIALS, MATERIAL_NAME, MOVE_INS, TUTORIAL_VILLAGER, VILLAGER_SHORT, type BuildingId, type Deco, type Materials, type MoveInDef, type Progress } from "./game.js";
+import { LANDMARKS, STAGE_NAME, digSpots, neighborCap, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
+import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, TUTORIAL_VILLAGER, VILLAGER_SHORT, plotsTaken, type BuildingId, type Deco, type Materials, type MoveInDef, type PlotState, type Progress } from "./game.js";
 
 export interface MoveInState {
   progress: Progress;
@@ -17,44 +19,45 @@ export interface MoveInState {
   decos: Pick<Deco, "item" | "x" | "y">[];
 }
 
-export type StepKey = "rubble" | "repair";
-
-export interface Step {
-  key: StepKey;
-  done: boolean;
-  /** "Clear the rubble (1/2)" */
-  text: string;
-  /** Can you do it right now (enough materials, and room at the Town Hall)? */
-  ready?: boolean;
-}
-
 export const needsText = (needs: Partial<Materials>) =>
   MATERIALS.filter((m) => needs[m])
     .map((m) => `${needs[m]} ${MATERIAL_NAME[m]}`)
     .join(", ");
 
+export const canAfford = (needs: Partial<Materials>, materials: Materials) => MATERIALS.every((m) => (needs[m] ?? 0) <= materials[m]);
+
 export function lovedCount(d: MoveInDef, s: MoveInState) {
   return happinessFor(d.villager, s.decos).items.filter((i) => i.loved).length;
 }
 
-/** Is there room at the Town Hall for another new neighbor? */
-export const hasRoom = (s: MoveInState) => newNeighborCount(s.progress.movedIn) < neighborCap(s.progress.town);
+/** Room at the Town Hall for another new neighbor's plot? */
+export const hasRoom = (s: MoveInState) => plotsTaken(s.progress) < neighborCap(s.progress.town);
 
-export function checklist(d: MoveInDef, s: MoveInState): Step[] {
-  const lot = s.progress.lots[d.home] ?? { cleared: [], repaired: false };
-  const cleared = lot.cleared.length >= d.rubble;
-  const enough = MATERIALS.every((m) => (d.repair[m] ?? 0) <= s.materials[m]);
-  return [
-    { key: "rubble", done: cleared, text: `Clear the rubble (${Math.min(lot.cleared.length, d.rubble)}/${d.rubble})` },
-    { key: "repair", done: lot.repaired, text: `Repair the lot: ${needsText(d.repair)} (then ${VILLAGER_SHORT[d.villager]} moves in)`, ready: cleared && enough && (d.villager === TUTORIAL_VILLAGER || hasRoom(s)) },
-  ];
+/** What taking this plot up its next stage costs (null if it isn't set down yet, or it's already grand). */
+export function nextBuild(d: MoveInDef, plot: PlotState | undefined): Partial<Materials> | null {
+  if (!plot?.placed || plot.stage >= 2) return null;
+  return d.build[plot.stage as 0 | 1];
 }
 
+/** Why you can't buy this neighbor's plot right now (or null if you can). */
+export function buyBlocker(d: MoveInDef, s: MoveInState): string | null {
+  if (s.progress.plots[d.home]) return `You already have ${VILLAGER_SHORT[d.villager]}'s plot.`;
+  if (d.villager !== TUTORIAL_VILLAGER && !s.progress.movedIn.includes(TUTORIAL_VILLAGER)) return "Get Nova moved in first.";
+  if (d.villager !== TUTORIAL_VILLAGER && !hasRoom(s)) {
+    const cap = neighborCap(s.progress.town);
+    return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"}. Upgrade it to make room.`;
+  }
+  if (s.coins < d.price) return `It costs ${d.price}¢ (you have ${s.coins}¢).`;
+  return null;
+}
+
+export type PlotAction = "buy" | "place" | "build" | "grand";
+
 export type Goal =
-  /** `tutorial`: which of Nova's four tutorial steps this is (1-4). */
-  | { kind: "lot"; text: string; def: MoveInDef; step: Step; tutorial?: number }
-  | { kind: "landmark"; text: string; id: LandmarkId; ready: boolean }
-  | { kind: "dig"; text: string; spot: DigSpot };
+  /** `tutorial`: which of the five tutorial steps this is. */
+  | { kind: "plot"; text: string; def: MoveInDef; action: PlotAction; ready: boolean; tutorial?: number }
+  | { kind: "landmark"; text: string; id: LandmarkId; ready: boolean; tutorial?: number }
+  | { kind: "dig"; text: string; spot: DigSpot; tutorial?: undefined };
 
 /** Landmarks in the order worth doing them: the roads open the map, the rest follow. */
 const LANDMARK_ORDER: LandmarkId[] = ["roads", "fountain", "market", "town_hall"];
@@ -64,34 +67,53 @@ const landmarkGoal = (s: MoveInState, id: LandmarkId): Goal => {
   return { kind: "landmark", id, text: `Upgrade the ${LANDMARKS[id].name} (${STAGE_NAME[stage + 1]})`, ready: !upgradeBlocker(s.progress.town, id, s.materials) };
 };
 
+/** What to do with a neighbor's plot next, in words. */
+function plotGoal(d: MoveInDef, s: MoveInState, tutorial?: number): Goal {
+  const who = VILLAGER_SHORT[d.villager];
+  const plot = s.progress.plots[d.home];
+  const home = BUILDINGS[d.home].name;
+  const tut = tutorial ? `Tutorial ${tutorial}/5: ` : "";
+  if (!plot) return { kind: "plot", def: d, action: "buy", ready: !buyBlocker(d, s), tutorial, text: `${tut}buy ${who}'s plot at the Town Hall (${d.price}¢)` };
+  if (!plot.placed) return { kind: "plot", def: d, action: "place", ready: true, tutorial, text: `${tut}set ${who}'s plot down anywhere you like` };
+  const needs = nextBuild(d, plot)!;
+  if (plot.stage === 0) return { kind: "plot", def: d, action: "build", ready: canAfford(needs, s.materials), tutorial, text: `${tut}build ${who}'s ${home}: ${needsText(needs)} (E at the plot)` };
+  return { kind: "plot", def: d, action: "grand", ready: canAfford(needs, s.materials), tutorial, text: `Make ${who}'s ${home} grand: ${needsText(needs)}` };
+}
+
 /** The next thing worth doing (null once everyone's home and the whole town is grand). */
 export function nextStep(s: MoveInState): Goal | null {
   const town = s.progress.town;
-  // First, the tutorial: Nova's Observatory, step by step.
+  const plots = s.progress.plots;
+  // First, the tutorial: the Market stall, then Nova's plot.
   const nova = MOVE_INS.find((m) => m.villager === TUTORIAL_VILLAGER)!;
   if (!s.progress.movedIn.includes(nova.villager)) {
-    const steps = checklist(nova, s);
-    const short = (m: keyof Materials) => (nova.repair[m] ?? 0) > s.materials[m];
-    if (!steps[0].done) return { kind: "lot", def: nova, step: steps[0], tutorial: 1, text: `Tutorial 1/4: clear the rubble on Nova's lot (E by each heap)` };
-    if (short("moonstone")) return { kind: "lot", def: nova, step: steps[1], tutorial: 2, text: "Tutorial 2/4: break a boulder for moonstone (E by any rock)" };
-    if (short("stardust")) return { kind: "lot", def: nova, step: steps[1], tutorial: 3, text: "Tutorial 3/4: sweep a moondust drift for stardust (hold E)" };
-    return { kind: "lot", def: nova, step: steps[1], tutorial: 4, text: "Tutorial 4/4: repair Nova's Observatory, and she moves in" };
+    if (town.stages.market === 0) {
+      const ready = !upgradeBlocker(town, "market", s.materials);
+      const text = ready ? "Tutorial 2/5: repair the Market stall (E at the Market)" : "Tutorial 1/5: gather for the Market stall: break a boulder (E) and sweep a moondust drift (hold E)";
+      return { kind: "landmark", id: "market", ready, tutorial: ready ? 2 : 1, text };
+    }
+    const p = plots[nova.home];
+    return plotGoal(nova, s, !p ? 3 : !p.placed ? 4 : 5);
   }
   const waiting = MOVE_INS.filter((m) => !s.progress.movedIn.includes(m.villager));
-  // A neighbor can move in: the lot furthest along first.
-  if (waiting.length && hasRoom(s)) {
-    const cleared = (m: MoveInDef) => s.progress.lots[m.home]?.cleared.length ?? 0;
-    const def = [...waiting].sort((a, b) => cleared(b) - cleared(a))[0];
-    const step = checklist(def, s).find((x) => !x.done)!;
-    return { kind: "lot", def, step, text: `${VILLAGER_SHORT[def.villager]}'s lot: ${step.text}` };
-  }
+  // A plot you've bought: set it down, then build it.
+  const bought = waiting.find((m) => plots[m.home] && !plots[m.home]!.placed) ?? waiting.find((m) => plots[m.home]?.placed);
+  if (bought) return plotGoal(bought, s);
+  // Room at the Town Hall: the next neighbor's plot.
+  const forSale = waiting.find((m) => !plots[m.home]);
+  if (forSale && hasRoom(s)) return plotGoal(forSale, s);
   // A story item waiting to be dug up.
   const dig = digSpots(SPOTS.town_hall).find((d) => d.when(town) && !town.dug.includes(d.id));
   if (dig) return { kind: "dig", spot: dig, text: dig.hint };
   // No room for the next neighbor: the Town Hall comes first.
-  if (waiting.length && town.stages.town_hall < 2) return landmarkGoal(s, "town_hall");
+  if (forSale && town.stages.town_hall < 2) return landmarkGoal(s, "town_hall");
+  // A grand house you can afford now.
+  const grand = MOVE_INS.find((m) => plots[m.home]?.stage === 1 && canAfford(m.build[1], s.materials));
+  if (grand) return plotGoal(grand, s);
   // Otherwise whichever landmark is ready to go, or the next one in order.
   const open = LANDMARK_ORDER.filter((id) => town.stages[id] < 2);
-  if (!open.length) return null;
-  return landmarkGoal(s, open.find((id) => !upgradeBlocker(town, id, s.materials)) ?? open[0]);
+  if (open.length) return landmarkGoal(s, open.find((id) => !upgradeBlocker(town, id, s.materials)) ?? open[0]);
+  // Last of all: the houses not grand yet.
+  const left = MOVE_INS.find((m) => plots[m.home]?.stage === 1);
+  return left ? plotGoal(left, s) : null;
 }

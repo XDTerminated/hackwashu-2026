@@ -111,6 +111,8 @@ export const SPOTS: Record<BuildingId, BuildingSpot> = {
   // the homes, out past the fountain square
   rabbit_burrow: spot(456, 912, "b_rabbit_burrow", 48, 28, 96, { dx: 0, dy: 12 }),
   player_house: spot(1144, 912, "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
+  // (neighbors' homes go wherever you set their plot down; these are just where they'd start)
+  radio_tower: spot(1296, 780, "b_radio_tower", 28, 28, 132, { dx: 0, dy: 14 }),
 };
 
 export function buildingTiles(b: BuildingId): { w: number; h: number } {

@@ -6,7 +6,7 @@
 import { VILLAGER_NAMES, type ColonyRequest, type GameEvent, type RequestKind, type VillagerId } from "../../shared/game.js";
 import { SHARD_COUNT, rockSpots } from "../../shared/layout.js";
 import { DECOR, happinessFor } from "../../shared/decor.js";
-import { isResident, rubbleLeft } from "./services.js";
+import { isResident } from "./services.js";
 import { decoRects, emit, onEvent, savePersist, world } from "./world.js";
 
 interface Template {
@@ -20,7 +20,7 @@ interface Template {
 const POOL: Template[] = [
   { kind: "sweep", villager: "jade_rabbit", text: "Sweep 3 moondust drifts so the lamps shine", goal: 3, reward: 30 },
   { kind: "meteor", villager: "stargazer", text: "Catch a moon-rock that falls from the sky", goal: 1, reward: 40 },
-  { kind: "rock", villager: "timekeeper", text: "Clear a rock or a heap of rubble", goal: 1, reward: 30 },
+  { kind: "rock", villager: "timekeeper", text: "Clear a rock", goal: 1, reward: 30 },
   { kind: "decorate", villager: "scholar", text: "Brighten someone's yard with a decoration", goal: 1, reward: 35 },
   { kind: "shard", villager: "stargazer", text: "Find a Moon Shard hidden on the island", goal: 1, reward: 30 },
   { kind: "text", villager: "postmaster", text: "Text a neighbor on the MoonPad", goal: 1, reward: 15 },
@@ -69,8 +69,8 @@ function seeded(n: number) {
 /** Today's three, picked by the date so they're stable all day. */
 function pick(day: string): ColonyRequest[] {
   const seed = [...day].reduce((h, c) => h * 31 + c.charCodeAt(0), 7);
-  // Only ask for what's still out there: shards left to find, rocks or rubble left to clear.
-  const rocksLeft = rockSpots(decoRects(), world.clearedRocks).length + rubbleLeft();
+  // Only ask for what's still out there: shards left to find, rocks left to clear.
+  const rocksLeft = rockSpots(decoRects(), world.clearedRocks).length;
   // (and nothing about decorating until the Market is open)
   const market = world.progress.town.stages.market >= 1;
   const pool = POOL.filter((t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0) && (market || (t.kind !== "decorate" && t.kind !== "place")));
@@ -137,7 +137,7 @@ function grantWish(v: VillagerId, itemName: string) {
 
 function watch(e: GameEvent) {
   if (e.type === "chore_cleared") progress(e.kind === "dust" ? "sweep" : "meteor");
-  else if (e.type === "rock_cleared" || e.type === "rubble_cleared") progress("rock");
+  else if (e.type === "rock_cleared") progress("rock");
   else if (e.type === "clod_popped") progress("pop");
   else if (e.type === "shard_found") progress("shard");
   else if (e.type === "happiness" && e.gained) {

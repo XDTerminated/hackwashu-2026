@@ -16,8 +16,8 @@ export const store: Snapshot & { connected: boolean } = {
   decos: [],
   lastSeq: 0,
   phoneLinked: false,
-  connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
-  progress: { town: freshTown(), revealed: [], sandbox: {}, movedIn: [], lots: {} },
+  connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
+  progress: { town: freshTown(), revealed: [], sandbox: {}, movedIn: [], plots: {} },
   residents: ["jade_rabbit"],
   rabbitTeamwork: false,
   chores: [],
@@ -227,6 +227,9 @@ export function applyEvent(e: SeqEvent) {
       break;
     case "plot_revealed":
       if (!store.progress.revealed.includes(e.building)) store.progress.revealed.push(e.building);
+      break;
+    case "plot":
+      store.progress.plots[e.building] = e.plot;
       break;
   }
   notify();
