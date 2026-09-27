@@ -9,8 +9,8 @@
 
 import { happinessFor } from "./decor.js";
 import { SPOTS } from "./layout.js";
-import { LANDMARKS, digSpots, maxStage, neighborCap, stageName, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
-import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_SHORT, plotsTaken, type BuildingId, type Deco, type Materials, type MoveInDef, type PlotState, type Progress } from "./game.js";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, digSpots, maxStage, neighborCap, stageName, upgradeBlocker, type DigSpot, type LandmarkId } from "./town.js";
+import { BUILDINGS, EXTENSIONS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_SHORT, type Material, plotsTaken, type BuildingId, type Deco, type Materials, type MoveInDef, type PlotState, type Progress } from "./game.js";
 
 export interface MoveInState {
   progress: Progress;
@@ -53,20 +53,61 @@ export function buyBlocker(d: MoveInDef, s: MoveInState): { why: "owned" | "room
 
 export type PlotAction = "buy" | "place" | "build" | "grand";
 
-export type Goal =
-  /** `tutorial`: which of the five tutorial steps this is. */
-  | { kind: "plot"; text: string; def: MoveInDef; action: PlotAction; ready: boolean; tutorial?: number }
-  /** The tutorial's first neighbor: yours to pick, at the Town Hall. */
-  | { kind: "choose"; text: string; tutorial: number }
-  | { kind: "landmark"; text: string; id: LandmarkId; ready: boolean; tutorial?: number }
-  | { kind: "dig"; text: string; spot: DigSpot; tutorial?: undefined };
+/** The goal in pieces, for the HUD: what to do, what it costs, and how. (`text` says it all in one line.) */
+interface GoalParts {
+  title: string;
+  needs?: Partial<Materials>;
+  /** Coins it costs. */
+  price?: number;
+  how?: string;
+}
+
+export type Goal = GoalParts &
+  (
+    /** `tutorial`: which of the five tutorial steps this is. */
+    | { kind: "plot"; text: string; def: MoveInDef; action: PlotAction; ready: boolean; tutorial?: number }
+    /** The tutorial's first neighbor: yours to pick, at the Town Hall. */
+    | { kind: "choose"; text: string; tutorial: number }
+    | { kind: "landmark"; text: string; id: LandmarkId; ready: boolean; tutorial?: number }
+    | { kind: "dig"; text: string; spot: DigSpot; tutorial?: undefined }
+  );
+
+/** Everything a material goes into, in words ("Mabel's Library (build & grand)", "the Fountain (grand)"). */
+export function materialUses(m: Material): string[] {
+  const out: string[] = [];
+  const stages = (name: string, at: string[], of: number) => {
+    // ("level 1 & level 2" reads better as "levels 1, 2")
+    const lv = at.filter((a) => a.startsWith("level "));
+    const said = lv.length > 1 ? [`levels ${lv.map((a) => a.slice(6)).join(", ")}`, ...at.filter((a) => !lv.includes(a))] : at;
+    out.push(at.length === of && of > 2 ? `${name} (every stage)` : `${name} (${said.join(" & ")})`);
+  };
+  for (const d of MOVE_INS) {
+    const at = [d.build[0][m] && "build", d.build[1][m] && "grand"].filter((x): x is string => !!x);
+    if (at.length) stages(`${VILLAGER_SHORT[d.villager]}'s ${BUILDINGS[d.home].name}`, at, 2);
+  }
+  for (const [id, x] of Object.entries(EXTENSIONS)) if (x?.needs[m]) out.push(BUILDINGS[id as BuildingId].name);
+  for (const id of LANDMARK_IDS) {
+    const at = LANDMARKS[id].up.flatMap((u, i) => (u.needs[m] ? [stageName(id, i + 1)] : []));
+    if (at.length) stages(`the ${LANDMARKS[id].name}`, at, LANDMARKS[id].up.length);
+  }
+  return out;
+}
 
 /** Landmarks in the order worth doing them: the roads open the map, the rest follow. */
 const LANDMARK_ORDER: LandmarkId[] = ["roads", "fountain", "market", "town_hall"];
 
 const landmarkGoal = (s: MoveInState, id: LandmarkId): Goal => {
-  const stage = s.progress.town.stages[id];
-  return { kind: "landmark", id, text: `Upgrade the ${LANDMARKS[id].name} (${stageName(id, stage + 1)})`, ready: !upgradeBlocker(s.progress.town, id, s.materials) };
+  const town = s.progress.town;
+  const stage = town.stages[id];
+  const up = LANDMARKS[id].up[stage];
+  const name = LANDMARKS[id].name;
+  // (what it takes besides materials: a story item, a job for a neighbor)
+  const extra = [
+    up.item && !town.items.includes(up.item) ? `Needs the ${ITEMS[up.item].name}: ${ITEMS[up.item].from}` : "",
+    up.task && !town.tasks.includes(up.task) ? TASKS[up.task] : "",
+  ].filter(Boolean);
+  const text = `Upgrade the ${name} (${stageName(id, stage + 1)})`;
+  return { kind: "landmark", id, text, title: text, needs: up.needs, how: extra.length ? extra.join(". ") : `E at the ${name}`, ready: !upgradeBlocker(town, id, s.materials) };
 };
 
 /** What to do with a neighbor's plot next, in words. */
@@ -75,11 +116,11 @@ function plotGoal(d: MoveInDef, s: MoveInState, tutorial?: number): Goal {
   const plot = s.progress.plots[d.home];
   const home = BUILDINGS[d.home].name;
   const tut = tutorial ? `Tutorial ${tutorial}/5: ` : "";
-  if (!plot) return { kind: "plot", def: d, action: "buy", ready: !buyBlocker(d, s), tutorial, text: `${tut}buy ${who}'s plot at the Town Hall (${d.price}¢)` };
-  if (!plot.placed) return { kind: "plot", def: d, action: "place", ready: true, tutorial, text: `${tut}set ${who}'s plot down anywhere you like` };
+  if (!plot) return { kind: "plot", def: d, action: "buy", ready: !buyBlocker(d, s), tutorial, title: `Buy ${who}'s plot`, price: d.price, how: "E at the Town Hall", text: `${tut}buy ${who}'s plot at the Town Hall (${d.price}¢)` };
+  if (!plot.placed) return { kind: "plot", def: d, action: "place", ready: true, tutorial, title: `Set ${who}'s plot down`, how: "Anywhere you like: it's in your bag", text: `${tut}set ${who}'s plot down anywhere you like` };
   const needs = nextBuild(d, plot)!;
-  if (plot.stage === 0) return { kind: "plot", def: d, action: "build", ready: canAfford(needs, s.materials), tutorial, text: `${tut}build ${who}'s ${home}: ${needsText(needs)} (E at the plot)` };
-  return { kind: "plot", def: d, action: "grand", ready: canAfford(needs, s.materials), tutorial, text: `Make ${who}'s ${home} grand: ${needsText(needs)}` };
+  if (plot.stage === 0) return { kind: "plot", def: d, action: "build", ready: canAfford(needs, s.materials), tutorial, title: `Build ${who}'s ${home}`, needs, how: "E at the plot", text: `${tut}build ${who}'s ${home}: ${needsText(needs)} (E at the plot)` };
+  return { kind: "plot", def: d, action: "grand", ready: canAfford(needs, s.materials), tutorial, title: `Make ${who}'s ${home} grand`, needs, how: "E at the house", text: `Make ${who}'s ${home} grand: ${needsText(needs)}` };
 }
 
 /** The next thing worth doing (null once everyone's home and the whole town is grand). */
@@ -91,10 +132,13 @@ export function nextStep(s: MoveInState): Goal | null {
     if (town.stages.town_hall === 0) {
       const ready = !upgradeBlocker(town, "town_hall", s.materials);
       const text = ready ? "Tutorial 2/5: repair the Town Hall (E at the Town Hall)" : "Tutorial 1/5: gather for the Town Hall: break a boulder (E) and sweep a moondust drift (hold E)";
-      return { kind: "landmark", id: "town_hall", ready, tutorial: ready ? 2 : 1, text };
+      const needs = LANDMARKS.town_hall.up[0].needs;
+      return ready
+        ? { kind: "landmark", id: "town_hall", ready, tutorial: 2, text, title: "Repair the Town Hall", needs, how: "E at the Town Hall" }
+        : { kind: "landmark", id: "town_hall", ready, tutorial: 1, text, title: "Gather for the Town Hall", needs, how: "Break a boulder (E), sweep moondust (hold E)" };
     }
     const first = MOVE_INS.find((m) => plots[m.home]);
-    if (!first) return { kind: "choose", tutorial: 3, text: "Tutorial 3/5: pick your first neighbor and buy their plot (E at the Town Hall)" };
+    if (!first) return { kind: "choose", tutorial: 3, title: "Pick your first neighbor", how: "E at the Town Hall: you buy their plot there", text: "Tutorial 3/5: pick your first neighbor and buy their plot (E at the Town Hall)" };
     return plotGoal(first, s, !plots[first.home]!.placed ? 4 : 5);
   }
   const waiting = MOVE_INS.filter((m) => !s.progress.movedIn.includes(m.villager));
@@ -106,7 +150,7 @@ export function nextStep(s: MoveInState): Goal | null {
   if (forSale && hasRoom(s)) return plotGoal(forSale, s);
   // A story item waiting to be dug up.
   const dig = digSpots(SPOTS.town_hall).find((d) => d.when(town) && !town.dug.includes(d.id));
-  if (dig) return { kind: "dig", spot: dig, text: dig.hint };
+  if (dig) return { kind: "dig", spot: dig, text: dig.hint, title: `Dig up the ${ITEMS[dig.item].name}`, how: dig.hint };
   // No room for the next neighbor: the Town Hall comes first.
   if (forSale && town.stages.town_hall < maxStage("town_hall")) return landmarkGoal(s, "town_hall");
   // A grand house you can afford now.

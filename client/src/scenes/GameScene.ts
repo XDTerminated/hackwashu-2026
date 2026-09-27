@@ -23,7 +23,7 @@ import {
   type VillagerId,
   IN_OFFICE,
 } from "../../../shared/game";
-import { lovedCount, needsText, nextBuild, nextStep, type MoveInState } from "../../../shared/movein";
+import { lovedCount, materialUses, needsText, nextBuild, nextStep, type MoveInState } from "../../../shared/movein";
 import { ClodActor, VillagerActor, puff } from "../actors";
 import { conversation, mutter } from "../chatter";
 import { ChoreView } from "../choreviews";
@@ -47,6 +47,15 @@ import { hostName, isMe, mayAsk, mp, onPeers, onSession, perms, visiting } from 
 import { PeerActor } from "../peerview";
 import { PlayerIdle } from "../idle";
 import type { Peer } from "../../../shared/visit";
+
+/** What Moon Shards go into, in a sentence: "Mabel's Library and the grand Observatory, Town Hall and Fountain". */
+const shardUses = () => {
+  const and = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs.join(""));
+  const uses = materialUses("shard");
+  const grand = uses.filter((u) => u.endsWith(" (grand)")).map((u) => u.replace(" (grand)", "").replace(/^the /, "").replace(/^\S+'s /, ""));
+  const built = uses.filter((u) => !u.endsWith(" (grand)")).map((u) => u.replace(/ \(.*\)$/, ""));
+  return and([...built, ...(grand.length ? [`the grand ${and(grand)}`] : [])]);
+};
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
@@ -1618,11 +1627,13 @@ export class GameScene extends Phaser.Scene {
         const teller = store.residents.includes("stargazer") ? "stargazer" : "jade_rabbit";
         const shardLine =
           e.found === 1
-            ? `Ooh, a Moon Shard! ${e.total} pieces of the old colony's beacon are hidden in the wilds: ${e.reward}¢ each. Find all ${e.total} and I'll relight the beacon (+200¢)!`
+            ? `Ooh, a Moon Shard! It's a rare building material: ${shardUses()} all need some, so hang on to them!`
             : e.found === Math.floor(e.total / 2)
-              ? `${e.found} of ${e.total} beacon shards! Halfway there. The rest are glinting out in the wilds.`
+              ? `${e.found} of ${e.total} Moon Shards! Halfway to relighting the beacon. Spending them on buildings doesn't count against you: it's the finding that counts.`
               : null;
         if (shardLine) this.game.events.emit("npc-toast", { who: VILLAGER_NAMES[teller], text: shardLine });
+        if (e.found === 1)
+          this.time.delayedCall(4500, () => this.game.events.emit("npc-toast", { who: VILLAGER_NAMES[teller], text: `There are ${e.total} hidden in the wilds, ${e.reward}¢ each, and finding all ${e.total} relights the old colony's beacon (+200¢)!` }));
         break;
       }
       case "lantern_moved": {

@@ -2,7 +2,7 @@ import { TownPanel, type TownPanelSpec } from "../townpanel";
 import { inStock } from "../../../shared/town";
 import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, maxStage, neighborCap, shopOpen, stageName } from "../../../shared/town";
 import Phaser from "phaser";
-import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, plotsTaken, type VillagerId, type VillagerStatus } from "../../../shared/game";
+import { BUILDINGS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, plotsTaken, type VillagerId, type VillagerStatus } from "../../../shared/game";
 import { PHONE } from "../font";
 import { DECOR_CATEGORIES, type DecorCategory } from "../../../shared/decor";
 import { SHOP_ITEMS } from "../items";
@@ -19,7 +19,7 @@ import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 import { isMicOn, onMicToggle, toggleMic } from "../neartalk";
 import { micSupported } from "../mic";
 import { CHAPTER_AFTER, FINALE_AT, newNeighbors, pending, setFinalePending, type Chapter } from "../story";
-import { needsText, nextStep } from "../../../shared/movein";
+import { materialUses, needsText, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
 type ArrangeState = { paint: { name: string; price: number; erase: boolean } | null; edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
@@ -72,6 +72,11 @@ export class UIScene extends Phaser.Scene {
   private clodIcon!: Phaser.GameObjects.Image;
   private link!: Label;
   private quest!: Phaser.GameObjects.BitmapText;
+  /** The goal card: "TUTORIAL 5/5" or "NEXT GOAL" over the goal, what it costs (have/need), and how. */
+  private questHead!: Phaser.GameObjects.BitmapText;
+  private questHow!: Phaser.GameObjects.BitmapText;
+  private costIcons: Phaser.GameObjects.Image[] = [];
+  private costTexts: Phaser.GameObjects.BitmapText[] = [];
   private hud!: Phaser.GameObjects.Graphics;
   private colony!: Phaser.GameObjects.Container;
   private officePanel!: Label;
@@ -152,7 +157,14 @@ export class UIScene extends Phaser.Scene {
       this.roster.set(v, { icon, dot, shown: false });
     }
     this.busy = Array.from({ length: BUSY_LINES }, () => ptext(this, 11, 0, "", C.inkSoft).setVisible(false));
-    this.quest = ptext(this, 11, 0, "", C.coral).setMaxWidth(HUD_W - 14);
+    this.quest = ptext(this, 11, 0, "", C.ink).setMaxWidth(HUD_W - 14);
+    this.questHead = ptext(this, 11, 0, "", C.coral, "pxb");
+    this.questHow = ptext(this, 11, 0, "", C.inkSoft).setMaxWidth(HUD_W - 14);
+    // (one per material, and the coin last)
+    this.costIcons = [...MATERIALS.map((m) => this.add.image(0, 0, `mat_${m}_0`).setOrigin(0)), this.add.image(0, 0, "coin").setOrigin(0)];
+    this.costTexts = this.costIcons.map(() => ptext(this, 0, 0, ""));
+    // Hover a material (up top or on the goal card): where it comes from and what it's for.
+    MATERIALS.forEach((m, i) => [this.matIcons[i], this.costIcons[i]].forEach((icon) => this.materialTip(icon, m)));
 
     // --- minimap
     const frameW = MINIMAP_W + 8;
@@ -170,7 +182,7 @@ export class UIScene extends Phaser.Scene {
     this.colony = this.add.container(0, 0, [
       this.hud, this.coinIcon, this.coins, ...this.matIcons, ...this.matCounts, this.clodIcon, this.clodCount,
       ...[...this.roster.values()].flatMap((r) => [r.icon, r.dot]),
-      ...this.busy, this.quest, mg, ...(mmImg ? [mmImg] : []), this.mm, ...this.mmIcons.values(), this.mmTop,
+      ...this.busy, this.quest, this.questHead, this.questHow, ...this.costIcons, ...this.costTexts, mg, ...(mmImg ? [mmImg] : []), this.mm, ...this.mmIcons.values(), this.mmTop,
     ]);
     // (top right: the top left is over the Office's project board)
     this.officePanel = new Label(this, W - 4, 4, "", { originX: 1, originY: 0, align: "left", maxWidth: 190, padX: 5 }).setVisible(false);
@@ -410,17 +422,72 @@ export class UIScene extends Phaser.Scene {
       y += 10;
     });
 
-    // The next goal (wraps onto a second line rather than getting cut off).
-    const n = nextStep({ progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos });
-    this.quest.setText(visiting() ? `★ Visiting ${hostName()}: help gather (you keep the coins), chat, or leave a gift at their door.` : n ? `★ ${n.text}` : "★ Everyone's home and the town is grand!");
-    this.quest.setY(y + 4);
-    const bottom = y + 4 + measure(this.quest).h + 6;
+    // The next goal, as a little card: a heading (with the tutorial's steps as
+    // pips), the goal, what it costs as have/need, and how to do it.
+    const n = visiting() ? null : nextStep({ progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos });
+    const head = visiting() ? "VISITING" : !n ? "ALL DONE" : n.tutorial ? `TUTORIAL ${n.tutorial}/5` : "NEXT GOAL";
+    const title = visiting() ? `${hostName()}'s island` : n ? n.title : "Everyone's home and the town is grand!";
+    const how = visiting() ? "Help gather (you keep the coins), chat, or leave a gift at their door." : n?.how ?? "";
+    this.questHead.setText(`★ ${head}`).setPosition(11, y + 5);
+    this.quest.setText(title).setPosition(11, y + 17);
+    let qy = y + 17 + measure(this.quest).h + 4;
+    // The cost: what you have of each against what it needs, green once there's enough.
+    const cost: { i: number; have: number; need: number }[] = [];
+    MATERIALS.forEach((m, i) => n?.needs?.[m] && cost.push({ i, have: store.materials[m], need: n.needs[m]! }));
+    if (n?.price) cost.push({ i: MATERIALS.length, have: store.coins, need: n.price });
+    let cx = 11;
+    this.costIcons.forEach((icon, i) => {
+      const c = cost.find((c) => c.i === i);
+      icon.setVisible(!!c);
+      this.costTexts[i].setVisible(!!c);
+      if (!c) return;
+      const t = this.costTexts[i].setText(`${Math.min(c.have, c.need)}/${c.need}`).setTint(c.have >= c.need ? C.green : C.red);
+      const w = icon.width + 2 + measure(t).w;
+      if (cx > 11 && cx + w > HUD_W - 2) {
+        cx = 11;
+        qy += 11;
+      }
+      icon.setPosition(cx, qy);
+      t.setPosition(cx + icon.width + 2, qy);
+      cx += w + 8;
+    });
+    if (cost.length) qy += 12;
+    this.questHow.setText(how).setPosition(11, qy).setVisible(!!how);
+    const bottom = (how ? qy + measure(this.questHow).h : qy - 2) + 6;
     this.hud.clear();
     woodFrame(this.hud, 4, 4, HUD_W, bottom - 4);
     this.hud.fillStyle(C.paperDark, 1).fillRect(10, y + 1, HUD_W - 12, 1);
+    // The tutorial's five steps as pips, right of the heading.
+    if (n?.tutorial) {
+      for (let i = 1; i <= 5; i++) {
+        const px = HUD_W - 2 - (6 - i) * 7;
+        this.hud.fillStyle(C.woodDark, 1).fillRect(px, y + 6, 5, 5);
+        this.hud.fillStyle(i < n.tutorial ? C.green : i === n.tutorial ? 0xe8b33a : C.paper, 1).fillRect(px + 1, y + 7, 3, 3);
+      }
+    }
 
     // Nothing to say while everything's fine.
     this.link.setText("○ colony offline - reconnecting...").setColor(0xff9a8a).setVisible(!store.connected);
+  }
+
+  /** A tip on a material's icon: where it comes from and everything it goes into. */
+  private materialTip(icon: Phaser.GameObjects.Image, m: (typeof MATERIALS)[number]) {
+    let tip: Label | null = null;
+    icon.setInteractive();
+    icon.on("pointerover", () => {
+      tip?.destroy();
+      const uses = materialUses(m);
+      const name = MATERIAL_NAME[m][0].toUpperCase() + MATERIAL_NAME[m].slice(1);
+      const used = uses.length > 8 ? "almost every house and landmark" : uses.join(", ");
+      const text = `${name}: ${MATERIAL_SOURCE[m]}.${uses.length ? `\nUsed for: ${used}.` : ""}${m === "shard" ? `\nAlso ${SHARD_REWARD}¢ each, and all ${SHARD_COUNT} relight the old beacon (+${SHARD_BONUS}¢).` : ""}`;
+      tip = new Label(this, icon.x - 2, icon.y + 11, text, { originX: 0, originY: 0, align: "left", maxWidth: 190 }).setDepth(3000);
+    });
+    const off = () => {
+      tip?.destroy();
+      tip = null;
+    };
+    icon.on("pointerout", off);
+    icon.once(Phaser.GameObjects.Events.DESTROY, off);
   }
 
   /** Account status, for the Help page (it used to sit in the corner all the time). */
@@ -1020,8 +1087,8 @@ export class UIScene extends Phaser.Scene {
     const requests = store.requests.map((r) => (r.done ? `✓ ${ask(r)} · paid` : `○ ${ask(r)}${r.goal > 1 ? ` (${r.count}/${r.goal})` : ""} · ${r.reward}¢`));
     const found = Math.min(store.shards.length, SHARD_COUNT);
     const shards = found < SHARD_COUNT
-      ? `★ Moon Shards: ${found}/${SHARD_COUNT}. Pieces of the old colony's beacon, glinting out in the wilds: ${SHARD_REWARD}¢ each, and all ${SHARD_COUNT} relight the beacon for +${SHARD_BONUS}¢.`
-      : `★ Moon Shards: all ${SHARD_COUNT} found. The beacon shines again.`;
+      ? `★ Moon Shards: ${found}/${SHARD_COUNT} found (you have ${store.materials.shard}). A rare building material for ${materialUses("shard").join(", ")}. Glinting out in the wilds: ${SHARD_REWARD}¢ each, and finding all ${SHARD_COUNT} relights the old beacon for +${SHARD_BONUS}¢.`
+      : `★ Moon Shards: all ${SHARD_COUNT} found and the beacon shines again. You have ${store.materials.shard} to build with: ${materialUses("shard").join(", ")}.`;
     const buttons: { label: string; onClick: () => void }[] = [
       { label: "TOWN HALL", onClick: () => void (closePanel(), this.game.events.emit("town-panel", { kind: "board" })) },
     ];
