@@ -9,7 +9,7 @@
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MATERIAL_SOURCE, MOVE_INS, VILLAGER_NAMES, VILLAGER_SHORT, moveInAt, plotsTaken, type BuildingId, type Material, type MoveInDef } from "../../shared/game";
 import { buyBlocker, canAfford, nextBuild } from "../../shared/movein";
-import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, upgradeBlocker, type LandmarkId, type TownItem, type TownTask } from "../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, maxStage, neighborCap, stageName, upgradeBlocker, type LandmarkId, type TownItem, type TownTask } from "../../shared/town";
 import * as net from "./net";
 import { sfx } from "./sfx";
 import { inTutorial, store } from "./store";
@@ -91,7 +91,7 @@ export class TownPanel {
     const title = spec.kind === "lot" ? `${VILLAGER_SHORT[moveInAt(spec.home)!.villager].toUpperCase()}'S HOME` : spec.kind === "board" ? "THE TOWN HALL" : LANDMARKS[spec.id].name.toUpperCase();
     const t = ptext(s, x0 + 12, y0 + 9, `★ ${title}`, C.coral, "pxb");
     const subText =
-      spec.kind === "lot" ? "build it, and they move right in" : homes ? `Room for ${cap} new neighbor${cap === 1 ? "" : "s"}: ${Math.min(plotsTaken(store.progress), cap)} taken` : "Mayor Yutu's town: ruined, repaired, grand";
+      spec.kind === "lot" ? "build it, and they move right in" : homes ? `Room for ${cap} neighbor${cap === 1 ? "" : "s"}: ${Math.min(plotsTaken(store.progress), cap)} taken` : spec.kind === "landmark" && spec.id === "town_hall" ? "each level makes room for one more neighbor" : "Mayor Yutu's town: ruined, repaired, grand";
     const sub = ptext(s, 0, y0 + 11, subText, C.inkSoft, "sm");
     sub.setX(Math.max(t.x + measure(t).w + 10, x0 + pw - 30 - measure(sub).w));
     const x = ptext(s, x0 + pw - 16, y0 + 8, "x", C.ink, "pxb").setInteractive({ useHandCursor: true });
@@ -142,8 +142,13 @@ export class TownPanel {
     this.root.add(g);
     this.root.add(s.add.image(x + 6, y + 6, `vicon_${d.villager}_0`).setOrigin(0));
     const name = ptext(s, x + 16, y + 6, VILLAGER_NAMES[d.villager], C.ink, "pxb");
-    const home = ptext(s, x + 16 + measure(name).w + 6, y + 7, BUILDINGS[d.home].name, C.inkSoft, "sm");
-    this.root.add([name, home]);
+    // what they help with, as a little tag: the thing you'll connect
+    const tag = ptext(s, x + 16 + measure(name).w + 9, y + 7, d.app.toUpperCase(), 0xffffff, "sm");
+    const tg = s.add.graphics();
+    tg.fillStyle(C.outline, 1).fillRect(tag.x - 3, y + 5, measure(tag).w + 6, 10);
+    tg.fillStyle(0x6a4fb0, 1).fillRect(tag.x - 2, y + 6, measure(tag).w + 4, 8);
+    const home = ptext(s, tag.x + measure(tag).w + 8, y + 7, BUILDINGS[d.home].name, C.inkSoft, "sm");
+    this.root.add([name, tg, tag, home]);
     const plot = store.progress.plots[d.home];
     const state = { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
     // (the button first, so the line of text beside it knows how much room it has)
@@ -157,7 +162,7 @@ export class TownPanel {
     const line = (text: string, color: number = C.inkSoft) => this.root.add(ptext(s, x + 8, y + h - 14, text, color, "sm").setMaxWidth(room));
     if (!plot) {
       const blocked = buyBlocker(d, state);
-      const label = !blocked ? `BUY ${d.price}¢` : { owned: "BOUGHT", nova: "NOVA FIRST", room: "NOT ENOUGH ROOM", coins: "NEED COINS" }[blocked.why];
+      const label = !blocked ? `BUY ${d.price}¢` : { owned: "BOUGHT", room: "NOT ENOUGH ROOM", coins: "NEED COINS" }[blocked.why];
       button(label, blocked ? 0x9a93a8 : C.greenBtn, () => {
         if (blocked) return sfx.deny();
         net.send({ type: "buy_plot", building: d.home });
@@ -165,7 +170,7 @@ export class TownPanel {
         // (the plot comes to hand as soon as it's yours: set it down)
         this.close();
       });
-      line(blocked?.text ?? `Their plot: ${d.price}¢. Then set it down anywhere you like.`, blocked ? SHORT : C.inkSoft);
+      line(blocked?.text ?? `Helps with your ${d.app}. Their plot: ${d.price}¢, then set it down anywhere.`, blocked ? SHORT : C.inkSoft);
       return;
     }
     if (!plot.placed) {
@@ -243,26 +248,28 @@ export class TownPanel {
     const town = store.progress.town;
     const def = LANDMARKS[id];
     const stage = town.stages[id];
+    const max = maxStage(id);
+    const tone = stage >= max ? STAGE_COLOR[2] : stage > 0 ? STAGE_COLOR[1] : STAGE_COLOR[0];
     const g = s.add.graphics();
     pixBox(g, x, y, w, h, C.paperLight, C.paperDark);
     this.root.add(g);
     // name, the three pips, and the stage
     const name = ptext(s, x + 8, y + 6, def.name, C.ink, "pxb");
     let px = x + 8 + measure(name).w + 8;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i <= max; i++) {
       g.fillStyle(C.outline, 1).fillRect(px, y + 7, 8, 7);
-      g.fillStyle(i <= stage ? [0xd9b24a, 0xd9b24a, 0xf5c542][i] : C.paperLight, 1).fillRect(px + 1, y + 8, 6, 5);
+      g.fillStyle(i <= stage ? (i === max ? 0xf5c542 : 0xd9b24a) : C.paperLight, 1).fillRect(px + 1, y + 8, 6, 5);
       px += 10;
     }
-    const word = ptext(s, px + 4, y + 7, STAGE_NAME[stage].toUpperCase(), STAGE_COLOR[stage], "sm");
+    const word = ptext(s, px + 4, y + 7, stageName(id, stage).toUpperCase(), tone, "sm");
     this.root.add([name, word]);
     // what's next
-    const next = stage < 2 ? `Next: ${def.perks[stage + 1]}` : `${def.perks[2]}.`;
+    const next = stage < max ? `Next: ${def.perks[stage + 1]}` : `${def.perks[max]}.`;
     const line = ptext(s, x + 8, y + 19, next, C.inkSoft, "sm").setMaxWidth(w - 90);
     this.root.add(line);
     // what it takes, and the button
-    if (stage < 2) {
-      const up = def.up[stage as 0 | 1];
+    if (stage < max) {
+      const up = def.up[stage];
       const list = [
         ...this.materialChips(up.needs),
         ...(up.item ? [{ icon: `item_${up.item}_0`, text: ITEM_SHORT[up.item], ok: town.items.includes(up.item), tip: `the ${ITEMS[up.item].name}: ${town.items.includes(up.item) ? `"${ITEMS[up.item].line}"` : ITEMS[up.item].from}` }] : []),
@@ -272,9 +279,9 @@ export class TownPanel {
     }
     const buttons: { label: string; fill: number; act: () => void }[] = [];
     if (id === "market" && stage >= 1) buttons.push({ label: "SHOP", fill: C.woodMid, act: () => (this.close(), s.game.events.emit("toggle-shop")) });
-    if (stage < 2) {
+    if (stage < max) {
       const ready = !upgradeBlocker(town, id, store.materials);
-      const up = def.up[stage as 0 | 1];
+      const up = def.up[stage];
       const missing = !canAfford(up.needs, store.materials) ? "NEED MATERIALS" : up.item && !town.items.includes(up.item) ? `NEED ${ITEM_SHORT[up.item].toUpperCase()}` : "NEED A JOB DONE";
       buttons.push({ label: ready ? "UPGRADE" : missing, fill: ready ? C.greenBtn : 0x9a93a8, act: () => (ready ? this.upgrade(id) : sfx.deny()) });
     } else {
@@ -301,7 +308,7 @@ export class TownPanel {
     const stage = plot?.stage ?? 0;
     const g = s.add.graphics();
     pixBox(g, x, y, w, h, C.paperLight, C.paperDark);
-    const name = ptext(s, x + 8, y + 6, `${who}'s ${BUILDINGS[home].name}`, C.ink, "pxb");
+    const name = ptext(s, x + 8, y + 6, `${who}'s ${BUILDINGS[home].name} (${def.app})`, C.ink, "pxb");
     this.root.add([g, name]);
     // the three stages: plot, house, grand
     let px = x + 8 + measure(name).w + 8;

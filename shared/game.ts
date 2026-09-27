@@ -223,6 +223,8 @@ export const MATERIAL_SOURCE: Record<Material, string> = {
 export interface MoveInDef {
   villager: VillagerId;
   home: BuildingId;
+  /** What they help with for real (shown on their plot): "Gmail", "Spotify"... */
+  app: string;
   /** What their plot (the deed) costs at the Town Hall. */
   price: number;
   /** What building their house takes, then what making it grand takes. */
@@ -239,9 +241,6 @@ export interface MoveInDef {
   gift: number;
 }
 
-/** Nova's Observatory is the first plot: the tutorial (it doesn't take up room at the Town Hall). */
-export const TUTORIAL_VILLAGER: VillagerId = "stargazer";
-
 /** A grand house pays out more for its neighbor's work. */
 export const GRAND_BONUS = 1.5;
 
@@ -249,6 +248,7 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "stargazer",
     home: "observatory",
+    app: "web search",
     price: 30,
     build: [{ moonstone: 3, stardust: 2 }, { moonstone: 4, shard: 1, ice: 1 }],
     perk: "a bigger telescope: you and Nova become friends faster, and her research pays 50% more",
@@ -260,7 +260,8 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "postmaster",
     home: "post_office",
-    price: 50,
+    app: "Gmail",
+    price: 30,
     build: [{ moonstone: 3, stardust: 2 }, { moonstone: 4, scrap: 1, ore: 1 }],
     perk: "a grand sorting hall: you and Hoot become friends faster, and his mail work pays 50% more",
     loves: 0,
@@ -271,7 +272,8 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "dj",
     home: "radio_tower",
-    price: 60,
+    app: "Spotify",
+    price: 30,
     build: [{ moonstone: 3, stardust: 2, ore: 1 }, { moonstone: 4, helium: 1, ore: 1 }],
     perk: "a bigger antenna and a light show: you and Echo become friends faster",
     loves: 0,
@@ -282,7 +284,8 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "timekeeper",
     home: "clock_tower",
-    price: 80,
+    app: "Google Calendar",
+    price: 40,
     build: [{ moonstone: 3, stardust: 2, ore: 1 }, { moonstone: 4, ore: 2, ice: 1 }],
     perk: "a grand clock face: you and Cog become friends faster, and his scheduling pays 50% more",
     loves: 0,
@@ -293,7 +296,8 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "scholar",
     home: "library",
-    price: 100,
+    app: "Canvas",
+    price: 40,
     build: [{ moonstone: 3, stardust: 2, shard: 1 }, { moonstone: 4, shard: 2, scrap: 1 }],
     perk: "a reading room: you and Mabel become friends faster, and her coursework help pays 50% more",
     loves: 0,
@@ -304,7 +308,8 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "manager",
     home: "office",
-    price: 120,
+    app: "Claude Code",
+    price: 60,
     build: [{ moonstone: 4, stardust: 3, ore: 1 }, { moonstone: 5, scrap: 2, ore: 2 }],
     perk: "a corner office: you and Ada become friends faster",
     loves: 0,
@@ -342,8 +347,8 @@ export function onMap(b: BuildingId, p: Progress, built: Partial<Record<Building
   return !!built[b] || p.revealed.includes(b);
 }
 
-/** New neighbors with a plot (bought, placed or built) so far: each takes up room at the Town Hall (Nova doesn't). */
-export const plotsTaken = (p: Progress) => MOVE_INS.filter((m) => m.villager !== TUTORIAL_VILLAGER && p.plots[m.home]).length;
+/** Neighbors with a plot (bought, placed or built) so far: each takes up a level's room at the Town Hall. */
+export const plotsTaken = (p: Progress) => MOVE_INS.filter((m) => p.plots[m.home]).length;
 
 /** A phone linked to the colony over iMessage (co-op: any number of them). Numbers are masked for display. */
 export interface LinkedPhone {

@@ -24,7 +24,7 @@ import {
 } from "../../shared/game.js";
 import { happinessFor } from "../../shared/decor.js";
 import { SPOTS, applyLayout, buildingRects, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
-import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, STAGE_NAME, TASKS, digSpots, neighborCap, newNeighborCount, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
+import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, TASKS, stageName, digSpots, neighborCap, newNeighborCount, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
 import { buyBlocker, nextBuild, nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
 import * as google from "./connectors/google.js";
@@ -222,7 +222,7 @@ function moveIn(d: MoveInDef, gift = d.gift) {
   emit({ type: "building_built", building: d.home, coins: world.coins });
   emit({ type: "villager_arrived", villager: d.villager, residents: now, rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift, next: null });
   const nth = newNeighborCount(world.progress.movedIn);
-  const present = d.villager === "stargazer" ? undefined : ARRIVAL_GIFTS.find((g) => g.nth === nth);
+  const present = ARRIVAL_GIFTS.find((g) => g.nth === nth);
   const town = world.progress.town;
   if (present && !town.items.includes(present.item) && !town.used.includes(present.item)) {
     town.items.push(present.item);
@@ -240,13 +240,13 @@ export function upgradeLandmark(id: LandmarkId): string | null {
   if (!LANDMARKS[id]) return null;
   const blocked = upgradeBlocker(town, id, world.materials);
   if (blocked) return blocked;
-  const up = LANDMARKS[id].up[town.stages[id] as 0 | 1];
+  const up = LANDMARKS[id].up[town.stages[id]];
   for (const m of MATERIALS) world.materials[m] -= up.needs[m] ?? 0;
   if (up.item) {
     town.items = town.items.filter((i) => i !== up.item);
     town.used.push(up.item);
   }
-  town.stages[id] = (town.stages[id] + 1) as 1 | 2;
+  town.stages[id] = town.stages[id] + 1;
   savePersist();
   emit({ type: "landmark_upgraded", landmark: id, stage: town.stages[id] });
   announceProgress();
@@ -307,7 +307,7 @@ export function devTown() {
 /** The town, in words (for Yutu, the mayor). */
 export function townNote(): string {
   const town = world.progress.town;
-  const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${STAGE_NAME[town.stages[id]]}`).join(", ");
+  const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${stageName(id, town.stages[id])}`).join(", ");
   const cap = neighborCap(town);
   const held = town.items.map((i) => ITEMS[i].name);
   return `The town (you're its mayor): ${stages}. The Town Hall sells neighbors' plots and has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${plotsTaken(world.progress)} plot${plotsTaken(world.progress) === 1 ? "" : "s"} bought).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;

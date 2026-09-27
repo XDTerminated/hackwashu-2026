@@ -80,23 +80,28 @@ export function drawTownHall(ctx: Ctx, stage: number) {
     disc(ctx, "#6f6886", 110, base - 3, 2.5);
     return;
   }
-  const grand = stage === 2;
-  if (grand) {
-    // side modules with round windows, a solar wing on a mast, a flag
-    for (const [x0, flip] of [[2, 1], [98, -1]] as const) {
-      rect(ctx, O, x0, base - 34, 24, 34);
-      rect(ctx, METAL.base, x0 + 1, base - 33, 22, 32);
-      rect(ctx, METAL.light, x0 + 1, base - 33, 22, 2);
-      rect(ctx, METAL.dark, x0 + (flip > 0 ? 1 : 21), base - 33, 2, 32);
-      disc(ctx, O, x0 + 12, base - 18, 5);
-      disc(ctx, WARM, x0 + 12, base - 18, 4);
-      disc(ctx, "#fff6d8", x0 + 11, base - 19, 1.5);
-    }
+  // Each level adds to it (6 is grand): a side module each side, a solar wing,
+  // a flag, a taller mast, more lit windows, and at last a gold plaque and beacon.
+  const level = stage;
+  const grand = level >= 6;
+  for (const [x0, flip, from] of [[2, 1, 2], [98, -1, 3]] as const) {
+    if (level < from) continue;
+    rect(ctx, O, x0, base - 34, 24, 34);
+    rect(ctx, METAL.base, x0 + 1, base - 33, 22, 32);
+    rect(ctx, METAL.light, x0 + 1, base - 33, 22, 2);
+    rect(ctx, METAL.dark, x0 + (flip > 0 ? 1 : 21), base - 33, 2, 32);
+    disc(ctx, O, x0 + 12, base - 18, 5);
+    disc(ctx, WARM, x0 + 12, base - 18, 4);
+    disc(ctx, "#fff6d8", x0 + 11, base - 19, 1.5);
+  }
+  if (level >= 4) {
     // solar wing (left)
     rect(ctx, O, 12, base - 58, 2, 26);
     rect(ctx, O, 0, base - 66, 28, 12);
     for (let i = 0; i < 4; i++) rect(ctx, i % 2 ? "#3f5aa0" : "#4f6fb8", 1 + i * 7, base - 65, 6, 10);
     rect(ctx, "#8fb0f0", 1, base - 65, 26, 1);
+  }
+  if (level >= 5) {
     // flag (right)
     rect(ctx, O, 112, base - 60, 2, 28);
     rect(ctx, O, 113, base - 60, 11, 8);
@@ -104,21 +109,22 @@ export function drawTownHall(ctx: Ctx, stage: number) {
     rect(ctx, "#f5c542", 117, base - 57, 2, 2);
   }
   dome(ctx, cx, base - 12, 44, 58);
-  // lights inside the dome
-  const lights = grand ? [[44, 80], [62, 70], [80, 82], [54, 95], [72, 96], [62, 86]] : [[52, 88], [72, 90]];
+  // lights inside the dome: more with every level
+  const lights = [[52, 88], [72, 90], [62, 70], [44, 80], [80, 82], [54, 95], [72, 96], [62, 86]].slice(0, Math.min(8, 1 + level + (grand ? 2 : 0)));
   for (const [x, y] of lights) rect(ctx, WARM, x, y, 2, 2);
   baseRing(ctx, 18, 106, base - 12);
-  door(ctx, cx, base, grand || stage === 1);
-  // a plaque over the door
+  door(ctx, cx, base, true);
+  // a plaque over the door (gold when grand), with a pip per level
   rect(ctx, O, cx - 9, base - 37, 18, 6);
   rect(ctx, grand ? "#f5c542" : METAL.light, cx - 8, base - 36, 16, 4);
-  // the mast on top (the beacon glows as a flourish)
-  const top = grand ? 22 : 38;
+  if (!grand) for (let i = 0; i < level; i++) rect(ctx, "#6f6886", cx - 7 + i * 3, base - 35, 2, 2);
+  // the mast on top grows with each level (the beacon glows as a flourish when it's grand)
+  const top = 38 - (level - 1) * 3;
   rect(ctx, O, cx - 1, top, 3, base - 70 - top);
   rect(ctx, METAL.light, cx, top, 1, base - 70 - top);
   disc(ctx, O, cx + 0.5, top, 3);
   disc(ctx, grand ? "#ff5a4a" : "#9aa2b4", cx + 0.5, top, 2);
-  if (grand) for (const y of [top + 10, top + 18]) rect(ctx, O, cx - 5, y, 11, 1);
+  for (let i = 0; i < Math.floor(level / 2); i++) rect(ctx, O, cx - 5, top + 10 + i * 8, 11, 1);
 }
 
 // ---------------------------------------------------------------- the Market

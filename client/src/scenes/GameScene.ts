@@ -1,4 +1,4 @@
-import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, openAt, shopOpen, walkableAt, type LandmarkId } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, maxStage, stageName, neighborCap, openAt, shopOpen, walkableAt, type LandmarkId } from "../../../shared/town";
 import { TownView } from "../townview";
 import Phaser from "phaser";
 import {
@@ -21,7 +21,6 @@ import {
   type SeqEvent,
   type VillagerId,
   IN_OFFICE,
-  TUTORIAL_VILLAGER,
 } from "../../../shared/game";
 import { lovedCount, needsText, nextBuild, nextStep, type MoveInState } from "../../../shared/movein";
 import { ClodActor, VillagerActor, puff } from "../actors";
@@ -400,8 +399,9 @@ export class GameScene extends Phaser.Scene {
     const n = nextStep(this.moveState());
     if (!n) return null;
     if (n.kind === "dig") return { x: n.spot.x, y: n.spot.y - 14, label: "Dig here" };
+    if (n.kind === "choose") return { ...this.landmarkAt("town_hall"), label: "Pick your first neighbor" };
     if (n.kind === "landmark") {
-      const up = LANDMARKS[n.id].up[store.progress.town.stages[n.id] as 0 | 1];
+      const up = LANDMARKS[n.id].up[store.progress.town.stages[n.id]];
       const short = !n.ready && MATERIALS.find((m) => (up.needs[m] ?? 0) > store.materials[m]);
       const src = short && this.materialSource(short);
       if (src) return src;
@@ -550,7 +550,7 @@ export class GameScene extends Phaser.Scene {
 
   private tutorialStep: number | null | undefined;
 
-  /** Nova's tutorial: Yutu says a word as each step comes up (and once it's all done). */
+  /** The tutorial: Yutu says a word as each step comes up (and once it's all done). */
   private tutorialLine() {
     const n = nextStep(this.moveState());
     const step = n?.tutorial ?? null;
@@ -558,14 +558,17 @@ export class GameScene extends Phaser.Scene {
     this.tutorialStep = step;
     // (on arrival, only if there's a tutorial step to pick up)
     if (step === was || (was === undefined && !step)) return;
+    const first = MOVE_INS.find((m) => store.progress.plots[m.home]);
+    const who = first ? VILLAGER_SHORT[first.villager] : "";
     const LINES: Record<number, string> = {
-      1: "Let's get you started! The old Market is a collapsed cart, and fixing it takes a little moonstone and stardust. Press E by a boulder to break it up, then stand on a moondust drift and hold E to sweep it.",
-      2: "That's enough for the stall! Walk over to the Market (follow the gold ★) and press E to repair it.",
-      3: "The Market's back! Now a neighbor: Nova the Stargazer wants to move up from Earth. Head to the Town Hall (the glass dome) and press E to buy her plot.",
+      1: "Let's get you started! The Town Hall (the glass dome) is a ruin, and it's where neighbors from Earth buy their plots. Fixing it takes a little moonstone and stardust: press E by a boulder to break it up, then stand on a moondust drift and hold E to sweep it.",
+      2: "That's enough! Walk over to the Town Hall (follow the gold ★) and press E to repair it.",
+      3: "The Town Hall's open, with room for one neighbor! Who moves in first is up to you: each one helps with something real, like Hoot with your Gmail, Cog with your calendar or Echo with your Spotify. Press E at the Town Hall and buy their plot.",
       4: "It's yours! Now pick a spot for it: move it around and click to set it down. Anywhere with room will do.",
-      5: "Now build Nova's Observatory. It takes a little moonstone and stardust: gather what you need (follow the ★), then press E at her plot to build it.",
+      5: `Now build ${who}'s ${first ? BUILDINGS[first.home].name : "house"}. It takes a little moonstone and stardust: gather what you need (follow the ★), then press E at the plot to build it.`,
     };
-    const text = step ? LINES[step] : was ? "Nova's home, and that's the ropes: gather, build, and buy plots for new neighbors at the Town Hall. The Shop's open at the Market too. The town's all yours now!" : null;
+    const home = store.progress.movedIn[0] ? VILLAGER_SHORT[store.progress.movedIn[0]] : "Your neighbor";
+    const text = step ? LINES[step] : was ? `${home}'s home, and that's the ropes! Each new neighbor needs room: take the Town Hall up a level (E at the Town Hall), then buy their plot. Fix up the Market for a Shop, too. The town's all yours now!` : null;
     if (!text) return;
     const done = !step;
     // Yutu's window, with her portrait: once whatever's on screen now is out of the way.
@@ -608,7 +611,7 @@ export class GameScene extends Phaser.Scene {
     sfx.buy();
     const stage = store.progress.town.stages[id];
     const perk = LANDMARKS[id].perks[stage];
-    this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${LANDMARKS[id].name} is ${STAGE_NAME[stage]}! ${perk}.` });
+    this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${LANDMARKS[id].name} is ${id === "town_hall" && stage < maxStage(id) ? `up to ${stageName(id, stage)}` : stageName(id, stage)}! ${perk}.` });
   }
 
   private rocks: Rock[] = [];
@@ -790,7 +793,7 @@ export class GameScene extends Phaser.Scene {
       // The sign says what it's for (and, for a neighbor's lot, what's left to do).
       const purpose = PLOT_PURPOSE[b];
       const text = move
-        ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name}\nBuild it: ${needsText(move.build[0])} (E)`
+        ? `${VILLAGER_SHORT[move.villager]}'s plot: ${def.name} (${move.app})\nBuild it: ${needsText(move.build[0])} (E)`
         : `${def.name}${purpose ? `\n${purpose}` : ""}\n${def.price ? `${def.price}¢ - ` : ""}E to build`;
       // A neighbor's sign hangs above the plot (clear of you and the rocks around it); other plots' signs sit below.
       const top = s.y - buildingTiles(b).h * TILE - 18;
@@ -831,7 +834,7 @@ export class GameScene extends Phaser.Scene {
       return [hands];
     }
     const town = store.progress.town;
-    if (b === "town_hall" && town.stages.town_hall === 2) {
+    if (b === "town_hall" && town.stages.town_hall >= maxStage("town_hall")) {
       // the beacon on the dome's mast
       const beacon = this.add.image(s.x + 0.5, s.y - 136 + 22, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff5a4a).setDepth(s.y + 1);
       pulse(beacon, 0.15, 0.9, 900);
@@ -1755,10 +1758,12 @@ export class GameScene extends Phaser.Scene {
     }
     // The town's landmarks: the Town Hall's board, the Market, the Fountain. Gathering and digging.
     const th = this.doorOf("town_hall");
-    const town = (spec: { kind: "board"; tab?: "homes" } | { kind: "landmark"; id: LandmarkId }) => () => this.game.events.emit("town-panel", spec.kind === "board" && inTutorial() ? { kind: "board", tab: "homes" } : spec);
+    // (in the tutorial the Town Hall shows just what's next: its own repair, then the homes to pick from)
+    const town = (spec: { kind: "board"; tab?: "homes" } | { kind: "landmark"; id: LandmarkId }) => () =>
+      this.game.events.emit("town-panel", spec.kind === "board" && inTutorial() ? (store.progress.town.stages.town_hall === 0 ? { kind: "landmark", id: "town_hall" } : { kind: "board", tab: "homes" }) : spec);
     add({ verb: "BOARD", label: "[E] the Town Hall", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: town({ kind: "board" }), tut: true }, 40);
     const mk = this.doorOf("market");
-    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }), tut: true }, 36);
+    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: town({ kind: "landmark", id: "market" }) }, 36);
     const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
     add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }) }, 26);
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
@@ -1785,7 +1790,7 @@ export class GameScene extends Phaser.Scene {
       if (store.buildings[b] || !onMap(b, store.progress, store.buildings) || b === "mailbox") continue;
       // A neighbor's plot you've set down: build their house on it.
       if (move) {
-        add({ verb: "BUILD", label: `[E] build ${VILLAGER_SHORT[move.villager]}'s ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showPlot(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
+        add({ verb: "BUILD", label: `[E] build ${VILLAGER_SHORT[move.villager]}'s ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showPlot(move), tut: true }, 46);
         continue;
       }
       add(

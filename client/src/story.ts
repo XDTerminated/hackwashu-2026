@@ -13,7 +13,7 @@ export interface Chapter {
 export const FIRST_CHAPTER: Chapter = {
   n: 1,
   title: "A LINE HOME",
-  line: "Stranded on the Moon with a rabbit, a stargazer and no signal.",
+  line: "Stranded on the Moon with a rabbit and no signal.",
 };
 
 /** The chapter that begins when the first, then the second, new neighbor moves in (you choose who). */
@@ -31,9 +31,9 @@ export const CHAPTER_AFTER: Record<number, Chapter> = {
 };
 
 /** How many new neighbors are home, given everyone who lives here. */
-export const newNeighbors = (residents: VillagerId[]) => MOVE_INS.filter((m) => m.villager !== "stargazer" && residents.includes(m.villager)).length;
-/** With every new neighbor home, the finale plays. (Nova, the tutorial, doesn't count.) */
-export const FINALE_AT = MOVE_INS.length - 1;
+export const newNeighbors = (residents: VillagerId[]) => MOVE_INS.filter((m) => residents.includes(m.villager)).length;
+/** With every neighbor home, the finale plays. */
+export const FINALE_AT = MOVE_INS.length;
 
 const PENDING = "moon-finale-pending";
 

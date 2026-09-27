@@ -736,11 +736,10 @@ export function buildTextures(scene: Phaser.Scene) {
   for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_mid_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f, 1));
   for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f));
   // the town's landmarks, stage by stage (the plain key is the grand one)
-  for (const st of [0, 1, 2]) {
-    canvasTex(scene, `b_town_hall_${st}`, 124, 136, (ctx) => drawTownHall(ctx, st));
-    canvasTex(scene, `b_market_${st}`, 76, 80, (ctx) => drawMarket(ctx, st));
-  }
-  canvasTex(scene, "b_town_hall", 124, 136, (ctx) => drawTownHall(ctx, 2));
+  // (the Town Hall goes up a level at a time: ruined, levels 1 to 5, grand)
+  for (let lv = 0; lv <= 6; lv++) canvasTex(scene, `b_town_hall_${lv}`, 124, 136, (ctx) => drawTownHall(ctx, lv));
+  for (const st of [0, 1, 2]) canvasTex(scene, `b_market_${st}`, 76, 80, (ctx) => drawMarket(ctx, st));
+  canvasTex(scene, "b_town_hall", 124, 136, (ctx) => drawTownHall(ctx, 6));
   canvasTex(scene, "b_market", 76, 80, (ctx) => drawMarket(ctx, 2));
   // things to find around the crater
   canvasTex(scene, "node_ice", 20, 21, drawIceNode);

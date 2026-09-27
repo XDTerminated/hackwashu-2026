@@ -1,7 +1,9 @@
 // The town: four landmarks the colony rebuilds, Stardew-style, with Yutu as
-// mayor. Each goes ruined -> repaired -> grand, paid for in materials (and, for
-// the grand stages, a story item, and once or twice a real job for a neighbor).
-// The Town Hall sets how many new neighbors can move in; the Fountain brings
+// mayor. The Fountain, Roads and Market each go ruined -> repaired -> grand; the
+// Town Hall goes up a level at a time, and each level makes room for one more
+// neighbor (it's where you buy their plots). All paid for in materials (and,
+// for the later stages, a story item, and once or twice a real job for a
+// neighbor). The Fountain brings
 // daily wishes and then faster friendships; fixing the Roads opens the north
 // and then the south of the crater; the Market stocks more decorations.
 // Shared so the server enforces exactly what the game shows.
@@ -12,8 +14,8 @@ import type { Materials, VillagerId } from "./game.js";
 
 export type LandmarkId = "town_hall" | "fountain" | "roads" | "market";
 export const LANDMARK_IDS: LandmarkId[] = ["town_hall", "fountain", "roads", "market"];
-/** 0 ruined, 1 repaired, 2 grand. */
-export type Stage = 0 | 1 | 2;
+/** 0 ruined, then up to the landmark's last stage (grand): 2 for most, 6 for the Town Hall. */
+export type Stage = number;
 export const STAGE_NAME = ["ruined", "repaired", "grand"] as const;
 
 export type TownItem = "charter" | "valve" | "lens" | "bell";
@@ -27,17 +29,25 @@ export interface UpgradeDef {
 
 export interface LandmarkDef {
   name: string;
-  /** What each stage gives you. */
-  perks: [string, string, string];
-  /** What it takes to reach stage 1, then stage 2. */
-  up: [UpgradeDef, UpgradeDef];
+  /** What each stage gives you (from ruined to grand). */
+  perks: string[];
+  /** What it takes to reach each next stage. */
+  up: UpgradeDef[];
 }
 
 export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   town_hall: {
     name: "Town Hall",
-    perks: ["Room for 1 new neighbor", "Room for 2 new neighbors", "Room for every neighbor"],
-    up: [{ needs: { moonstone: 4, stardust: 3, ore: 1 } }, { needs: { moonstone: 4, ice: 2, scrap: 2 }, item: "charter", task: "real_job" }],
+    perks: ["A ruin: no room for neighbors yet", "Room for 1 neighbor", "Room for 2 neighbors", "Room for 3 neighbors", "Room for 4 neighbors", "Room for 5 neighbors", "Room for all 6 neighbors"],
+    // (one level per new neighbor; the later ones need the north and south of the crater open)
+    up: [
+      { needs: { moonstone: 2, stardust: 2 } },
+      { needs: { moonstone: 3, stardust: 3 } },
+      { needs: { moonstone: 4, stardust: 2, ore: 1 } },
+      { needs: { moonstone: 4, ice: 2, ore: 1 }, item: "charter" },
+      { needs: { moonstone: 5, ice: 2, scrap: 2 }, task: "real_job" },
+      { needs: { moonstone: 6, scrap: 2, helium: 2, shard: 1 } },
+    ],
   },
   fountain: {
     name: "Fountain",
@@ -70,6 +80,8 @@ export const TASKS: Record<TownTask, string> = {
 };
 
 export interface Town {
+  /** 2: the Town Hall goes up a level per neighbor (older saves had three stages). */
+  v?: number;
   stages: Record<LandmarkId, Stage>;
   /** Story items you're holding (spent on the grand stages). */
   items: TownItem[];
@@ -82,19 +94,28 @@ export interface Town {
   day: string;
 }
 
-export const freshTown = (): Town => ({ stages: { town_hall: 0, fountain: 0, roads: 0, market: 0 }, items: [], used: [], tasks: [], dug: [], harvested: [], day: "" });
+export const freshTown = (): Town => ({ v: 2, stages: { town_hall: 0, fountain: 0, roads: 0, market: 0 }, items: [], used: [], tasks: [], dug: [], harvested: [], day: "" });
 
-/** How many new neighbors' plots the Town Hall has room for (Nova, the tutorial, doesn't count). */
-export const neighborCap = (t: Town) => [1, 2, 5][t.stages.town_hall];
-/** New neighbors home so far (not counting Nova). */
-export const newNeighborCount = (movedIn: VillagerId[]) => movedIn.filter((v) => v !== "stargazer").length;
+/** A landmark's last stage (grand). */
+export const maxStage = (id: LandmarkId) => LANDMARKS[id].up.length;
+/** "ruined", "repaired", "grand"; for the Town Hall "ruined", "level 1".."level 5", "grand". */
+export function stageName(id: LandmarkId, stage: number): string {
+  if (stage >= maxStage(id)) return "grand";
+  if (id === "town_hall") return stage === 0 ? "ruined" : `level ${stage}`;
+  return STAGE_NAME[stage];
+}
+
+/** How many neighbors' plots the Town Hall has room for: one per level. */
+export const neighborCap = (t: Town) => t.stages.town_hall;
+/** Neighbors home so far. */
+export const newNeighborCount = (movedIn: VillagerId[]) => movedIn.length;
 export const hasItem = (t: Town, i: TownItem) => t.items.includes(i) || t.used.includes(i);
 
 /** Why a landmark can't go up a stage right now (or null if it can). */
 export function upgradeBlocker(t: Town, id: LandmarkId, materials: Materials): string | null {
   const stage = t.stages[id];
-  if (stage >= 2) return `The ${LANDMARKS[id].name} is as grand as it gets.`;
-  const up = LANDMARKS[id].up[stage as 0 | 1];
+  if (stage >= maxStage(id)) return `The ${LANDMARKS[id].name} is as grand as it gets.`;
+  const up = LANDMARKS[id].up[stage];
   const short = (Object.keys(up.needs) as (keyof Materials)[]).filter((m) => (up.needs[m] ?? 0) > materials[m]);
   const parts: string[] = [];
   if (short.length) parts.push(short.map((m) => `${(up.needs[m] ?? 0) - materials[m]} more ${m === "ore" ? "glow ore" : m === "helium" ? "helium-3" : m === "shard" ? "moon shard" : m === "ice" ? "ice crystal" : m}`).join(", "));

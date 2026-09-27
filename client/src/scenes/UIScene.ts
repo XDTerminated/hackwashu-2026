@@ -1,6 +1,6 @@
 import { TownPanel, type TownPanelSpec } from "../townpanel";
 import { inStock } from "../../../shared/town";
-import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap, newNeighborCount, shopOpen } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, TASKS, maxStage, neighborCap, shopOpen, stageName } from "../../../shared/town";
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, plotsTaken, type VillagerId, type VillagerStatus } from "../../../shared/game";
 import { PHONE } from "../font";
@@ -739,7 +739,7 @@ export class UIScene extends Phaser.Scene {
       fn();
     };
     // (during Yutu's tutorial, the MoonPad, Quests, edit mode and the mic wait till it's done)
-    const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get Nova moved in first, then it's all yours.", C.coral) : fn());
+    const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first neighbor moved in, then it's all yours.", C.coral) : fn());
     const groups: [string, string, string, () => void][][] = [
       [
         ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => (isMoonPadOpen() ? closeMoonPad() : openMoonPad())))],
@@ -895,7 +895,8 @@ export class UIScene extends Phaser.Scene {
     // (one line each: the TOWN PROJECTS button opens the full cards)
     const townLines = LANDMARK_IDS.map((id) => {
       const stage = town.stages[id];
-      return `${stage === 2 ? "✓" : "○"} ${LANDMARKS[id].name}: ${STAGE_NAME[stage]}${stage < 2 ? ` → ${STAGE_NAME[stage + 1]}` : ""}`;
+      const max = maxStage(id);
+      return `${stage >= max ? "✓" : "○"} ${LANDMARKS[id].name}: ${stageName(id, stage)}${stage < max ? ` → ${stageName(id, stage + 1)}` : ""}`;
     });
     const cap = neighborCap(town);
     const taken = plotsTaken(store.progress);
@@ -903,17 +904,17 @@ export class UIScene extends Phaser.Scene {
       const who = VILLAGER_NAMES[m.villager];
       const plot = store.progress.plots[m.home];
       const home = BUILDINGS[m.home].name;
-      if (plot?.stage === 2) return `✓ ${who}: a grand ${home}`;
-      if (plot?.stage === 1) return `✓ ${who} moved in (make the ${home} grand: ${needsText(m.build[1])})`;
+      if (plot?.stage === 2) return `✓ ${who} (${m.app}): a grand ${home}`;
+      if (plot?.stage === 1) return `✓ ${who} (${m.app}) moved in (make the ${home} grand: ${needsText(m.build[1])})`;
       if (plot?.placed) return `○ ${who}: build the ${home} on their plot (${needsText(m.build[0])})`;
       if (plot) return `○ ${who}: set their plot down (PLACE at the Town Hall)`;
-      return `○ ${who}: their plot is for sale at the Town Hall (${m.price}¢)`;
+      return `○ ${who} (${m.app}): their plot is for sale at the Town Hall (${m.price}¢)`;
     });
     const held = town.items.map((i) => `${ITEMS[i].name}: "${ITEMS[i].line}"`);
     const lines = [
       `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
       ...townLines,
-      `NEIGHBORS (the Town Hall has room for ${cap} new, ${Math.min(taken, cap)} taken)`,
+      `NEIGHBORS (the Town Hall has room for ${cap}, ${Math.min(taken, cap)} taken)`,
       ...neighborLines,
       ...(held.length ? ["STORY ITEMS", ...held] : []),
       `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
@@ -966,7 +967,7 @@ export class UIScene extends Phaser.Scene {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
       "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new neighbors, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
-      "NEW NEIGHBORS: buy a neighbor's plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. The Town Hall has room for so many new neighbors; upgrade it for more.",
+      "NEIGHBORS: each one helps with something real (Hoot: Gmail, Cog: Google Calendar, Mabel: Canvas, Nova: web search, Echo: Spotify, Ada: Claude Code). Buy their plot at the Town Hall (the HOMES tab), set it down anywhere with room, and build their house on it with materials: they move right in. Later, make it grand for a perk. Each Town Hall level makes room for one more neighbor: take it up a level for every new one.",
       "MATERIALS: moonstone (boulders and meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a neighbor's gift), and a couple need a real job done by a neighbor.",
       "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
@@ -1174,7 +1175,7 @@ export class UIScene extends Phaser.Scene {
   private toggleShop() {
     // (the B key too: the Shop waits till the tutorial's done, so Nova's plot money stays put)
     if (!this.shopOpen && inTutorial()) {
-      this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get Nova moved in first, then it's all yours.", C.coral);
+      this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first neighbor moved in, then it's all yours.", C.coral);
       return;
     }
     if (!this.shopOpen && !shopOpen(store.progress.town)) {

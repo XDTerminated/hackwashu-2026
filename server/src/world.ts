@@ -26,7 +26,7 @@ import {
   type VillagerState,
   noMaterials,
 } from "../../shared/game.js";
-import { freshTown } from "../../shared/town.js";
+import { freshTown, maxStage } from "../../shared/town.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
 import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockKey, rockRect, rockSpots, shardKey, shardSpots, type Rect, type RockKind } from "../../shared/layout.js";
@@ -87,7 +87,7 @@ function freshWorld(): World {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
     progress.revealed = Object.values(BUILDINGS).map((b) => b.id);
     everyoneHome(progress);
-    progress.town = { ...freshTown(), stages: { town_hall: 2, fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
+    progress.town = { ...freshTown(), stages: { town_hall: maxStage("town_hall"), fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
   }
   return {
     version: SAVE_VERSION,
@@ -176,6 +176,13 @@ function load(file = DATA_FILE): World {
       w.progress.revealed = w.progress.revealed.filter((b) => !moveInAt(b) || w.progress.plots[b]);
     }
     delete (w.progress as Progress & { lots?: unknown }).lots;
+    // The Town Hall used to have three stages; now it goes up a level per neighbor.
+    // Keep room for everyone who already has a plot (and a grand hall stays grand).
+    if (!w.progress.town.v) {
+      const old = w.progress.town.stages.town_hall;
+      w.progress.town.stages.town_hall = Math.max([0, 2, maxStage("town_hall")][old] ?? 0, Object.keys(w.progress.plots).length);
+      w.progress.town.v = 2;
+    }
     if (w.buildings.office && !w.progress.plots.office) w.progress.plots.office = { placed: true, stage: 1 };
     // (a home is only on the map once its plot's been bought)
     w.progress.revealed = w.progress.revealed.filter((b) => !moveInAt(b) || w.progress.plots[b]);
@@ -236,7 +243,7 @@ function showcase(w: World): World {
   w.progress.revealed = Object.keys(BUILDINGS) as BuildingId[];
   everyoneHome(w.progress);
   w.materials = { moonstone: 99, stardust: 99, shard: 12, ore: 20, ice: 20, scrap: 20, helium: 20 };
-  w.progress.town = { ...freshTown(), stages: { town_hall: 2, fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
+  w.progress.town = { ...freshTown(), stages: { town_hall: maxStage("town_hall"), fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
   w.progress.sandbox = { ...w.progress.sandbox, google: true, canvas: true };
   w.coins = Math.max(w.coins, 5000);
   for (const a of Object.values(w.approvals)) if (a.status === "pending") a.status = "denied";
