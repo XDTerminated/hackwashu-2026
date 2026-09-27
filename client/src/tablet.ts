@@ -487,28 +487,28 @@ class MoonPadView {
         state: c.google.connected ? "ok" : sandbox.google ? "sample" : "off",
         line: c.google.connected ? "Gmail + Calendar connected" : sandbox.google ? "on sample data" : !c.google.configured && net.HOSTED ? "not turned on for this site yet" : "Gmail + Calendar (Hoot, Cog)",
         tests: result("Google permissions", "Gmail", "Calendar"),
-        btn: c.google.connected ? null : c.google.configured ? { label: "SIGN IN", act: () => openConnect("postmaster", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
+        btn: c.google.connected ? this.signOut("google") : c.google.configured ? { label: "SIGN IN", act: () => openConnect("postmaster", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
       },
       {
         title: "Canvas",
         state: c.canvas.connected ? "ok" : sandbox.canvas ? "sample" : "off",
         line: c.canvas.connected ? `connected${c.canvas.account ? `: ${c.canvas.account}` : ""}` : sandbox.canvas ? "on sample data" : "courses, due dates (Mabel)",
         tests: result("Canvas"),
-        btn: c.canvas.connected ? null : { label: "SIGN IN", act: () => openConnect("scholar", { fromAccounts: true }) },
+        btn: c.canvas.connected ? this.signOut("canvas") : { label: "SIGN IN", act: () => openConnect("scholar", { fromAccounts: true }) },
       },
       {
         title: "GitHub",
         state: c.github.connected ? "ok" : "off",
         line: c.github.connected ? `connected: ${c.github.account}` : "your repos (Tinker)",
         tests: result("GitHub"),
-        btn: c.github.connected ? null : { label: "SIGN IN", act: () => openConnect("mechanic", { fromAccounts: true }) },
+        btn: c.github.connected ? this.signOut("github") : { label: "SIGN IN", act: () => openConnect("mechanic", { fromAccounts: true }) },
       },
       {
         title: "Spotify",
         state: c.spotify.connected ? "ok" : "off",
         line: c.spotify.connected ? `connected${c.spotify.account ? `: ${c.spotify.account}` : ""}${c.spotify.premium === false ? " (needs Premium to play)" : ""}` : !c.spotify.configured && net.HOSTED ? "not turned on for this site yet" : "music in the game (Echo)",
         tests: result("Spotify"),
-        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => openConnect("dj", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
+        btn: c.spotify.connected ? this.signOut("spotify") : c.spotify.configured ? { label: "SIGN IN", act: () => openConnect("dj", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
       },
       {
         title: "Your phone",
@@ -570,6 +570,29 @@ class MoonPadView {
       const go = new Button(this.scene, s.x + 4, fy, "START PLAYING", C.greenBtn, () => (sfx.buy(), closeMoonPad()), s.w - 8);
       this.root.add([bar, go]);
     } else this.tabBar("connect");
+  }
+
+  /** Which account's SIGN OUT was just pressed once (press again to confirm). */
+  private confirmOut: string | null = null;
+  private confirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** SIGN OUT on a connected account: once to arm ("SURE?"), again within 3 seconds to disconnect. */
+  private signOut(service: "google" | "canvas" | "github" | "spotify") {
+    const armed = this.confirmOut === service;
+    return {
+      label: armed ? "SURE?" : "SIGN OUT",
+      act: () => {
+        if (this.confirmTimer) clearTimeout(this.confirmTimer);
+        if (!armed) {
+          this.confirmOut = service;
+          this.confirmTimer = setTimeout(() => ((this.confirmOut = null), this.render()), 3000);
+        } else {
+          this.confirmOut = null;
+          net.send({ type: "disconnect", service });
+        }
+        this.render();
+      },
+    };
   }
 
   /** A button flush with the screen's right edge (4px in), sized by its label. */
