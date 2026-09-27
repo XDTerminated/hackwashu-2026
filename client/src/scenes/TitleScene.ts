@@ -1,14 +1,11 @@
 import Phaser from "phaser";
 import * as net from "../net";
 import { startMusic } from "../music";
-import { Button, C, measure, ptext, woodFrame } from "../widgets";
+import { Button, C, measure, ptext } from "../widgets";
 import { introSeen } from "./IntroScene";
 import { onStoreChange, store } from "../store";
 import { LANDING_HOME, VISIT_ID } from "../visitparam";
 import { fitLogo } from "../logoart";
-
-// One line: the intro cutscene tells the story; the title just sets the mood.
-const STORY = ["Build the moonfolk a town.", "They'll handle your life on Earth."];
 
 /**
  * The front door. Sign in with Google for a village that's kept (online, your
@@ -25,7 +22,7 @@ export class TitleScene extends Phaser.Scene {
     const H = this.scale.height;
     const cx = Math.round(W / 2);
 
-    const g = this.add.graphics();
+    const g = this.add.graphics().setDepth(-3);
     g.fillStyle(0x0b0a1a, 1).fillRect(0, 0, W, H);
     const rnd = new Phaser.Math.RandomDataGenerator(["moon-village"]);
     for (let i = 0; i < Math.round((W * H) / 700); i++) {
@@ -36,20 +33,57 @@ export class TitleScene extends Phaser.Scene {
     const earth = this.add.image(Math.round(W * 0.86), Math.round(H * 0.24), "earth_l");
     this.tweens.add({ targets: earth, y: earth.y - 3, duration: 3200, yoyo: true, repeat: -1, ease: "sine.inout" });
 
-    const ship = this.add.image(Math.round(W * 0.1), Math.round(H * 0.72), "ship").setOrigin(0.5, 1);
-    this.tweens.add({ targets: ship, y: ship.y - 4, duration: 2200, yoyo: true, repeat: -1, ease: "sine.inout" });
+    // Now and then a rocket flies across (behind everything), nose first, with a flame trail:
+    // sometimes close and quick, sometimes small and far off.
+    const ship = this.add.image(-99, -99, "ship").setVisible(false).setDepth(-1);
+    const flame = this.add.particles(0, 0, "spark", {
+      lifespan: { min: 300, max: 600 },
+      speed: { min: 4, max: 18 },
+      alpha: { start: 1, end: 0 },
+      tint: [0xffd27a, 0xff9a3d, 0xff6a4d, 0xfff2d6],
+      frequency: 25,
+      emitting: false,
+    }).setDepth(-2);
+    const flyBy = () => {
+      const ltr = Math.random() < 0.5;
+      const far = Math.random() < 0.4;
+      const scale = far ? 0.5 : 1;
+      const pad = 40;
+      // (above the logo or below the buttons: never through the words)
+      const half = 16 * scale;
+      const zones = [
+        [half + 4, Math.round(logo.y - logo.displayHeight / 2) - half - 4],
+        [y + 24 + half, H - half - 4],
+      ].filter(([a, b]) => b >= a);
+      if (!zones.length) return void this.time.delayedCall(5000, flyBy);
+      const [lo, hi] = Phaser.Utils.Array.GetRandom(zones);
+      const y0 = Phaser.Math.Between(lo, hi);
+      const y1 = Phaser.Math.Clamp(y0 + Phaser.Math.Between(-24, 12), lo, hi);
+      // (drawn nose up: a quarter turn points it the way it's going)
+      ship.setScale(scale).setAlpha(far ? 0.7 : 1).setAngle(ltr ? 90 : -90).setPosition(ltr ? -pad : W + pad, y0).setVisible(true);
+      flame.setAlpha(far ? 0.7 : 1).setParticleScale(scale).start();
+      const tail = () => flame.setPosition(ship.x + (ltr ? -1 : 1) * (ship.height / 2) * scale, ship.y);
+      tail();
+      this.tweens.add({
+        targets: ship,
+        x: ltr ? W + pad : -pad,
+        y: y1,
+        duration: Math.round(((W + pad * 2) / (far ? 45 : 110)) * 1000),
+        ease: "linear",
+        onUpdate: tail,
+        onComplete: () => {
+          ship.setVisible(false);
+          flame.stop();
+          this.time.delayedCall(Phaser.Math.Between(3000, 9000), flyBy);
+        },
+      });
+    };
+    this.time.delayedCall(Phaser.Math.Between(800, 2500), flyBy);
 
     // (the logo has its own star, in MOON; on a narrow screen it drops to 1x)
     const logo = this.add.image(cx, 0, "logo");
     fitLogo(logo, W);
-    logo.setY(Math.max(Math.round(H * 0.18), Math.round(logo.displayHeight / 2) + 16));
-
-    const sub = ptext(this, 0, Math.round(logo.y + logo.displayHeight / 2) + 10, "an AI agent viewer you can live in", 0x8a8fa8);
-    sub.setX(cx - Math.round(measure(sub).w / 2));
-
-    const story = ptext(this, 0, 0, STORY.join("\n"), 0xe8e4d8).setCenterAlign();
-    const sm = measure(story);
-    story.setPosition(cx - Math.round(sm.w / 2), Math.round(sub.y + 20));
+    logo.setY(Math.max(Math.round(H * 0.3), Math.round(logo.displayHeight / 2) + 16));
 
     const fine = ptext(this, 0, H - 12, "*terms and conditions apply", 0x555c78);
     fine.setX(W - 6 - measure(fine).w);
@@ -60,35 +94,41 @@ export class TitleScene extends Phaser.Scene {
       return t;
     };
 
-    // ---------------------------------------------------------------- the panel
+    // ---------------------------------------------------------------- under the logo
+    // Just a welcome, a line about it, and the buttons, stacked down the middle.
     const auth = net.auth;
-    const panelW = Math.min(W - 24, 250);
-    const px = cx - Math.round(panelW / 2);
-    const py = Math.round(story.y + sm.h + 12);
-    const panelH = Math.min(H - py - 22, 104);
-    woodFrame(this.add.graphics(), px, py, panelW, panelH, C.paper);
-    const inside = (y: number, text: string, color: number, font: "px" | "pxb" | "sm" = "px") => {
-      const t = ptext(this, 0, py + y, text, color, font).setMaxWidth(panelW - 24).setCenterAlign();
-      t.setX(cx - Math.round(measure(t).w / 2));
+    // (on a narrow screen the Earth would sit on top of the logo)
+    const narrow = W < logo.displayWidth + 120;
+    earth.setVisible(!narrow);
+    let y = Math.round(logo.y + logo.displayHeight / 2) + 20;
+    // (the welcome and the big button at the logo's own pixel size, where there's room)
+    const big = logo.scale === 1 ? 2 : 1;
+    const line = (text: string, color: number, font: "px" | "pxb" | "sm", gap: number, scale = 1, wide = 260) => {
+      const t = ptext(this, 0, y, text, color, font).setMaxWidth(Math.min(W - 24, wide)).setCenterAlign().setScale(scale);
+      t.setX(cx - Math.round((measure(t).w * scale) / 2));
+      y += measure(t).h * scale + gap;
       return t;
     };
-    /** The panel's buttons, from the bottom up; the first is the big one. */
+    const heading = (text: string) => line(text, 0xf4ecd8, "pxb", 6, big, logo.displayWidth);
+    const detail = (text: string) => line(text, 0x8a8fa8, "sm", 4);
+    /** The buttons, top down; the first is the big one. */
     const buttons = (specs: { label: string; act: () => void; main?: boolean }[]) => {
-      let y = py + panelH - 8 - specs.length * 19;
+      y += 10;
       for (const s of specs) {
-        const b = new Button(this, 0, y, s.label, s.main ? C.greenBtn : C.woodMid, s.act, s.main ? 150 : 110);
-        b.setX(cx - Math.round(b.width_ / 2));
+        const scale = s.main ? big : 1;
+        const b = new Button(this, 0, y, s.label, s.main ? C.greenBtn : C.woodMid, s.act, Math.min(s.main ? 180 : 110, W - 24) / scale).setScale(scale);
+        b.setX(cx - Math.round((b.width_ * scale) / 2));
         this.add.existing(b);
-        y += 19;
+        y += 15 * scale + 5;
       }
     };
     const below = (text: string, color = 0x8a8fa8) => {
-      const t = ptext(this, 0, py + panelH + 7, text, color);
+      const t = ptext(this, 0, y + 6, text, color).setMaxWidth(W - 24).setCenterAlign();
       t.setX(cx - Math.round(measure(t).w / 2));
     };
 
     if (auth.state === "checking") {
-      inside(Math.round(panelH / 2) - 5, "Checking who you are...", C.inkSoft, "pxb");
+      heading("Checking who you are...");
       const off = net.onAuth(() => this.scene.restart());
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
       return;
@@ -96,8 +136,8 @@ export class TitleScene extends Phaser.Scene {
 
     // Online, signed out: sign in first (your own private village).
     if (auth.state === "out") {
-      inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
-      inside(22, "Sign in for your own private village, kept safe. Or look around as a guest (nothing is saved).", C.inkSoft, "sm");
+      heading("Welcome, traveler");
+      detail("Sign in for your own private village, kept safe. Or look around as a guest (nothing is saved).");
       buttons([
         { label: "SIGN IN WITH GOOGLE", act: () => net.signIn(), main: true },
         { label: "SIGN IN AS GUEST", act: () => net.playAsGuest() },
@@ -123,7 +163,7 @@ export class TitleScene extends Phaser.Scene {
     // Signed in (online), or on your own computer: play. (Wait for the colony first: it knows
     // whether this player has seen the intro, which only plays their first time.)
     if (!store.connected) {
-      inside(Math.round(panelH / 2) - 5, VISIT_ID ? "Flying to your friend's island..." : "Reaching the Moon...", C.inkSoft, "pxb");
+      heading(VISIT_ID ? "Flying to your friend's island..." : "Reaching the Moon...");
       const off = onStoreChange(() => store.connected && this.scene.restart());
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
       return;
@@ -156,33 +196,34 @@ export class TitleScene extends Phaser.Scene {
     };
     // Off to a friend's island (the rocket), or back home: straight there, no title.
     if ((VISIT_ID || LANDING_HOME) && auth.state === "in") {
-      inside(Math.round(panelH / 2) - 5, "Landing...", C.inkSoft, "pxb");
+      heading("Landing...");
       this.time.delayedCall(200, play);
       return;
     }
     if (auth.state === "in" && auth.guest) {
       // Online, as a guest: a village of your own until you leave, never saved.
-      inside(9, "PLAYING AS A GUEST", C.coral, "pxb");
-      inside(22, "Nothing you do is saved. Sign in with Google to keep a village of your own.", C.inkSoft, "sm");
+      heading("Playing as a guest");
+      detail("Nothing you do is saved. Sign in with Google to keep a village of your own.");
       buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN IN WITH GOOGLE", act: () => net.signIn() }]);
       link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
     } else if (auth.state === "in") {
-      inside(9, `WELCOME BACK, ${(auth.name || auth.email.split("@")[0]).toUpperCase()}`, C.coral, "pxb");
-      inside(22, auth.email, C.inkSoft, "sm");
-      buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN OUT", act: () => net.signOut() }]);
-      link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
+      heading(`Welcome back, ${(auth.name || auth.email.split("@")[0]).split(" ")[0]}!`);
+      detail(auth.email);
+      buttons([{ label: "PLAY", act: play, main: true }]);
+      const out = link(6, H - 12, "sign out", () => net.signOut());
+      link(out.x + measure(out).w + 10, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
     } else {
       // On your own computer: sign in with Google (just your name and email) and play your
       // saved colony, or sign in as a guest: a fresh colony, and nothing gets saved.
       const me = store.connections.me;
       if (me) {
-        inside(9, `WELCOME BACK, ${me.name.split(" ")[0].toUpperCase()}`, C.coral, "pxb");
-        inside(22, me.email, C.inkSoft, "sm");
+        heading(`Welcome back, ${me.name.split(" ")[0]}!`);
+        detail(me.email);
         buttons([{ label: "PLAY", act: () => enter(false), main: true }]);
         link(6, H - 12, "sign out", () => net.send({ type: "forget_me" }));
       } else {
-        inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
-        inside(22, "Sign in with Google to keep your colony (just your name and email). As a guest, nothing is saved.", C.inkSoft, "sm");
+        heading("Welcome, traveler");
+        detail("Sign in with Google to keep your colony (just your name and email). As a guest, nothing is saved.");
         buttons([
           {
             label: "SIGN IN WITH GOOGLE",
