@@ -3,7 +3,6 @@
 // grows); real work only happens when you visit their house in person.
 
 import Phaser from "phaser";
-import QRCode from "qrcode";
 import { BUILDINGS, MAX_HEARTS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, heartsFor, type TaskSource, type VillagerId } from "../../shared/game";
 import { happinessFor } from "../../shared/decor";
 import { sanitize } from "./font";
@@ -14,6 +13,22 @@ import { sfx } from "./sfx";
 import { agents, onStoreChange, store } from "./store";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import { Button, C, Label, TOOLBAR_H, fit, measure, ptext } from "./widgets";
+
+// qrcode is only needed for the phone-link screen, so it loads on first use
+// instead of shipping in the startup bundle.
+type QRLib = typeof import("qrcode");
+let qrLib: QRLib | null = null;
+let qrLoading = false;
+let qrOnReady: (() => void) | null = null;
+function loadQR(onReady: () => void) {
+  qrOnReady = onReady;
+  if (qrLib || qrLoading) return;
+  qrLoading = true;
+  import("qrcode").then(
+    (m: QRLib & { default?: QRLib }) => { qrLib = m.default ?? m; qrOnReady?.(); qrOnReady = null; },
+    () => { qrLoading = false; },
+  );
+}
 
 type Msg = { from: "you" | "them" | "sys"; text: string; tag?: string };
 type View = VillagerId | "phones" | "connect" | null;
@@ -521,6 +536,8 @@ class MoonPadView {
   private pendingLink: { line?: string; code?: string; link?: string } = {};
 
   private renderPhones() {
+    // Fetch qrcode as soon as the phone screen opens; redraw once it lands if the QR is showing.
+    if (!qrLib) loadQR(() => { if (this.visible && this.showing === "phones" && this.phoneStep === "waiting") this.refresh(); });
     const s = this.screen;
     let y = s.y + 18;
     const line = (text: string, color: number = C.inkSoft, font: "px" | "pxb" = "px") => {
@@ -539,8 +556,8 @@ class MoonPadView {
       line("Now text the colony from that phone:", C.ink);
       line(`${p.code}  to  ${p.line}`, 0x7e5fb8, "pxb");
       line("Or scan with your phone's camera - it opens Messages with it filled in. Just hit send.");
-      if (p.link) {
-        const qr = QRCode.create(p.link, { errorCorrectionLevel: "M" });
+      if (p.link && qrLib) {
+        const qr = qrLib.create(p.link, { errorCorrectionLevel: "M" });
         const n = qr.modules.size;
         const cell = n * 2 + 8 <= s.h - (y - s.y) - 24 ? 2 : 1;
         const size = n * cell + 8;

@@ -798,6 +798,7 @@ export class GameScene extends Phaser.Scene {
   private lamps: { x: number; y: number; glow: Phaser.GameObjects.Image }[] = [];
   private bells = new Map<VillagerId, { x: number; y: number; img: Phaser.GameObjects.Image }>();
   private choreViews = new Map<string, ChoreView>();
+  private dustScratch: ChoreView[] = [];
   private sweepT = 0;
   private sweepSfxT = 0;
   private sweepBar!: Phaser.GameObjects.Graphics;
@@ -2640,10 +2641,15 @@ export class GameScene extends Phaser.Scene {
     for (const c of this.choreViews.values()) c.update(now);
     this.updateSweep(dt);
     // Moondust dims the solar lamps it settles near.
+    // (collected once per frame into a reused array, not re-spread per lamp)
+    const dust = this.dustScratch;
+    dust.length = 0;
+    for (const c of this.choreViews.values()) if (c.chore.kind === "dust") dust.push(c);
+    // (lamps stay dark until the roads are fixed, and shine brighter when they're grand)
+    const bright = [0, 1, 1.4][store.progress.town.stages.roads];
     for (const l of this.lamps) {
-      const dusty = [...this.choreViews.values()].some((c) => c.chore.kind === "dust" && Math.hypot(c.x - l.x, c.y - l.y) < 40);
-      // (lamps stay dark until the roads are fixed, and shine brighter when they're grand)
-      const bright = [0, 1, 1.4][store.progress.town.stages.roads];
+      let dusty = false;
+      for (const c of dust) if (Math.hypot(c.x - l.x, c.y - l.y) < 40) { dusty = true; break; }
       l.glow.setAlpha(bright * (dusty ? 0.08 : 0.3 + 0.06 * Math.sin(time / 700 + l.x)));
     }
     for (const a of this.villagers.values()) a.update(time);

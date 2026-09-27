@@ -47,10 +47,14 @@ function spawnMeteor(delay = 0) {
 }
 
 function tick() {
+  // Nobody playing: nothing to see, so don't spawn, expire or save. The drifts that
+  // piled up meanwhile land together when someone's back (below).
+  if (present <= 0) return;
   const now = Date.now();
   const dust = Object.values(world.chores).filter((c) => c.kind === "dust").length;
   if (now >= nextDust) {
-    if (dust < MAX_DUST) spawnDust();
+    const missed = 1 + Math.floor((now - nextDust) / 35_000);
+    for (let i = 0; i < Math.min(missed, MAX_DUST - dust); i++) spawnDust();
     nextDust = now + rand(25_000, 45_000);
   }
   if (now >= nextMeteor) {

@@ -504,17 +504,9 @@ export function buildTextures(scene: Phaser.Scene) {
       rect(ctx, y < 4 ? "#f5c542" : "#c99a3e", 2, y, w, 1);
     }
   });
-  // The office interior.
-  canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
-  for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
-  for (let look = 0; look < WORKER_LOOKS; look++) {
-    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 20, 26, (ctx) => drawWorkerBack(ctx, look, f));
-    canvasTex(scene, `worker_front_${look}`, 16, 26, (ctx) => drawWorkerFront(ctx, look));
-  }
+  // The office's team lead is also the manager villager out on the island, so it's drawn at boot
+  // (the rest of the office interior waits for buildOfficeTextures).
   canvasTex(scene, "office_lead", 16, 26, (ctx) => drawWorkerFront(ctx, 4, true));
-  canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
-  canvasTex(scene, "office_plant", 18, 26, drawPlant);
-  canvasTex(scene, "office_couch", 52, 26, drawCouch);
   // A staked plot per building, the size of its footprint.
   for (const b of Object.keys(SPOTS) as BuildingId[]) {
     const t = buildingTiles(b);
@@ -707,6 +699,28 @@ export function buildTextures(scene: Phaser.Scene) {
 
 }
 
+/** The office interior (room, desks, workers, props) and its animations. Only the Office uses
+ *  these, so they're drawn the first time you walk in rather than at boot. */
+export function buildOfficeTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists("office_room")) return;
+  canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
+  for (const screen of ["off", "code0", "code1", "code2", "think0", "think1", "think2", "wait", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
+  for (let look = 0; look < WORKER_LOOKS; look++) {
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 20, 26, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 16, 26, (ctx) => drawWorkerFront(ctx, look));
+  }
+  canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
+  canvasTex(scene, "office_plant", 18, 26, drawPlant);
+  canvasTex(scene, "office_couch", 52, 26, drawCouch);
+  const mk = (key: string, frames: string[], frameRate: number) => {
+    if (scene.anims.exists(key)) return;
+    scene.anims.create({ key, frames: frames.map((t) => ({ key: t })), frameRate, repeat: -1 });
+  };
+  mk("desk-coding", ["desk_code0", "desk_code1", "desk_code2"], 3);
+  mk("desk-thinking", ["desk_think0", "desk_think1", "desk_think2"], 2);
+  for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
+}
+
 export function buildAnims(scene: Phaser.Scene) {
   const mk = (key: string, frames: string[], frameRate: number) => {
     if (scene.anims.exists(key)) return;
@@ -717,9 +731,6 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("walk-side", ["astro_7", "astro_6", "astro_8", "astro_6"], 8);
   mk("clod-twinkle", ["clod_0", "clod_1"], 4);
   for (let v = 0; v < 3; v++) mk(`dust-${v}`, [`dust_${v}_0`, `dust_${v}_1`], 2);
-  mk("desk-coding", ["desk_code0", "desk_code1", "desk_code2"], 3);
-  mk("desk-thinking", ["desk_think0", "desk_think1", "desk_think2"], 2);
-  for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
   mk("shard-twinkle", ["shard_0", "shard_1", "shard_2", "shard_1"], 4);
   mk("plaza-fountain", ["plaza_fountain_0", "plaza_fountain_1", "plaza_fountain_2"], 4);
   mk("plaza-fountain-mid", ["plaza_fountain_mid_0", "plaza_fountain_mid_1", "plaza_fountain_mid_2"], 4);

@@ -8,8 +8,6 @@
 // game (walk to the Post Office or Clock Tower and press E).
 
 import { DATA_DIR, HOSTED } from "../env.js";
-import { calendar as calendarApi } from "@googleapis/calendar";
-import { gmail as gmailApi } from "@googleapis/gmail";
 import { CodeChallengeMethod, OAuth2Client, type Credentials } from "google-auth-library";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -163,7 +161,7 @@ export async function googleAuthUrl(): Promise<string> {
 export async function finishGoogleAuth(code: string, codeVerifier: string): Promise<string | undefined> {
   const { tokens } = await oauth().getToken({ code, codeVerifier });
   oauth().setCredentials(tokens);
-  const profile = await gmail().users.getProfile({ userId: "me" });
+  const profile = await (await gmail()).users.getProfile({ userId: "me" });
   account = profile.data.emailAddress ?? undefined;
   save(tokens, account);
   connected = true;
@@ -220,8 +218,9 @@ export function disconnectGoogle() {
   if (existsSync(TOKEN_FILE)) rmSync(TOKEN_FILE);
 }
 
-const gmail = () => gmailApi({ version: "v1", auth: oauth() });
-const cal = () => calendarApi({ version: "v3", auth: oauth() });
+// The Google API clients load on first use (they're heavy, and most copies never touch them).
+const gmail = async () => (await import("@googleapis/gmail")).gmail({ version: "v1", auth: oauth() });
+const cal = async () => (await import("@googleapis/calendar")).calendar({ version: "v3", auth: oauth() });
 
 // ---------------------------------------------------------------- gmail
 
@@ -256,11 +255,11 @@ export function htmlToText(html: string) {
 }
 
 export async function gmailList(unreadOnly: boolean): Promise<EmailSummary[]> {
-  const res = await gmail().users.messages.list({ userId: "me", q: unreadOnly ? "in:inbox is:unread" : "in:inbox", maxResults: 12 });
+  const res = await (await gmail()).users.messages.list({ userId: "me", q: unreadOnly ? "in:inbox is:unread" : "in:inbox", maxResults: 12 });
   const ids = res.data.messages?.map((m) => m.id!).filter(Boolean) ?? [];
   const rows = await Promise.all(
     ids.map(async (id) => {
-      const m = await gmail().users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From", "Subject", "Date"] });
+      const m = await (await gmail()).users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From", "Subject", "Date"] });
       const h = m.data.payload?.headers;
       return {
         id,
@@ -276,7 +275,7 @@ export async function gmailList(unreadOnly: boolean): Promise<EmailSummary[]> {
 }
 
 export async function gmailRead(id: string): Promise<Email | undefined> {
-  const m = await gmail().users.messages.get({ userId: "me", id, format: "full" });
+  const m = await (await gmail()).users.messages.get({ userId: "me", id, format: "full" });
   const h = m.data.payload?.headers;
   const body = textOf(m.data.payload as Part) || m.data.snippet || "";
   return {
@@ -302,19 +301,19 @@ export async function gmailDraft(to: string, subject: string, body: string, repl
   let threadId: string | undefined;
   if (replyToId) {
     // Keep replies in the original conversation.
-    const orig = await gmail().users.messages.get({ userId: "me", id: replyToId, format: "metadata", metadataHeaders: ["Message-ID"] });
+    const orig = await (await gmail()).users.messages.get({ userId: "me", id: replyToId, format: "metadata", metadataHeaders: ["Message-ID"] });
     threadId = orig.data.threadId ?? undefined;
     const mid = header(orig.data.payload?.headers, "Message-ID");
     if (mid) headers.push(`In-Reply-To: ${mid}`, `References: ${mid}`);
   }
   const raw = Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body}`).toString("base64url");
-  const res = await gmail().users.drafts.create({ userId: "me", requestBody: { message: { raw, threadId } } });
+  const res = await (await gmail()).users.drafts.create({ userId: "me", requestBody: { message: { raw, threadId } } });
   return { id: res.data.id!, to, subject, body, sent: false };
 }
 
 export async function gmailGetDraft(id: string): Promise<Draft | undefined> {
   try {
-    const d = await gmail().users.drafts.get({ userId: "me", id, format: "full" });
+    const d = await (await gmail()).users.drafts.get({ userId: "me", id, format: "full" });
     const h = d.data.message?.payload?.headers;
     // (any Cc or Bcc is shown with the recipient, so the approval letter says everyone it goes to)
     const cc = header(h, "Cc");
@@ -329,7 +328,7 @@ export async function gmailGetDraft(id: string): Promise<Draft | undefined> {
 export async function gmailSend(id: string): Promise<Draft> {
   const d = await gmailGetDraft(id);
   if (!d) throw new Error(`no draft with id ${id}`);
-  await gmail().users.drafts.send({ userId: "me", requestBody: { id } });
+  await (await gmail()).users.drafts.send({ userId: "me", requestBody: { id } });
   console.log("[google] ✉️  sent an email");
   return { ...d, sent: true };
 }
@@ -350,7 +349,7 @@ export async function calendarList(fromLocal: string, toLocal: string): Promise<
   const from = new Date(fromLocal);
   const to = new Date(toLocal);
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new Error("times must look like 2026-09-29T09:00");
-  const res = await cal().events.list({
+  const res = await (await cal()).events.list({
     calendarId: "primary",
     timeMin: from.toISOString(),
     timeMax: to.toISOString(),
@@ -372,7 +371,7 @@ export async function calendarCreate(title: string, startLocal: string, endLocal
   const e = new Date(endLocal);
   if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) throw new Error("times must look like 2026-09-29T15:00");
   if (e <= s) throw new Error("end must be after start");
-  const res = await cal().events.insert({
+  const res = await (await cal()).events.insert({
     calendarId: "primary",
     requestBody: {
       summary: title,

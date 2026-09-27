@@ -12,7 +12,7 @@
 import "./env.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { connect as tcp, isIP } from "node:net";
@@ -30,7 +30,19 @@ const CLIENT = resolve(process.env.MOON_CLIENT_DIST || join(SERVER_DIR, "..", "c
 const MAX_RUNNING = Number(process.env.MOON_MAX_RUNNING ?? 30);
 /** Guests can fill at most half the Moon, so signed-in players always find room. */
 const MAX_GUESTS = Math.max(1, Math.floor(MAX_RUNNING / 2));
-const IDLE_MS = 15 * 60_000;
+/** A copy with nobody on it stops after this long (MOON_IDLE_MIN minutes); its save stays. */
+const IDLE_MS = Math.max(1, Number(process.env.MOON_IDLE_MIN) || 5) * 60_000;
+/** A copy woken only to take a relay (a visitor's coins going home) that nobody then opens. */
+const RELAY_IDLE_MS = 60_000;
+/**
+ * How each player's copy runs. Built (`npm run build`), the gateway runs from dist/ and so do the
+ * copies, precompiled and with a small young generation: about 95 MB each instead of about 175 MB
+ * under tsx. From source (testing), they run through tsx.
+ */
+const BUILT = join(here, "index.mjs");
+const COPY_ARGS = fileURLToPath(import.meta.url).endsWith(".mjs") && existsSync(BUILT)
+  ? [`--max-semi-space-size=${process.env.MOON_SEMI_SPACE_MB || 1}`, `--max-old-space-size=${process.env.MOON_HEAP_MB || 128}`, BUILT]
+  : ["--import", "tsx", join(SERVER_DIR, "src", "index.ts")];
 const SESSION_DAYS = 30;
 /** Local testing only: /auth/dev?email=... signs in without Google. Never set this on the real site. */
 const DEV_LOGIN = process.env.MOON_DEV_LOGIN === "1";
@@ -182,6 +194,8 @@ interface Copy {
   sockets: number;
   /** The owner's own connections (they're "online" while this is above 0). */
   ownerSockets: number;
+  /** Woken only by a relay and not opened since: it goes back to sleep sooner. */
+  relayOnly: boolean;
 }
 
 const copies = new Map<string, Copy>();
@@ -212,8 +226,8 @@ function copyEnv(): Record<string, string> {
   return out;
 }
 
-/** This player's game server, started if it isn't running. */
-async function copyFor(p: Player, site: string): Promise<Copy> {
+/** This player's game server, started if it isn't running (`relay`: only to hand it a relayed action). */
+async function copyFor(p: Player, site: string, relay = false): Promise<Copy> {
   if (deleting.has(p.id)) throw new Error("That village is being deleted.");
   let c = copies.get(p.id);
   if (!c) {
@@ -222,13 +236,18 @@ async function copyFor(p: Player, site: string): Promise<Copy> {
       // Make room: stop whoever's been idle longest.
       const idle = [...copies.entries()].filter(([, x]) => x.sockets === 0).sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
       if (!idle) throw new Error("The Moon is full right now. Try again in a few minutes!");
-      void stopCopy(idle[0]);
+      // (wait until it has really exited, so two copies are never in memory at once on a full box)
+      await stopCopy(idle[0]);
+      if (deleting.has(p.id)) throw new Error("That village is being deleted.");
+      c = copies.get(p.id); // (another request may have started it meanwhile)
     }
+  }
+  if (!c) {
     const port = freePort();
     // (a guest's copy lives in a scratch folder, deleted when it stops)
     const dir = p.guest ? join(tmpdir(), "moon-guests", p.id) : join(ROOT, "players", p.id);
     mkdirSync(dir, { recursive: true });
-    const proc = spawn(process.execPath, ["--import", "tsx", join(SERVER_DIR, "src", "index.ts")], {
+    const proc = spawn(process.execPath, COPY_ARGS, {
       cwd: SERVER_DIR,
       env: {
         ...copyEnv(),
@@ -262,7 +281,7 @@ async function copyFor(p: Player, site: string): Promise<Copy> {
       }
       throw new Error("your village took too long to start");
     })();
-    c = { port, proc, ready, lastUsed: Date.now(), sockets: 0, ownerSockets: 0 };
+    c = { port, proc, ready, lastUsed: Date.now(), sockets: 0, ownerSockets: 0, relayOnly: relay };
     copies.set(p.id, c);
     proc.on("exit", () => {
       if (copies.get(p.id)?.proc === proc) copies.delete(p.id);
@@ -276,6 +295,7 @@ async function copyFor(p: Player, site: string): Promise<Copy> {
     console.log(`[gateway] ${tag} starting on :${port}`);
   }
   c.lastUsed = Date.now();
+  if (!relay) c.relayOnly = false;
   try {
     await c.ready;
   } catch (err) {
@@ -306,7 +326,7 @@ const deleting = new Set<string>();
 
 // Idle copies go to sleep (their saves stay).
 setInterval(() => {
-  for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > IDLE_MS) void stopCopy(id);
+  for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > (c.relayOnly ? RELAY_IDLE_MS : IDLE_MS)) void stopCopy(id);
   // (guests who never started a village, or whose session ran out)
   for (const [id, p] of Object.entries(players)) if (p.guest && !copies.has(id) && Date.now() - p.createdAt > IDLE_MS) delete players[id];
 }, 60_000);
@@ -386,13 +406,32 @@ const TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-/** A file from the built game (client/dist), or false if there isn't one. */
-function serveStatic(res: ServerResponse, pathname: string): boolean {
+const fileSize = (file: string) => {
+  const st = statSync(file, { throwIfNoEntry: false });
+  return st?.isFile() ? st.size : -1;
+};
+
+/**
+ * A file from the built game (client/dist), or false if there isn't one. Streamed from disk, and
+ * gzipped when the build left a `.gz` beside it and the browser takes gzip.
+ */
+function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
   const file = normalize(join(CLIENT, pathname === "/" ? "index.html" : decodeURIComponent(pathname)));
-  if (!file.startsWith(CLIENT + sep) || !existsSync(file) || !extname(file)) return false;
+  if (!file.startsWith(CLIENT + sep) || !extname(file)) return false;
+  const size = fileSize(file);
+  if (size < 0) return false;
+  const gzSize = /\bgzip\b/i.test(String(req.headers["accept-encoding"] ?? "")) ? fileSize(file + ".gz") : -1;
   const immutable = pathname.startsWith("/assets/");
-  res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache" });
-  res.end(readFileSync(file));
+  res.writeHead(200, {
+    "content-type": TYPES[extname(file)] ?? "application/octet-stream",
+    "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    vary: "accept-encoding",
+    "content-length": String(gzSize >= 0 ? gzSize : size),
+    ...(gzSize >= 0 ? { "content-encoding": "gzip" } : {}),
+  });
+  createReadStream(gzSize >= 0 ? file + ".gz" : file)
+    .on("error", () => res.destroy())
+    .pipe(res);
   return true;
 }
 
@@ -702,15 +741,21 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
   if (!real(to) || typeof path !== "string" || !RELAY_PATHS.has(path)) return json(400, { error: "bad relay" });
   try {
     // (the other island wakes up if it's asleep: a visitor's coins go home even while they're away)
-    const c = await copyFor(players[to], publicUrl || lastSite);
-    c.lastUsed = Date.now();
-    const r = await fetch(`http://127.0.0.1:${c.port}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
-      body: JSON.stringify(body.body ?? {}),
-      signal: AbortSignal.timeout(path === "/internal/ask" ? 120_000 : 15_000),
-    });
-    return json(r.status, (await r.json().catch(() => ({}))) as object);
+    const c = await copyFor(players[to], publicUrl || lastSite, true);
+    // (counted as a connection while it's in flight, so the island isn't put to sleep mid-answer)
+    c.sockets++;
+    try {
+      const r = await fetch(`http://127.0.0.1:${c.port}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
+        body: JSON.stringify(body.body ?? {}),
+        signal: AbortSignal.timeout(path === "/internal/ask" ? 120_000 : 15_000),
+      });
+      return json(r.status, (await r.json().catch(() => ({}))) as object);
+    } finally {
+      c.sockets = Math.max(0, c.sockets - 1);
+      c.lastUsed = Date.now();
+    }
   } catch (err) {
     return json(503, { error: err instanceof Error ? err.message : "that island didn't answer" });
   }
@@ -754,7 +799,7 @@ const server = createServer(async (req, res) => {
       return proxy(req, res, await copyFor(p, siteUrl(req)), siteUrl(req));
     }
     // The game itself, for everyone (signed out, its title screen shows SIGN IN WITH GOOGLE).
-    if (serveStatic(res, url.pathname)) {
+    if (serveStatic(req, res, url.pathname)) {
       // Signed in: warm up their village while the game loads.
       if (p && url.pathname === "/") void copyFor(p, siteUrl(req)).catch(() => null);
       return;

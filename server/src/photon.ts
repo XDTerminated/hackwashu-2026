@@ -16,8 +16,7 @@
 // terminal chat for local testing — it works without any credentials.
 
 import { createHmac, randomBytes, randomInt } from "node:crypto";
-import { Spectrum } from "spectrum-ts";
-import { imessage, terminal } from "spectrum-ts/providers";
+import type { Spectrum } from "spectrum-ts";
 import { VILLAGER_NAMES, VILLAGER_ROLE, VILLAGER_SHORT, type VillagerId } from "../../shared/game.js";
 import { lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
@@ -28,6 +27,13 @@ import { emit, onEvent, savePersist, world } from "./world.js";
 
 type SpectrumApp = Awaited<ReturnType<typeof Spectrum>>;
 type Space = Parameters<SpectrumApp["send"]>[0];
+
+/**
+ * spectrum-ts is loaded on first use, not at startup: hosted copies never start
+ * Photon, and the SDK alone costs tens of MB per process.
+ */
+let sdk: Promise<[typeof import("spectrum-ts"), typeof import("spectrum-ts/providers")]> | null = null;
+const loadSdk = () => (sdk ??= Promise.all([import("spectrum-ts"), import("spectrum-ts/providers")]));
 
 let app: SpectrumApp | null = null;
 let cloud = false;
@@ -90,6 +96,7 @@ async function spaceFor(phone: string): Promise<Space | null> {
   if (known) return known;
   if (!app || !cloud) return null;
   // Open (or resume) a 1:1 iMessage chat. On shared-pool plans this is how every conversation starts.
+  const [, { imessage }] = await loadSdk();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const space = (await (imessage as any)(app).space.create(phone)) as Space;
   spaces.set(phone, space);
@@ -190,6 +197,7 @@ export async function startPhoton(): Promise<boolean> {
     return false;
   }
 
+  const [{ Spectrum }, { imessage, terminal }] = await loadSdk();
   const providers = [...(cloud ? [imessage.config()] : []), ...(useTerminal ? [terminal.config()] : [])];
   app = cloud
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any

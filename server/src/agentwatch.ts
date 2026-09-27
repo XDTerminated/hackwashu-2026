@@ -645,10 +645,14 @@ const LINK_STALE_MS = 35_000;
 const CODE_MS = 10 * 60_000;
 let pairFails = 0;
 
-/** Hosted: turn on linking (and off watching this server's own files). */
-export function useLinking() {
+/** Hosted: turn on linking (and off watching this server's own files). `watched`: is any game connected? */
+export function useLinking(watched: () => boolean = () => true) {
   HOSTED_WATCH_OFF = true;
-  setInterval(changed, 5000); // "lost" shows up even when nothing's arriving
+  // "lost" shows up even when nothing's arriving (no one connected: nobody to show it to,
+  // and a game that connects gets the current state on hello)
+  setInterval(() => {
+    if (watched()) changed();
+  }, 5000);
 }
 
 /** A fresh one-time code (the old one stops working). `command` builds the line to paste. */

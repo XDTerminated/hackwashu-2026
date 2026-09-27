@@ -48,14 +48,18 @@ Gmail and Calendar, their Canvas, their Claude Code in the Office). Nobody share
 How it works: `server/src/gateway.ts` is the front door. It handles Google sign-in (signed session
 cookies), starts each player's copy of `server/src/index.ts` on demand (`MOON_HOSTED=1`, its own
 `MOON_DATA_DIR`), passes that player's pages and live connection (WebSocket) to their copy only, and
-stops copies after 15 minutes idle (saves stay on disk). Each copy is about 70-130 MB of memory.
+stops copies after 5 minutes idle (`MOON_IDLE_MIN`; saves stay on disk). Built (`npm run build`), each
+copy runs precompiled from `server/dist` at about 60-100 MB of memory.
 
 ### Deploying (Railway)
 
 1. Push the repo to GitHub and create a Railway service from it. `railway.json` sets the build
-   (`npm run build`: the game plus the link script) and start (`npm start`: the gateway) commands.
-2. Add a **volume** (for example mounted at `/data`) so villages survive redeploys, and give the
-   service about **2 GB of memory** (roughly 15-25 players at once).
+   (`npm run build`: the game, the server bundle in `server/dist` and the link script) and start
+   (`npm start`: the gateway) commands. `npm start` runs the built files, so the build must run first.
+2. Add a **volume** (for example mounted at `/data`) and point `MOON_DATA_ROOT` at it, or villages,
+   accounts and sign-ins are lost on every redeploy. Memory: a 0.5 GB box fits about 4 villages
+   running at once (`MOON_MAX_RUNNING=4`; the longest-idle one is stopped to make room); 2 GB fits
+   roughly 15-25.
 3. Generate a domain (Settings → Networking), then set these variables:
 
    | Variable | Value |
@@ -64,7 +68,10 @@ stops copies after 15 minutes idle (saves stay on disk). Each copy is about 70-1
    | `MOON_DATA_ROOT` | `/data` (the volume) |
    | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
    | `GROQ_API` | the villagers' brain |
-   | `SESSION_SECRET` | any long random string |
+   | `SESSION_SECRET` | any long random string (optional with the volume: otherwise one is made and kept there; without either, every restart signs everyone out) |
+   | `MOON_MAX_RUNNING` | villages running at once (default 30; use `4` on a 0.5 GB box) |
+   | `MOON_IDLE_MIN` | minutes before an unused village stops (default 5) |
+   | `MOON_HEAP_MB`, `MOON_SEMI_SPACE_MB` | each village's Node heap caps in MB (defaults 128 and 1) |
 
 4. In Google Cloud → your OAuth client → **Authorized redirect URIs**, add both:
    `https://<your-app>.up.railway.app/auth/google/callback` (signing in) and
@@ -74,7 +81,7 @@ stops copies after 15 minutes idle (saves stay on disk). Each copy is about 70-1
    can grant Gmail access, after a "Google hasn't verified this app" screen.
 
 Test the online setup on your own computer: `npm run build`, then
-`cd server && MOON_DEV_LOGIN=1 PORT=8090 npx tsx src/gateway.ts` and open http://localhost:8090. The title
+`MOON_DEV_LOGIN=1 PORT=8090 npm start` and open http://localhost:8090. The title
 screen shows SIGN IN WITH GOOGLE; to sign in without Google while testing, open
 http://localhost:8090/auth/dev?email=you@example.com (only with `MOON_DEV_LOGIN=1`; never set it on the real site).
 
