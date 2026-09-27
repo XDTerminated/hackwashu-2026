@@ -1,4 +1,8 @@
 import { inStock } from "../../shared/town.js";
+import { pathDef, pathKey, pathTileOk, type PathDef, type PathStyle } from "../../shared/paths.js";
+
+/** Not stocked at the Market's current stage? */
+const notStocked = (def: PathDef) => world.progress.town.stages.market < def.market;
 import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -617,6 +621,42 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         resetWorld();
         services.initResidents();
         snapshotAll();
+        break;
+      }
+
+      case "paint_paths": {
+        // Pave (or take up) a stroke of tiles: each costs its path's price, given back when it comes up.
+        const def = msg.style === null ? null : pathDef(msg.style);
+        if ((msg.style !== null && !def) || !Array.isArray(msg.tiles)) break;
+        const set: Record<string, PathStyle | null> = {};
+        let short = false;
+        const stocked = !def || !notStocked(def);
+        if (def && !stocked) send(ws, { type: "notice", text: `${def.name}: not in stock yet (${def.market === 1 ? "repair" : "upgrade"} the Market${def.market === 1 ? "" : " to grand"}).` });
+        for (const t of stocked ? msg.tiles.slice(0, 400) : []) {
+          if (!Array.isArray(t)) continue;
+          const [tx, ty] = [Number(t[0]), Number(t[1])];
+          const key = pathKey(tx, ty);
+          const was = Object.hasOwn(world.paths, key) ? world.paths[key] : undefined;
+          if ((was ?? null) === (def?.id ?? null) || !pathTileOk(tx, ty, world.buildings)) continue;
+          const refund = was ? (pathDef(was)?.price ?? 0) : 0;
+          const cost = (def?.price ?? 0) - refund;
+          if (cost > world.coins) {
+            short = true;
+            continue;
+          }
+          world.coins -= cost;
+          if (def) world.paths[key] = def.id;
+          else delete world.paths[key];
+          set[key] = def?.id ?? null;
+        }
+        if (short) send(ws, { type: "notice", text: `Not enough coins for more ${def?.name ?? "path"}.` });
+        // (every tile asked about comes back, so the game can undo the ones that didn't go down)
+        for (const t of msg.tiles.slice(0, 400)) if (Array.isArray(t)) {
+          const key = pathKey(Number(t[0]), Number(t[1]));
+          if (!(key in set)) set[key] = Object.hasOwn(world.paths, key) ? world.paths[key] : null;
+        }
+        savePersist();
+        emit({ type: "paths", set, coins: world.coins });
         break;
       }
 

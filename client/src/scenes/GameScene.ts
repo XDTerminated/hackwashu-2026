@@ -39,7 +39,9 @@ import { closePanel, isPanelOpen, onPanelToggle, openConnect, openGuide, openInf
 import { NearTalk } from "../neartalk";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { clearListener, setListener, sfx, sfxAt } from "../sfx";
-import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
+import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawStreet, lampSpots } from "../terrain";
+import { drawPaths, redrawTile } from "../pathart";
+import { fromKey, pathDef, pathKey, pathTileOk, type PathStyle } from "../../../shared/paths";
 import { inTutorial, pendingApprovalFor, store } from "../store";
 import { hostName, mayAsk, mp, onPeers, onSession, perms, visiting } from "../multiplayer";
 import { PeerActor } from "../peerview";
@@ -292,6 +294,9 @@ export class GameScene extends Phaser.Scene {
       this.cancelHeld();
     };
     this.game.events.on("begin-place", buy);
+    const paint = (p: PathStyle | "erase" | null) => this.sys.isActive() && this.setPainting(p);
+    this.game.events.on("paint-paths", paint);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.flushStroke(), this.game.events.off("paint-paths", paint)));
     const placePlot = (b: BuildingId) => this.sys.isActive() && this.pickUp({ kind: "plot", b });
     this.game.events.on("place-plot", placePlot);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off("place-plot", placePlot));
@@ -489,15 +494,20 @@ export class GameScene extends Phaser.Scene {
     this.add.image(-OUTER, -OUTER, "outer").setOrigin(0).setDepth(-11);
     this.add.image(0, 0, "ground").setOrigin(0).setDepth(-10);
 
-    // Building paths live on their own layer so they can appear as the colony grows.
+    // Main Street (the town's own) on its layer; the paths you lay on theirs, just above.
     const paths = this.textures.exists("paths") ? (this.textures.get("paths") as Phaser.Textures.CanvasTexture) : this.textures.createCanvas("paths", WORLD_W, WORLD_H)!;
     this.pathTex = paths;
     const ctx = paths.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
     drawStreet(ctx, this.roadsBroken());
-    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
     paths.refresh();
     this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
+    const tiles = this.textures.exists("pathtiles") ? (this.textures.get("pathtiles") as Phaser.Textures.CanvasTexture) : this.textures.createCanvas("pathtiles", WORLD_W, WORLD_H)!;
+    this.tileTex = tiles;
+    tiles.getContext().clearRect(0, 0, WORLD_W, WORLD_H);
+    drawPaths(tiles.getContext(), store.paths);
+    tiles.refresh();
+    this.add.image(0, 0, "pathtiles").setOrigin(0).setDepth(-9.4);
 
     this.bakePlaza();
     for (const p of lampSpots((b) => !!store.buildings[b])) this.addLamp(p.x, p.y, !p.building);
@@ -571,8 +581,23 @@ export class GameScene extends Phaser.Scene {
     const ctx = this.pathTex.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
     drawStreet(ctx, this.roadsBroken());
-    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
     this.pathTex.refresh();
+  }
+
+  /** Path tiles changed: redraw them and their neighbors (whose edges join up to them). */
+  private redrawPathTiles(keys: string[]) {
+    const ctx = this.tileTex.getContext();
+    const done = new Set<string>();
+    for (const k of keys) {
+      const { tx, ty } = fromKey(k);
+      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = pathKey(tx + dx, ty + dy);
+        if (done.has(key)) continue;
+        done.add(key);
+        redrawTile(ctx, store.paths, tx + dx, ty + dy);
+      }
+    }
+    this.tileTex.refresh();
   }
 
   private tutorialStep: number | null | undefined;
@@ -777,6 +802,8 @@ export class GameScene extends Phaser.Scene {
   private sweepSfxT = 0;
   private sweepBar!: Phaser.GameObjects.Graphics;
   private pathTex!: Phaser.Textures.CanvasTexture;
+  /** The paths you've laid (their own layer, redrawn a few tiles at a time). */
+  private tileTex!: Phaser.Textures.CanvasTexture;
 
   private addLamp(x: number, y: number, grand = false) {
     // (the post is solid: you walk around it, not through it)
@@ -787,11 +814,9 @@ export class GameScene extends Phaser.Scene {
     this.lamps.push({ x, y, glow });
   }
 
-  /** Lay a building's path (after it's built) and light its doorway lamp. */
+  /** Light a new building's doorway lamp (its path is yours to lay: Shop → PATHS). */
   private layPath(b: BuildingId) {
     if (isAnnex(b)) return;
-    drawBuildingPath(this.pathTex.getContext(), b, this.roadsBroken());
-    this.pathTex.refresh();
     const lamp = lampSpots((x) => x === b).find((p) => p.building === b);
     if (lamp) this.addLamp(lamp.x, lamp.y);
   }
@@ -806,7 +831,6 @@ export class GameScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
 
     if (store.buildings[b]) {
-      if (!isAnnex(b)) objs.push(this.add.image(s.x, s.y - 2, `grounds_${b}`).setOrigin(0.5, 0).setDepth(-9.2));
       // The launch pad's base is a landing disc lying flat on the ground: a shadow under it reads as a second, floating disc.
       if (b !== "rocket_pad") objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.2)).setDepth(-8));
       const img = this.add.image(s.x, s.y, this.textureOf(b)).setOrigin(0.5, 1).setDepth(s.y);
@@ -1219,6 +1243,10 @@ export class GameScene extends Phaser.Scene {
     const actor = (v: VillagerId) => this.villagers.get(v);
 
     switch (e.type) {
+      case "paths":
+        this.redrawPathTiles(Object.keys(e.set));
+        break;
+
       case "task_start": {
         const a = actor(e.villager);
         a?.enqueue(async () => {
@@ -1660,7 +1688,8 @@ export class GameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.SLEEP, () => clearListener());
 
     kb.on("keydown-ESC", () => {
-      if (this.held) this.cancelHeld();
+      if (this.painting) this.setPainting(null);
+      else if (this.held) this.cancelHeld();
       else if (this.editMode) this.setEditMode(false);
     });
 
@@ -1676,6 +1705,12 @@ export class GameScene extends Phaser.Scene {
     const overUI = (p: Phaser.Input.Pointer) => this.scene.get("UI").input.hitTestPointer(p).length > 0;
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       this.pressedAt = null;
+      if (this.painting) {
+        if (this.panelOpen || overUI(p)) return;
+        this.paintDown = p.rightButtonDown() || this.painting === "erase" ? "erase" : "paint";
+        this.paintAt(p);
+        return;
+      }
       if (!this.arranging || this.panelOpen || overUI(p)) return;
       if (p.rightButtonDown()) return this.cancelHeld();
       if (this.held) return this.dropHeld();
@@ -1685,7 +1720,14 @@ export class GameScene extends Phaser.Scene {
       this.pickUp(m.held, { x: m.base.x - wp.x, y: m.base.y - wp.y });
       this.pressedAt = { x: p.x, y: p.y };
     });
+    this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
+      if (this.painting && this.paintDown && p.isDown) this.paintAt(p);
+    });
     this.input.on("pointerup", (p: Phaser.Input.Pointer) => {
+      if (this.paintDown) {
+        this.paintDown = null;
+        this.flushStroke();
+      }
       const from = this.pressedAt;
       this.pressedAt = null;
       // A plain click keeps it in hand (SELL / CANCEL); letting go after a drag sets it down.
@@ -2000,6 +2042,13 @@ export class GameScene extends Phaser.Scene {
   // MOVE on a decoration use the same pick-up / set-down flow.
 
   private editMode = false;
+  /** Painting paths (Shop → PATHS): the style, or the eraser. */
+  private painting: PathStyle | "erase" | null = null;
+  /** The button down right now: laying path, or taking it up. */
+  private paintDown: "paint" | "erase" | null = null;
+  /** Tiles changed in this stroke, not yet sent. */
+  private stroke = new Map<string, PathStyle | null>();
+  private strokeSentAt = 0;
   private held: Held | null = null;
   private grabOffset = { x: 0, y: 8 };
   private gridG!: Phaser.GameObjects.Graphics;
@@ -2024,7 +2073,52 @@ export class GameScene extends Phaser.Scene {
   private pressedAt: { x: number; y: number } | null = null;
 
   private get arranging() {
-    return this.editMode || this.held !== null;
+    return this.editMode || this.held !== null || this.painting !== null;
+  }
+
+  /** Start (or stop, with null) painting paths. */
+  private setPainting(p: PathStyle | "erase" | null) {
+    if (p && visiting()) return;
+    this.flushStroke();
+    if (p) {
+      this.editMode = false;
+      this.cancelHeld();
+      closePanel();
+    }
+    this.painting = p;
+    this.paintDown = null;
+    this.emitArrange();
+  }
+
+  /** Paint (or erase) the tile under the pointer, right away on screen; the server gets it in batches. */
+  private paintAt(p: Phaser.Input.Pointer) {
+    if (!this.painting || !this.paintDown) return;
+    const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+    const tx = Math.floor(wp.x / TILE);
+    const ty = Math.floor(wp.y / TILE);
+    if (!pathTileOk(tx, ty, store.buildings)) return;
+    const key = pathKey(tx, ty);
+    const style = this.paintDown === "erase" || this.painting === "erase" ? null : this.painting;
+    if ((store.paths[key] ?? null) === style) return;
+    if (style) store.paths[key] = style;
+    else delete store.paths[key];
+    this.stroke.set(key, style);
+    this.redrawPathTiles([key]);
+    if (this.stroke.size >= 60) this.flushStroke();
+  }
+
+  /** Send the stroke so far (one message per style). */
+  private flushStroke() {
+    if (!this.stroke.size) return;
+    const by = new Map<PathStyle | null, [number, number][]>();
+    for (const [key, style] of this.stroke) {
+      const { tx, ty } = fromKey(key);
+      if (!by.has(style)) by.set(style, []);
+      by.get(style)!.push([tx, ty]);
+    }
+    this.stroke.clear();
+    this.strokeSentAt = this.time.now;
+    for (const [style, tiles] of by) net.send({ type: "paint_paths", style, tiles });
   }
 
   private restartInPlace() {
@@ -2034,6 +2128,7 @@ export class GameScene extends Phaser.Scene {
 
   private setEditMode(on: boolean) {
     if (on === this.editMode || (on && visiting())) return;
+    if (on && this.painting) this.setPainting(null);
     this.editMode = on;
     if (on) {
       closePanel();
@@ -2045,7 +2140,9 @@ export class GameScene extends Phaser.Scene {
 
   private emitArrange() {
     const h = this.held;
+    const p = this.painting;
     this.game.events.emit("arrange", {
+      paint: p ? { name: p === "erase" ? "eraser" : pathDef(p)!.name, price: p === "erase" ? 0 : pathDef(p)!.price, erase: p === "erase" } : null,
       edit: this.editMode,
       holding: h ? { name: this.heldName(h), isNew: h.kind === "new", refund: h.kind === "deco" ? sellPrice(h.item) : null } : null,
     });
@@ -2265,6 +2362,18 @@ export class GameScene extends Phaser.Scene {
     this.footG.clear();
     if (!on) return this.setCursor("default");
     this.drawGrid();
+    if (this.painting) {
+      // (a long drag goes out in pieces, so it lands while you're still painting)
+      if (this.paintDown && this.stroke.size && this.time.now - this.strokeSentAt > 250) this.flushStroke();
+      const p = this.input.activePointer;
+      const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+      const tx = Math.floor(wp.x / TILE);
+      const ty = Math.floor(wp.y / TILE);
+      const ok = pathTileOk(tx, ty, store.buildings);
+      this.setCursor(ok ? "crosshair" : "not-allowed");
+      this.drawFoot({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE }, !ok ? 0xff5a5a : this.painting === "erase" || this.paintDown === "erase" ? 0xffb070 : 0x7cf08c);
+      return;
+    }
     if (this.held && this.ghost) {
       this.setCursor("grabbing");
       const h = this.held;

@@ -171,6 +171,7 @@ const PUBLIC_EVENTS = new Set<GameEvent["type"]>([
   "chore_cleared",
   "chore_gone",
   "happiness",
+  "paths",
 ]);
 
 export const visitorSees = (e: GameEvent) => PUBLIC_EVENTS.has(e.type);

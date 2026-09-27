@@ -1,6 +1,7 @@
 // Authoritative colony state + event bus. Persisted to server/data/world.json
 // so agents keep working (and their results keep waiting) while the game is closed.
 
+import { oldPathTiles, type PathStyle } from "../../shared/paths.js";
 import type { VisitEntry } from "../../shared/visit.js";
 import { DATA_DIR, HOSTED } from "./env.js";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
@@ -66,6 +67,10 @@ interface World {
   rocksGrewAt?: number;
   /** Friends who've visited (online; newest first), for the owner's visitor log. */
   visits?: VisitEntry[];
+  /** Paths the player laid, by tile ("tx,ty"). */
+  paths: Record<string, PathStyle>;
+  /** 1: the old automatic paths became tiles the player owns. */
+  pathsV?: number;
   shards: string[];
   requests: { day: string; list: ColonyRequest[]; v?: number };
   lastChoreAt: Partial<Record<VillagerId, number>>;
@@ -103,6 +108,8 @@ function freshWorld(): World {
     choreOptIn: {},
     memory: {},
     layout: {},
+    paths: {},
+    pathsV: 1,
     clearedRocks: [],
     shards: [],
     requests: { day: "", list: [] },
@@ -236,6 +243,18 @@ export const isGuest = () => guest;
 
 export const world = guest ? freshWorld() : load();
 applyLayout(world.layout);
+ensurePaths();
+
+/**
+ * Paths used to be laid by the game (every building to the plaza or Main Street).
+ * Now they're yours: an old save keeps them, as flagstone tiles you can take up.
+ */
+function ensurePaths() {
+  world.paths ??= {};
+  if (world.pathsV) return;
+  for (const k of oldPathTiles(world.buildings)) world.paths[k] ??= "stone";
+  world.pathsV = 1;
+}
 
 /** Into guest play (a fresh colony, in memory only) or back to the real save. */
 export function setGuest(on: boolean) {
@@ -248,6 +267,7 @@ export function setGuest(on: boolean) {
   for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
   Object.assign(world, w);
   applyLayout(world.layout);
+  ensurePaths();
   console.log(on ? "[world] playing as a guest (nothing is saved)" : "[world] back on the real save");
   return true;
 }
@@ -292,6 +312,7 @@ export function switchWorld(dev: boolean): boolean {
   for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
   Object.assign(world, w);
   applyLayout(world.layout);
+  ensurePaths();
   flushSave();
   console.log(`[world] now on the ${dev ? "dev showcase" : "real"} save`);
   return true;
@@ -304,6 +325,7 @@ export function resetWorld(): string {
     for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
     Object.assign(world, freshWorld());
     applyLayout(world.layout);
+    ensurePaths();
     return "";
   }
   flushSave();
@@ -313,6 +335,7 @@ export function resetWorld(): string {
   for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
   Object.assign(world, w);
   applyLayout(world.layout);
+  ensurePaths();
   flushSave();
   console.log(`[world] reset to a fresh colony (the old save is kept as ${backup})`);
   return backup;
@@ -387,6 +410,7 @@ export function snapshot(): Snapshot {
     devMode: isDevWorld(),
     introSeen: !!world.introSeen,
     guest,
+    paths: world.paths,
     clearedRocks: world.clearedRocks,
     shards: world.shards,
     requests: world.requests.list,

@@ -22,9 +22,11 @@ import { CHAPTER_AFTER, FINALE_AT, newNeighbors, pending, setFinalePending, type
 import { needsText, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
-type ArrangeState = { edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
+type ArrangeState = { paint: { name: string; price: number; erase: boolean } | null; edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
 import type { GameScene } from "./GameScene";
 import { FriendsPanel, type FriendsSpec } from "../friendspanel";
+import { PATHS, type PathStyle } from "../../../shared/paths";
+import { drawPathSwatch } from "../pathart";
 import { flyTo, hostName, loadSocial, mp, onKicked, onPeers, onSession, onSocial, takeNote, visiting } from "../multiplayer";
 import { CHAT_MAX } from "../../../shared/visit";
 import { claimInput, input as typeInput, releaseInput } from "../textinput";
@@ -896,13 +898,21 @@ export class UIScene extends Phaser.Scene {
   private renderBanner(a: ArrangeState) {
     this.banner?.destroy();
     this.banner = null;
-    if (!a.edit && !a.holding) return;
+    if (!a.edit && !a.holding && !a.paint) return;
     const W = this.scale.width;
     const H = this.scale.height;
-    const text = a.holding
+    const text = a.paint
+      ? a.paint.erase
+        ? "ERASER: click or drag over a path to take it up (you get its coins back)."
+        : `${a.paint.name.toUpperCase()} (${a.paint.price ? `${a.paint.price}¢ a tile` : "free"}): click or drag to lay it. Right-click takes it up.`
+      : a.holding
       ? `${a.holding.isNew ? `Place the ${a.holding.name}` : a.holding.name.endsWith("'s plot") ? `Set ${a.holding.name} down` : `Move the ${a.holding.name}`}: click where the tiles turn green.`
       : "EDIT MODE: drag anything to move it, or click a decoration to sell it.";
     const buttons: [string, number, () => void][] = [];
+    if (a.paint) {
+      buttons.push(a.paint.erase ? ["PATHS", C.woodMid, () => this.openShopAt("paths")] : ["ERASER", C.woodMid, () => this.game.events.emit("paint-paths", "erase")]);
+      buttons.push(["DONE", C.greenBtn, () => this.game.events.emit("paint-paths", null)]);
+    }
     if (a.holding?.refund != null) buttons.push([`SELL +${a.holding.refund}¢`, C.woodMid, () => this.game.events.emit("arrange-sell")]);
     if (a.holding) buttons.push(["CANCEL", C.woodMid, () => this.game.events.emit("arrange-cancel")]);
     if (a.edit) buttons.push(["DONE", C.greenBtn, () => this.game.events.emit("edit-toggle")]);
@@ -1042,7 +1052,8 @@ export class UIScene extends Phaser.Scene {
       "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear a rock, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
-      "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",
+      "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Lamps and doorbells follow the building.",
+      "PATHS are yours to lay: Shop → PATHS, pick a style (the Dirt Track is free) and click or drag across the ground; tiles side by side join up. Right-click (or the ERASER) takes a path up and gives its coins back.",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
       "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
       ...(net.auth.state === "in" && !net.auth.guest
@@ -1207,7 +1218,7 @@ export class UIScene extends Phaser.Scene {
   // ------------------------------------------------------------ shop
 
   private shopSel = 0;
-  private shopTab: DecorCategory = "garden";
+  private shopTab: DecorCategory | "paths" = "garden";
   private shopCoins = -1;
 
   private buildShop() {
@@ -1221,6 +1232,15 @@ export class UIScene extends Phaser.Scene {
     );
   }
 
+  /** Open the Shop on a tab (the paint bar's PATHS button). */
+  private openShopAt(tab: DecorCategory | "paths") {
+    this.game.events.emit("paint-paths", null);
+    this.shopTab = tab;
+    this.shopSel = 0;
+    if (!this.shopOpen) this.openShop();
+    else this.renderShop();
+  }
+
   /** A Stardew-style catalog: a grid of items, and the selected one's details with a BUY button. */
   private renderShop() {
     this.shopTip?.destroy();
@@ -1229,7 +1249,11 @@ export class UIScene extends Phaser.Scene {
     this.shop.removeAll(true);
     const W = this.scale.width;
     const H = this.scale.height;
-    const items = SHOP_ITEMS.filter((i) => i.cat === this.shopTab);
+    const pathsTab = this.shopTab === "paths";
+    // (paths are painted a tile at a time: their cards look like the rest, with a patch of path)
+    const items = pathsTab
+      ? PATHS.map((d) => ({ id: d.id, name: d.name, price: d.price, blurb: d.blurb, texture: this.swatch(d.id), likes: [] as VillagerId[], market: d.market }))
+      : SHOP_ITEMS.filter((i) => i.cat === this.shopTab);
     const [tw, th, gap, pad] = [50, 70, 4, 10];
     // As many columns as fit (one row on most screens), at least three.
     const cols = Math.max(3, Math.min(items.length, Math.floor((W - 24 - pad * 2 + gap) / (tw + gap))));
@@ -1256,7 +1280,7 @@ export class UIScene extends Phaser.Scene {
 
     // Category tabs.
     let tabX = x0 + pad;
-    for (const c of DECOR_CATEGORIES) {
+    for (const c of [...DECOR_CATEGORIES, { id: "paths" as const, name: "PATHS" }]) {
       const b = new Button(this, tabX, y0 + 29, c.name, c.id === this.shopTab ? C.greenBtn : C.woodMid, () => {
         sfx.blip();
         this.shopTab = c.id;
@@ -1271,7 +1295,7 @@ export class UIScene extends Phaser.Scene {
       const tx = x0 + pad + (i % cols) * (tw + gap);
       const ty = y0 + top + Math.floor(i / cols) * (th + gap);
       const sel = i === this.shopSel;
-      const stocked = inStock(store.progress.town.stages.market, item);
+      const stocked = "market" in item ? store.progress.town.stages.market >= item.market : inStock(store.progress.town.stages.market, item);
       const afford = stocked && store.coins >= item.price;
       const tile = this.add.graphics();
       const draw = (hover: boolean) => {
@@ -1281,14 +1305,14 @@ export class UIScene extends Phaser.Scene {
       draw(false);
       const icon = this.add.image(tx + tw / 2, ty + 59, item.texture).setOrigin(0.5, 1);
       if (!afford) icon.setAlpha(0.55);
-      const price = ptext(this, 0, ty + 60, stocked ? `${item.price}¢` : "LOCKED", afford ? C.ink : stocked ? C.red : C.inkSoft, "pxb");
+      const price = ptext(this, 0, ty + 60, !stocked ? "LOCKED" : pathsTab ? (item.price ? `${item.price}¢/tile` : "FREE") : `${item.price}¢`, afford ? C.ink : stocked ? C.red : C.inkSoft, "pxb");
       price.setX(tx + Math.round((tw - measure(price).w) / 2));
       // Who loves it: their little heads in the corner. A gold ★ if someone's wishing for it today.
       const heads = item.likes.map((v, k) => this.add.image(tx + 3 + k * 8, ty + 3, `vicon_${v}_0`).setOrigin(0));
       const wished = store.requests.find((r) => r.kind === "wish" && !r.done && r.item === item.id);
       const star = wished ? ptext(this, tx + tw - 9, ty + 3, "★", 0xd99a1e, "pxb") : null;
       const hit = this.add.zone(tx, ty, tw, th).setOrigin(0).setInteractive({ useHandCursor: true });
-      const tipText = `${item.name}\n♥ ${item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ")} love${item.likes.length === 1 ? "s" : ""} this${wished ? `\n★ ${VILLAGER_SHORT[wished.villager]} wishes for one!` : ""}`;
+      const tipText = pathsTab ? `${item.name}\n${item.blurb}` : `${item.name}\n♥ ${item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ")} love${item.likes.length === 1 ? "s" : ""} this${wished ? `\n★ ${VILLAGER_SHORT[wished.villager]} wishes for one!` : ""}`;
       hit.on("pointerover", () => {
         draw(true);
         this.shopTip?.destroy();
@@ -1312,15 +1336,15 @@ export class UIScene extends Phaser.Scene {
     const dy = y0 + top + gridH + 8;
     const panel = this.add.graphics();
     pixBox(panel, x0 + pad, dy, pw - pad * 2, 46, C.paperLight, C.paperDark);
-    const stocked = inStock(store.progress.town.stages.market, item);
+    const stocked = "market" in item ? store.progress.town.stages.market >= item.market : inStock(store.progress.town.stages.market, item);
     const afford = stocked && store.coins >= item.price;
     const btnW = 64;
     const name = ptext(this, x0 + pad + 6, dy + 5, item.name, C.ink, "pxb");
     const blurb = ptext(this, x0 + pad + 6, dy + 16, item.blurb, C.inkSoft).setMaxWidth(pw - pad * 2 - btnW - 18);
     const fans = item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ");
     const wish = store.requests.find((r) => r.kind === "wish" && !r.done && r.item === item.id);
-    const loves = ptext(this, x0 + pad + 6, dy + 31, !stocked ? `Not in stock yet: upgrade the Market (${store.progress.town.stages.market === 0 ? "repaired" : "grand"}) to sell this.` : wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`, wish ? 0xb07a10 : C.coral);
-    const buy = new Button(this, x0 + pw - pad - btnW - 6, dy + 16, !stocked ? "LOCKED" : afford ? `BUY ${item.price}¢` : `NEED ${item.price}¢`, afford ? C.greenBtn : 0x8a8199, () => {
+    const loves = ptext(this, x0 + pad + 6, dy + 31, pathsTab ? (stocked ? "Click or drag to lay it; tiles side by side join up. Right-click takes it up (refunded)." : `Not in stock yet: ${"market" in item && item.market === 2 ? "make the Market grand" : "repair the Market"}.`) : !stocked ? `Not in stock yet: upgrade the Market (${store.progress.town.stages.market === 0 ? "repaired" : "grand"}) to sell this.` : wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`, wish ? 0xb07a10 : C.coral);
+    const buy = new Button(this, x0 + pw - pad - btnW - 6, dy + 16, !stocked ? "LOCKED" : pathsTab ? (afford ? "PAINT" : "NEED COINS") : afford ? `BUY ${item.price}¢` : `NEED ${item.price}¢`, afford ? C.greenBtn : 0x8a8199, () => {
       if (!afford) {
         sfx.deny();
         this.cameras.main.shake(120, 0.004);
@@ -1328,7 +1352,8 @@ export class UIScene extends Phaser.Scene {
       }
       sfx.blip();
       this.closeShop();
-      this.game.events.emit("begin-place", item.id);
+      if (pathsTab) this.game.events.emit("paint-paths", item.id);
+      else this.game.events.emit("begin-place", item.id);
     }, btnW);
     this.shop.add([panel, name, blurb, loves, buy]);
   }
@@ -1356,6 +1381,17 @@ export class UIScene extends Phaser.Scene {
   }
 
   private shopTip: Label | null = null;
+
+  /** A patch of a path, for its Shop card (made once). */
+  private swatch(style: PathStyle): string {
+    const key = `pathswatch_${style}`;
+    if (!this.textures.exists(key)) {
+      const t = this.textures.createCanvas(key, 3 * 16, 2 * 16)!;
+      drawPathSwatch(t.getContext(), style);
+      t.refresh();
+    }
+    return key;
+  }
 
   private closeShop() {
     this.shopTip?.destroy();

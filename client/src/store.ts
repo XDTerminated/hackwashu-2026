@@ -31,6 +31,7 @@ export const store: Snapshot & { connected: boolean } = {
   requests: [],
   introSeen: false,
   guest: false,
+  paths: {},
   connected: false,
 };
 
@@ -136,6 +137,13 @@ export function applyEvent(e: SeqEvent) {
       Object.assign(villager(e.villager), { status: "working", activity: e.approved ? "launching!" : "putting it away" });
       break;
     }
+    case "paths":
+      for (const [k, style] of Object.entries(e.set)) {
+        if (style) store.paths[k] = style;
+        else delete store.paths[k];
+      }
+      store.coins = e.coins;
+      break;
     case "building_error":
       Object.assign(villager(e.villager), { status: "error", activity: e.message });
       break;

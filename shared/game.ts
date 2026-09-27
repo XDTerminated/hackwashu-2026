@@ -2,6 +2,7 @@
 // The server is the source of truth; the client renders and animates.
 
 import type { Peer, Session } from "./visit.js";
+import type { PathStyle } from "./paths.js";
 import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
 
 export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj" | "mechanic";
@@ -493,6 +494,8 @@ export interface Snapshot {
   introSeen: boolean;
   /** Playing as a guest: a colony kept only in memory, never saved. */
   guest: boolean;
+  /** Paths you've laid, by tile ("tx,ty"). */
+  paths: Record<string, PathStyle>;
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -507,6 +510,8 @@ export type TaskSource = "game" | "moonpad" | "phone" | "chore";
 
 /** Everything an agent does becomes one of these. The client replays them at a watchable pace. */
 export type GameEvent =
+  /** Paths laid or taken up (style null), and your coins after. */
+  | { type: "paths"; set: Record<string, PathStyle | null>; coins: number }
   | { type: "task_start"; taskId: string; villager: VillagerId; text: string; from: TaskSource }
   | { type: "think"; villager: VillagerId; text: string }
   | { type: "say"; villager: VillagerId; text: string }
@@ -566,6 +571,8 @@ export type ClientMessage =
   | { type: "peer_chat"; text: string }
   /** A visitor's gift to the island's owner, from their own coins and materials. */
   | { type: "gift"; coins?: number; materials?: Partial<Materials> }
+  /** Pave tiles with a path from the Shop (or take paths up, with style null). */
+  | { type: "paint_paths"; style: PathStyle | null; tiles: [number, number][] }
   /** The owner sends a visitor home (and maybe blocks them). */
   | { type: "kick"; id: string; block?: boolean }
   | { type: "landed" }
