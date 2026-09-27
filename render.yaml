@@ -1,0 +1,32 @@
+# Render blueprint: the whole game (the gateway serves the built client and runs each player's village).
+# New → Blueprint → pick this repo. See README, "Deploying (Render)".
+services:
+  - type: web
+    name: moonstead
+    runtime: node
+    plan: free
+    # (dev dependencies too: the build needs vite, typescript and esbuild)
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The site's own address, e.g. https://moonstead.onrender.com (the gateway won't start without it).
+      - key: MOON_PUBLIC_URL
+        sync: false
+      # Keeps sign-ins valid across restarts (the free plan has no disk to keep one in).
+      - key: SESSION_SECRET
+        generateValue: true
+      # A free instance has 512 MB: the gateway is ~55 MB and each village ~50 MB idle, more while agents work.
+      - key: MOON_MAX_RUNNING
+        value: "4"
+      - key: MOON_IDLE_MIN
+        value: "5"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GROQ_API
+        sync: false

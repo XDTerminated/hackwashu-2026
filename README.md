@@ -80,6 +80,27 @@ copy runs precompiled from `server/dist` at about 60-100 MB of memory.
    (`https://<your-app>.up.railway.app/privacy`). Until Google verifies the app, up to 100 people
    can grant Gmail access, after a "Google hasn't verified this app" screen.
 
+### Deploying (Render, free)
+
+The free plan works for a demo, with two catches: it sleeps after 15 minutes without visitors, and it
+has no disk, so villages and accounts are wiped whenever the service restarts or redeploys.
+
+1. In Render: **New → Blueprint**, pick this repo. `render.yaml` sets up one free web service
+   (build `npm ci --include=dev && npm run build`, start `npm start`, health check `/healthz`) and
+   generates `SESSION_SECRET`.
+2. When it asks, fill in `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GROQ_API`, and set
+   `MOON_PUBLIC_URL` to the service's address (`https://<name>.onrender.com`; the gateway won't
+   start without it, so set it and redeploy if the first deploy fails on it).
+3. Google Cloud → your OAuth client → **Authorized redirect URIs**: add
+   `https://<name>.onrender.com/auth/google/callback` and `https://<name>.onrender.com/oauth/google/callback`
+   (and the domain + `/privacy` page on the consent screen, as in the Railway steps above).
+4. **Keep it awake** with a free uptime monitor, e.g. [UptimeRobot](https://uptimerobot.com): New monitor →
+   HTTP(s) → URL `https://<name>.onrender.com/healthz` → every 5 minutes. The free plan's monthly
+   hours cover one service running all month.
+
+`MOON_MAX_RUNNING=4` keeps a 512 MB instance safe; raise it carefully (each running village is ~50 MB
+idle and more while its agents work).
+
 Test the online setup on your own computer: `npm run build`, then
 `MOON_DEV_LOGIN=1 PORT=8090 npm start` and open http://localhost:8090. The title
 screen shows SIGN IN WITH GOOGLE; to sign in without Google while testing, open
