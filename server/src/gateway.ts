@@ -15,8 +15,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { connect as tcp } from "node:net";
-import { dirname, extname, join, normalize, resolve } from "node:path";
+import { connect as tcp, isIP } from "node:net";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OAuth2Client } from "google-auth-library";
 import { suitTint, type SocialState, type VisitPerms } from "../../shared/visit.js";
@@ -28,6 +28,8 @@ const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = resolve(process.env.MOON_DATA_ROOT || join(SERVER_DIR, "data-hosted"));
 const CLIENT = resolve(process.env.MOON_CLIENT_DIST || join(SERVER_DIR, "..", "client", "dist"));
 const MAX_RUNNING = Number(process.env.MOON_MAX_RUNNING ?? 30);
+/** Guests can fill at most half the Moon, so signed-in players always find room. */
+const MAX_GUESTS = Math.max(1, Math.floor(MAX_RUNNING / 2));
 const IDLE_MS = 15 * 60_000;
 const SESSION_DAYS = 30;
 /** Local testing only: /auth/dev?email=... signs in without Google. Never set this on the real site. */
@@ -64,6 +66,12 @@ const INTERNAL_KEY = randomBytes(24).toString("hex");
 let publicUrl = (process.env.MOON_PUBLIC_URL ?? "").replace(/\/$/, "");
 /** The address the site was last reached at (for islands started by another island, not a browser). */
 let lastSite = `http://localhost:${PORT}`;
+// The site's address goes into sign-in links and the LINK command people paste into a terminal:
+// it can't come from whatever a request claims its Host is (only when testing on your own computer).
+if (!publicUrl && !DEV_LOGIN) {
+  console.error("[gateway] ✗ MOON_PUBLIC_URL isn't set: set it to the site's address (https://...). See README, Deploying.");
+  process.exit(1);
+}
 function siteUrl(req: IncomingMessage) {
   if (publicUrl) return publicUrl;
   const proto = String(req.headers["x-forwarded-proto"] ?? "http").split(",")[0];
@@ -191,11 +199,25 @@ function freePort() {
   throw new Error("no free ports");
 }
 
+/**
+ * What a player's copy gets from the site's settings: its brains, voices and sign-in apps, and
+ * what Node needs to run. Never the host's own Canvas, phone line, name, dev tools or session secret.
+ */
+const COPY_ENV = /^(ANTHROPIC_API_KEY|GROQ_\w+|MOCK_AGENTS|GOOGLE_CLIENT_(ID|SECRET)|SPOTIFY_CLIENT_(ID|SECRET)|ELEVENLABS_\w+|BROWSER_VOICES|VOICE_\w+|UNLOCK_ALL|ROCK_REGROW_MS|PATH|PATHEXT|NODE_\w+|TSX_\w+|HOME|USERPROFILE|TMPDIR|TMP|TEMP|LANG|LC_\w+|TZ|SystemRoot|SYSTEMROOT|windir|COMSPEC|ComSpec|APPDATA|LOCALAPPDATA|(HTTPS?|NO)_PROXY|(https?|no)_proxy|SSL_CERT_\w+)$/;
+const COPY_NEVER = /^(CANVAS_|DEV_TOOLS$|PLAYER_|PHOTON_|SPECTRUM_|SESSION_SECRET$|MOON_)/;
+
+function copyEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && COPY_ENV.test(k) && !COPY_NEVER.test(k)) out[k] = v;
+  return out;
+}
+
 /** This player's game server, started if it isn't running. */
 async function copyFor(p: Player, site: string): Promise<Copy> {
   if (deleting.has(p.id)) throw new Error("That village is being deleted.");
   let c = copies.get(p.id);
   if (!c) {
+    if (p.guest && [...copies.keys()].filter((id) => players[id]?.guest).length >= MAX_GUESTS) throw new Error("Lots of guests on the Moon right now. Sign in with Google, or try again in a few minutes!");
     if (copies.size >= MAX_RUNNING) {
       // Make room: stop whoever's been idle longest.
       const idle = [...copies.entries()].filter(([, x]) => x.sockets === 0).sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
@@ -209,7 +231,7 @@ async function copyFor(p: Player, site: string): Promise<Copy> {
     const proc = spawn(process.execPath, ["--import", "tsx", join(SERVER_DIR, "src", "index.ts")], {
       cwd: SERVER_DIR,
       env: {
-        ...process.env,
+        ...copyEnv(),
         PORT: String(port),
         MOON_HOSTED: "1",
         MOON_DATA_DIR: dir,
@@ -219,13 +241,6 @@ async function copyFor(p: Player, site: string): Promise<Copy> {
         MOON_USER_NAME: p.name,
         MOON_GUEST: p.guest ? "1" : "",
         GOOGLE_REDIRECT: `${site}/oauth/google/callback`,
-        // Texting runs through the host's own line: never in a player's copy.
-        PHOTON_PROJECT_ID: "",
-        PHOTON_PROJECT_SECRET: "",
-        SPECTRUM_PROJECT_ID: "",
-        SPECTRUM_PROJECT_SECRET: "",
-        PLAYER_PHONE: "",
-        SESSION_SECRET: "",
         MOON_INTERNAL_KEY: INTERNAL_KEY,
         MOON_GATEWAY: `http://127.0.0.1:${PORT}`,
       },
@@ -374,7 +389,7 @@ const TYPES: Record<string, string> = {
 /** A file from the built game (client/dist), or false if there isn't one. */
 function serveStatic(res: ServerResponse, pathname: string): boolean {
   const file = normalize(join(CLIENT, pathname === "/" ? "index.html" : decodeURIComponent(pathname)));
-  if (!file.startsWith(CLIENT) || !existsSync(file) || !extname(file)) return false;
+  if (!file.startsWith(CLIENT + sep) || !existsSync(file) || !extname(file)) return false;
   const immutable = pathname.startsWith("/assets/");
   res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache" });
   res.end(readFileSync(file));
@@ -419,6 +434,29 @@ function privacyPage(res: ServerResponse) {
   );
 }
 
+// ---------------------------------------------------------------- guests
+
+/** Who's asking: behind the site's proxy (a private address), the address it saw; otherwise the connection's. */
+function clientIp(req: IncomingMessage) {
+  const addr = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
+  const behindProxy = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|f[cd])/i.test(addr);
+  const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",").pop()?.trim() ?? "";
+  return behindProxy && isIP(forwarded) ? forwarded : addr;
+}
+
+const GUESTS_PER_IP = 5;
+const GUEST_WINDOW_MS = 10 * 60_000;
+const guestStarts = new Map<string, number[]>();
+
+function guestAllowed(ip: string) {
+  const now = Date.now();
+  for (const [k, times] of guestStarts) if (times.every((t) => now - t > GUEST_WINDOW_MS)) guestStarts.delete(k);
+  const recent = (guestStarts.get(ip) ?? []).filter((t) => now - t < GUEST_WINDOW_MS);
+  if (recent.length >= GUESTS_PER_IP) return false;
+  guestStarts.set(ip, [...recent, now]);
+  return true;
+}
+
 // ---------------------------------------------------------------- sign in with Google
 
 function googleClient(req: IncomingMessage) {
@@ -456,7 +494,8 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
     }
   }
   if (url.pathname === "/auth/guest") {
-    // Play as a guest: a village of your own that's never saved.
+    // Play as a guest: a village of your own that's never saved (a few per visitor, now and then).
+    if (!guestAllowed(clientIp(req))) return redirect("/?signin=busy");
     const id = randomBytes(9).toString("base64url").replace(/[-_]/g, "x");
     const p: Player = { id, sub: `guest:${id}`, email: "", name: "Guest", createdAt: Date.now(), lastSeen: Date.now(), guest: true };
     players[id] = p;
@@ -469,7 +508,13 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
     return redirect("/", newSession(req, p));
   }
   if (url.pathname === "/auth/logout") {
-    // Signing out signs out everywhere: every tab, and any copied cookie.
+    // Signing out signs out everywhere: every tab, and any copied cookie. (POST from the game only: a link can't sign you out.)
+    if (req.method !== "POST") {
+      res.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+      return res.end();
+    }
+    const origin = req.headers.origin;
+    if (origin && origin !== siteUrl(req)) return page(res, 403, "Not here", "<p>That has to come from the game.</p>");
     const p = whoIs(req);
     if (p) {
       p.epoch = (p.epoch ?? 0) + 1;
@@ -479,7 +524,8 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       // (a guest's village is thrown away: the copy's exit deletes it)
       if (p.guest && !copies.has(p.id)) delete players[p.id];
     }
-    return redirect("/?signin=signedout", sessionCookie(req, "", 0));
+    res.writeHead(204, { "cache-control": "no-store", "set-cookie": sessionCookie(req, "", 0) });
+    return res.end();
   }
   // The title screen asks this before connecting: signed in, and as whom.
   if (url.pathname === "/auth/me") {
@@ -681,14 +727,16 @@ const server = createServer(async (req, res) => {
       return res.end(JSON.stringify({ ok: true, players: Object.keys(players).length, running: copies.size }));
     }
     // The LINK script talks to a player's copy with its own code/token (no cookie on the command line).
+    // Its code and token live in the running village, so a village that's asleep is never woken for it.
     const bridge = url.pathname.match(/^\/bridge\/([\w]+)\//);
     if (bridge) {
-      const p = Object.hasOwn(players, bridge[1]) ? players[bridge[1]] : null;
-      if (!p) {
+      const c = Object.hasOwn(players, bridge[1]) ? copies.get(bridge[1]) : undefined;
+      if (!c) {
         res.writeHead(404, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ error: "No village with that link. Press LINK in the game for a fresh command." }));
+        return res.end(JSON.stringify({ error: "No village with that link is open. Open the game and press LINK for a fresh command." }));
       }
-      return proxy(req, res, await copyFor(p, siteUrl(req)), siteUrl(req));
+      await c.ready;
+      return proxy(req, res, c, siteUrl(req));
     }
     const p = whoIs(req);
     // Your village's own pages (connect Google, voices, ...) need you signed in; the title screen signs you in.

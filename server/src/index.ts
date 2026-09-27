@@ -1,12 +1,12 @@
-import { inStock } from "../../shared/town.js";
+import { inStock, LANDMARKS } from "../../shared/town.js";
 import { pathDef, pathKey, pathTileOk, type PathDef, type PathStyle } from "../../shared/paths.js";
 
 /** Not stocked at the Market's current stage? */
 const notStocked = (def: PathDef) => world.progress.town.stages.market < def.market;
-import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
+import { ACCOUNT, HOSTED, hostAllowed, PUBLIC_URL, USER_ID } from "./env.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
+import type { BuildingId, ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
 import { BUILDINGS, EXTENSIONS, moveInAt } from "../../shared/game.js";
 import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
@@ -19,11 +19,11 @@ import { denyAllPending, resolveApproval } from "./approvals.js";
 import { DEFAULT_CANVAS, canvasBase, connectCanvas, disconnectCanvas, initCanvas, searchSchools } from "./connectors/canvas.js";
 import { canvasSignIn } from "./connectors/canvasLogin.js";
 import { testConnections } from "./selftest.js";
-import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, finishGoogleSignin, forgetSignin, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, googleSigninUrl, initGoogle, setGoogleClient } from "./connectors/google.js";
+import { checkGoogleClient, disconnectGoogle, finishGoogleAuth, finishGoogleSignin, forgetSignin, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, googleSigninUrl, initGoogle, setGoogleClient, takeGoogleFlow } from "./connectors/google.js";
 import { connectGithub, connectGithubCli, disconnectGithub, initGithub } from "./connectors/github.js";
 import { accessToken as spotifyToken, disconnectSpotify, finishSpotifyAuth, initSpotify, setDevice as setSpotifyDevice, setSpotifyClient, SPOTIFY_REDIRECT, spotifyAuthUrl, spotifyConfigured } from "./connectors/spotify.js";
 import { onPhoneLinked, phoneLinked, photonReady, startLink, startPhoton, unlink } from "./photon.js";
-import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
+import { clearChore, devSpawn, setChoreOptIn, setPresence, startChores } from "./chores.js";
 import { handleVoice, voiceStatus, voiceSummary } from "./voice.js";
 import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
@@ -36,8 +36,13 @@ const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj", "mechanic"];
 const SERVICES: Service[] = ["google", "canvas", "spotify", "github"];
 
+/** Anything from outside (a query string, an error, an account name) goes into a page through this. */
+const esc = (s: unknown) => String(s).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+const errText = (err: unknown) => esc(err instanceof Error ? err.message : err);
+
 function page(res: ServerResponse, status: number, title: string, body: string) {
-  res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+  // (these pages are plain HTML: no scripts, images or frames)
+  res.writeHead(status, { "content-type": "text/html; charset=utf-8", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" });
   res.end(`<!doctype html><meta charset="utf-8"><title>${title}</title>
 <body style="font-family:ui-monospace,monospace;background:#0b0a1a;color:#f4d9a6;display:grid;place-items:center;min-height:100vh;margin:0">
 <div style="max-width:560px;padding:24px;border:4px solid #8a4b1f;background:#1a1430;line-height:1.6">
@@ -46,6 +51,11 @@ function page(res: ServerResponse, status: number, title: string, body: string) 
 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  // On your computer: only when asked for by a name that means this computer (not a rebound one).
+  if (!hostAllowed(req.headers.host)) {
+    res.writeHead(421, { "content-type": "text/plain" });
+    return res.end("Not here. (Playing over your network? Add this address to ALLOWED_HOSTS.)");
+  }
 
   // A villager line to speak aloud in the talk dialog.
   if (url.pathname === "/voice") return handleVoice(req, res);
@@ -62,6 +72,11 @@ const httpServer = createServer(async (req, res) => {
     if (req.method !== "POST") {
       res.writeHead(405, { "content-type": "application/json" });
       return res.end(JSON.stringify({ ok: false, error: "POST a JSON event" }));
+    }
+    // Tools, not web pages: a browser always says where a page came from, and can't send JSON cross-site without asking.
+    if (req.headers.origin || !/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
+      res.writeHead(403, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: "send content-type: application/json, from a tool (not a web page)" }));
     }
     let raw = "";
     for await (const chunk of req) {
@@ -91,7 +106,7 @@ const httpServer = createServer(async (req, res) => {
       try {
         setSpotifyClient(form.get("id") ?? "", form.get("secret") ?? "");
       } catch (err) {
-        return page(res, 400, "Almost", `<p>${err instanceof Error ? err.message : err}</p><p><a style="color:#f5c542" href="/setup/spotify">Try again</a></p>`);
+        return page(res, 400, "Almost", `<p>${errText(err)}</p><p><a style="color:#f5c542" href="/setup/spotify">Try again</a></p>`);
       }
       services.announceConnections();
       return page(res, 200, "Spotify is ready", `<p>Saved (privately, on this computer). Talk to Echo in the game and press <b>CONNECT SPOTIFY</b>, or:</p>
@@ -119,14 +134,14 @@ ${step(4, `While the app is in Development mode, only people you add can sign in
   }
   if (url.pathname === "/oauth/spotify/callback") {
     const code = url.searchParams.get("code");
-    if (!code) return page(res, 400, "Sign-in cancelled", `<p>${url.searchParams.get("error") ?? "No code from Spotify."} You can close this tab.</p>`);
+    if (!code) return page(res, 400, "Sign-in cancelled", `<p>${esc(url.searchParams.get("error") ?? "No code from Spotify.")} You can close this tab.</p>`);
     try {
       const account = await finishSpotifyAuth(code, url.searchParams.get("state"));
       services.announceConnections();
-      return page(res, 200, "Connected! 🎧", `<p>Echo can play <b>${account ?? "your Spotify"}</b> now. Close this tab, head back to the Moon, and ask Echo for a song.</p>`);
+      return page(res, 200, "Connected! 🎧", `<p>Echo can play <b>${esc(account ?? "your Spotify")}</b> now. Close this tab, head back to the Moon, and ask Echo for a song.</p>`);
     } catch (err) {
       console.error("[spotify] sign-in failed:", err);
-      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p><p>If it says the user isn't registered, add your Spotify email under User Management in your app on the Spotify Developer Dashboard.</p>`);
+      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? esc(err.message) : "Unknown error"}</p><p>If it says the user isn't registered, add your Spotify email under User Management in your app on the Spotify Developer Dashboard.</p>`);
     }
   }
   // The game's own Spotify player asks for a fresh token here (only the game itself may read it).
@@ -163,7 +178,7 @@ ${step(4, `While the app is in Development mode, only people you add can sign in
       try {
         setGoogleClient(form.get("id") ?? "", form.get("secret") ?? "");
       } catch (err) {
-        return page(res, 400, "Almost", `<p>${err instanceof Error ? err.message : err}</p><p><a style="color:#f5c542" href="/setup/google">Try again</a></p>`);
+        return page(res, 400, "Almost", `<p>${errText(err)}</p><p><a style="color:#f5c542" href="/setup/google">Try again</a></p>`);
       }
       services.announceConnections();
       return page(res, 200, "Google sign-in is ready", `<p>Saved (privately, on this computer). Players can now press <b>CONNECT GOOGLE</b> in the game and sign in with their own account.</p>
@@ -190,7 +205,7 @@ ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clien
 
   // The title screen's sign-in: just who you are (no Gmail or Calendar, so no "unverified app" warning).
   if (url.pathname === "/signin/google") {
-    res.writeHead(302, { location: googleConfigured() ? googleSigninUrl() : "/setup/google" });
+    res.writeHead(302, { location: googleConfigured() ? await googleSigninUrl() : "/setup/google" });
     return res.end();
   }
 
@@ -204,35 +219,41 @@ ${step(5, `${link("https://console.cloud.google.com/auth/clients/create", "Clien
     // Set up, but wrong somewhere? Say exactly what to fix instead of Google's error page.
     const check = await checkGoogleClient();
     if (!check.ok) return page(res, 200, "One thing to fix", `<p>${check.problem}</p><p>${check.fix}</p><p><a style="color:#f5c542" target="_blank" rel="noopener" href="https://console.cloud.google.com/auth/clients">Open your OAuth clients →</a> &nbsp; <a style="color:#f5c542" href="/connect/google">Try again</a></p>`);
-    res.writeHead(302, { location: googleAuthUrl() });
+    res.writeHead(302, { location: await googleAuthUrl() });
     return res.end();
   }
   if (url.pathname === "/oauth/google/callback") {
     const code = url.searchParams.get("code");
-    if (!code) return page(res, 400, "Sign-in cancelled", `<p>${url.searchParams.get("error") ?? "No code from Google."} You can close this tab.</p>`);
-    if (url.searchParams.get("state") === "signin") {
+    if (!code) return page(res, 400, "Sign-in cancelled", `<p>${esc(url.searchParams.get("error") ?? "No code from Google.")} You can close this tab.</p>`);
+    // (only a sign-in this server started, in the last 10 minutes, and only once)
+    const flow = takeGoogleFlow(url.searchParams.get("state"));
+    if (!flow) return page(res, 400, "Sign-in expired", "<p>That sign-in link is stale or wasn't started here. Press the sign-in button in the game again.</p>");
+    if (flow.kind === "signin") {
       try {
-        const me = await finishGoogleSignin(code);
+        const me = await finishGoogleSignin(code, flow.verifier);
         services.announceConnections();
-        return page(res, 200, "Signed in! 🌙", `<p>Welcome, <b>${me.name.replace(/[<>&"]/g, "")}</b>. Close this tab and press PLAY.</p>`);
+        return page(res, 200, "Signed in! 🌙", `<p>Welcome, <b>${esc(me.name)}</b>. Close this tab and press PLAY.</p>`);
       } catch (err) {
         console.error("[google] sign-in failed:", err);
-        return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p>`);
+        return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? esc(err.message) : "Unknown error"}</p>`);
       }
     }
     try {
-      const account = await finishGoogleAuth(code);
+      const account = await finishGoogleAuth(code, flow.verifier);
       services.announceConnections();
-      return page(res, 200, "Connected! 🚀", `<p>The colony can now reach <b>${account ?? "your Google account"}</b>. Close this tab and head back to the Moon — someone's rocket is landing.</p>`);
+      return page(res, 200, "Connected! 🚀", `<p>The colony can now reach <b>${esc(account ?? "your Google account")}</b>. Close this tab and head back to the Moon — someone's rocket is landing.</p>`);
     } catch (err) {
       console.error("[google] sign-in failed:", err);
-      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p>`);
+      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? esc(err.message) : "Unknown error"}</p>`);
     }
   }
 
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify({ ok: true, service: "moon-village", brain: BRAIN, voice: voiceStatus(), photon: photonReady(), connections: services.connections(), seq: world.seq }));
 });
+
+/** A building id from the game (not "__proto__", an array, ...). */
+const isBuilding = (b: unknown): b is BuildingId => typeof b === "string" && Object.hasOwn(BUILDINGS, b);
 
 const isLocal = (addr: string | undefined) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(addr ?? "");
 
@@ -250,7 +271,7 @@ function originAllowed(origin: string | undefined, host: string | undefined) {
 }
 
 // (online, only the gateway can say who's connecting: anyone else is turned away)
-const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ origin, req }: { origin: string; req: IncomingMessage }) => originAllowed(origin, req.headers.host) && !!identify(req) });
+const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ origin, req }: { origin: string; req: IncomingMessage }) => hostAllowed(req.headers.host) && originAllowed(origin, req.headers.host) && !!identify(req) });
 
 process.on("unhandledRejection", (err) => console.error("[server] unhandled:", err));
 // Your coding agents' work (code, commands, output) only goes to a game
@@ -289,9 +310,17 @@ function fullSnapshot() {
   };
 }
 
+// What villagers do with your accounts (their thinking, tool results, letters, texts) only goes to
+// the game on this computer too; everyone sees the village itself change.
+const PRIVATE_EVENTS = new Set<string>(["task_start", "think", "say", "handoff", "tool_start", "tool_end", "approval_needed", "approval_resolved", "building_error", "task_done", "phone", "text", "connections", "music"]);
 onEvent((event) => {
-  for (const c of wss.clients) if (!isVisitor(c) || visitorSees(event)) send(c, { type: "event", event });
+  const secret = PRIVATE_EVENTS.has(event.type);
+  // (private events only reach the owner at home; visitors see only what visitorSees allows)
+  for (const c of wss.clients) if ((!secret || localClients.has(c)) && (!isVisitor(c) || visitorSees(event))) send(c, { type: "event", event });
 });
+
+/** Messages that use (or change) your connected accounts: only from the game on this computer, or your own copy online. */
+const ACCOUNT_MESSAGES = new Set<string>(["task", "approve", "connect_github", "github_cli", "connect_canvas", "canvas_login", "disconnect", "dev_mode", "phone_link_start", "phone_unlink", "test_connections", "use_sandbox", "spotify_device", "set_chore_optin"]);
 
 wss.on("connection", (ws, req) => {
   const who = identify(req)!;
@@ -300,6 +329,7 @@ wss.on("connection", (ws, req) => {
   arrive(ws, who);
   // Hosted, the gateway says who's the owner (friends visiting aren't); on your computer, it's whoever's on it.
   if (who.role === "owner" && (HOSTED || isLocal(req.socket.remoteAddress))) localClients.add(ws);
+  setPresence(wss.clients.size);
 
   ws.on("message", async (raw) => {
     let msg: ClientMessage;
@@ -320,6 +350,7 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => {
     depart(ws);
     console.log(who.role === "visitor" ? `[ws] ${who.name} left` : "[ws] game disconnected");
+    setPresence(wss.clients.size);
   });
 });
 
@@ -376,6 +407,10 @@ async function visitorHandle(ws: WebSocket, msg: ClientMessage) {
 
 async function handle(ws: WebSocket, msg: ClientMessage) {
     if (isVisitor(ws)) return visitorHandle(ws, msg);
+    if (ACCOUNT_MESSAGES.has(msg.type) && !localClients.has(ws)) {
+      send(ws, { type: "notice", text: "Only the game on the colony's own computer can do that." });
+      return;
+    }
     switch (msg.type) {
       case "hello":
         send(ws, { type: "snapshot", snapshot: fullSnapshot() });
@@ -422,7 +457,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       }
 
       case "build": {
-        if (!BUILDINGS[msg.building]) break;
+        if (!isBuilding(msg.building)) break;
         // Extensions (the Mail Rocket, the Workshop) take materials, once their neighbor lives here.
         if (EXTENSIONS[msg.building]) {
           const problem = services.buildExtension(msg.building);
@@ -442,6 +477,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       }
 
       case "upgrade": {
+        if (!(typeof msg.landmark === "string" && Object.hasOwn(LANDMARKS, msg.landmark))) break;
         const problem = services.upgradeLandmark(msg.landmark);
         if (problem) send(ws, { type: "notice", text: problem });
         break;
@@ -462,7 +498,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       case "buy_plot":
       case "place_plot":
       case "build_plot": {
-        if (!BUILDINGS[msg.building]) break;
+        if (!isBuilding(msg.building)) break;
         const problem =
           msg.type === "buy_plot" ? services.buyPlot(msg.building) : msg.type === "place_plot" ? services.placePlot(msg.building, Number(msg.x), Number(msg.y)) : services.buildPlot(msg.building);
         if (problem) send(ws, { type: "notice", text: problem });
@@ -552,7 +588,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
 
       case "move_building": {
         const b = msg.building;
-        if (!BUILDINGS[b] || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
+        if (!isBuilding(b) || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), buildingTiles(b).w);
         const before = happinessAll();
         if (moveBuilding(b, x, y)) {
@@ -742,7 +778,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
           emit({ type: "chore_cleared", id: msg.id, kind: r.kind, reward: r.reward, coins: world.coins });
           // Sweeping turns up stardust; a fallen meteor is a chunk of moonstone with a vein of glow ore.
           services.gain(r.kind === "dust" ? { stardust: 2 } : { moonstone: 1, ore: 1 }, { x: r.x, y: r.y });
-        }
+        } else send(ws, { type: "notice", text: r.reason });
         break;
       }
 
@@ -832,9 +868,10 @@ async function bridgeRoute(req: import("node:http").IncomingMessage, res: Server
   return json(404, { error: "no such thing" });
 }
 
-// (online, only the gateway on this machine talks to an island)
-httpServer.listen(PORT, HOSTED ? "127.0.0.1" : undefined, () => {
-  console.log(`[server] Fl-AI Me to the Moon agents on http://localhost:${PORT}`);
+// Only this computer can reach it (hosted, only the gateway): HOST=0.0.0.0 opens it to your network.
+const LISTEN = HOSTED ? "127.0.0.1" : (process.env.HOST ?? "127.0.0.1");
+httpServer.listen(PORT, LISTEN, () => {
+  console.log(`[server] Fl-AI Me to the Moon agents on http://localhost:${PORT}${LISTEN === "127.0.0.1" ? "" : ` (listening on ${LISTEN})`}`);
   const brains = { claude: "Claude (claude-opus-5)", groq: `Groq (${process.env.GROQ_MODEL ?? "openai/gpt-oss-120b"})`, mock: "⚠ MOCK — scripted villagers, real tools & approvals, no model" };
   console.log(`[server] villager brains: ${brains[BRAIN]}`);
   console.log(`[server] villager voices: ${voiceSummary()}`);

@@ -421,10 +421,13 @@ export interface Lantern {
   villager: VillagerId;
   summary: string;
   at: number;
-  /** Where the player moved it; otherwise it stands on the ring around the plaza. */
+  /** Where it stands: a free slot on the rings around the plaza when planted, or where the player moved it (very old saves: none, see lanternAt). */
   x?: number;
   y?: number;
 }
+
+/** Task lanterns kept on the island; past this the oldest is retired. */
+export const MAX_LANTERNS = 96;
 
 export interface Deco {
   id: string;
@@ -496,6 +499,8 @@ export interface Snapshot {
   guest: boolean;
   /** Paths you've laid, by tile ("tx,ty"). */
   paths: Record<string, PathStyle>;
+  /** The server's clock (Date.now()) when this snapshot was made, to line up timings like meteor landings. */
+  serverNow: number;
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */

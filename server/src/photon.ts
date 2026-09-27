@@ -2,25 +2,27 @@
 //
 // - Text any villager by name ("Stargazer: when's the next full moon?");
 //   anything else goes to the Jade Rabbit. "help" lists who's around.
-// - A "!" in the village (an approval) also arrives as a text; reply YES/NO.
+// - A "!" in the village (an approval) also arrives as a text with a code; reply
+//   YES/NO (plus the code when more than one is waiting). Unanswered ones lapse.
 // - The Rabbit texts first when you land: "Made it to the Moon?"
 //
 // - Phones are linked from the in-game MoonPad (enter number → texted code),
-//   any number of them (co-op). News and approvals go to every linked phone;
-//   replies go back to whoever texted.
+//   any number of them (co-op). Texts from any other number are ignored. News
+//   and approvals go to every linked phone; replies go back to whoever texted.
 //
 // Env (Photon dashboard → Settings): SPECTRUM_PROJECT_ID + SPECTRUM_PROJECT_SECRET
 // (PHOTON_PROJECT_ID / PHOTON_PROJECT_SECRET also work). Optional PLAYER_PHONE
-// (E.164) is linked automatically at startup. PHOTON_TERMINAL=1 adds Photon's
+// (E.164) is linked once it first texts the colony (no code needed). PHOTON_TERMINAL=1 adds Photon's
 // terminal chat for local testing — it works without any credentials.
 
+import { createHmac, randomBytes, randomInt } from "node:crypto";
 import { Spectrum } from "spectrum-ts";
 import { imessage, terminal } from "spectrum-ts/providers";
 import { VILLAGER_NAMES, VILLAGER_ROLE, VILLAGER_SHORT, type VillagerId } from "../../shared/game.js";
 import { lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
 import { registerSharedUser, textUsLink } from "./connectors/photonUsers.js";
-import { oldestPending, resolveApproval } from "./approvals.js";
+import { anyPending, approvalCode, markGameOnly, phoneTarget, resolveApproval } from "./approvals.js";
 import { isResident, residents, setPhotonState } from "./services.js";
 import { emit, onEvent, savePersist, world } from "./world.js";
 
@@ -34,7 +36,13 @@ const spaces = new Map<string, Space>();
 /** Photon user ids + assigned colony numbers for numbers we've registered. */
 const registered = new Map<string, { photonUserId: string; line: string }>();
 /** Link codes waiting to be texted in from that phone. */
-const pendingLinks = new Map<string, { code: string; expires: number }>();
+const pendingLinks = new Map<string, { code: string; expires: number; tries: number }>();
+/** A wrong code this many times and that phone needs a fresh one. */
+const MAX_LINK_TRIES = 5;
+/** PLAYER_PHONE from .env: the server's owner vouched for it, so its first text links it (until it's unlinked). */
+let envPhone: string | null = null;
+/** Same limit as a MoonPad text. */
+const MAX_TEXT = 2000;
 let linkListener: (phone: string) => void = () => {};
 
 /** Tell the game (all clients) when a phone finishes linking by texting in. */
@@ -51,6 +59,10 @@ export function phoneLinked() {
 }
 
 const mask = (phone: string) => `•••${phone.replace(/\D/g, "").slice(-4)}`;
+
+/** What clients get instead of the number itself (a keyed hash, so it can't be reversed). */
+const ID_KEY = randomBytes(16);
+const phoneId = (phone: string) => createHmac("sha256", ID_KEY).update(phone).digest("hex").slice(0, 16);
 
 /**
  * Accepts "(314) 555-0123", "314-555-0123", "+44 20 ..." → E.164, US by default.
@@ -69,7 +81,7 @@ function publishPhones() {
   setPhotonState({
     connected: app !== null,
     phoneLinked: phoneLinked(),
-    phones: Object.values(world.phones).map((p) => ({ id: p.phone, masked: mask(p.phone), line: p.line })),
+    phones: Object.values(world.phones).map((p) => ({ id: phoneId(p.phone), masked: mask(p.phone), line: p.line })),
   });
 }
 
@@ -100,8 +112,9 @@ export async function startLink(input: string): Promise<LinkResult> {
   try {
     const user = await registerSharedUser(phone);
     registered.set(phone, { photonUserId: user.id, line: user.assignedPhoneNumber });
-    const code = pendingLinks.get(phone)?.code ?? String(Math.floor(1000 + Math.random() * 9000));
-    pendingLinks.set(phone, { code, expires: Date.now() + 30 * 60_000 });
+    const was = pendingLinks.get(phone);
+    const code = was && Date.now() < was.expires ? was.code : String(randomInt(1000, 10000));
+    pendingLinks.set(phone, { code, expires: Date.now() + 30 * 60_000, tries: was?.code === code ? was.tries : 0 });
     console.log(`[photon] waiting for ${mask(phone)} to text code to colony line ${mask(user.assignedPhoneNumber)}`);
     return {
       ok: true,
@@ -125,10 +138,14 @@ function link(phone: string) {
   linkListener(phone);
 }
 
-export function unlink(phone: string) {
-  if (!world.phones[phone]) return;
+/** Unlink by the id clients were given. Their next text won't re-link them: that takes a fresh code. */
+export function unlink(id: string) {
+  const phone = Object.keys(world.phones).find((p) => phoneId(p) === id);
+  if (!phone) return;
   delete world.phones[phone];
   spaces.delete(phone);
+  pendingLinks.delete(phone);
+  if (envPhone === phone) envPhone = null;
   savePersist();
   publishPhones();
 }
@@ -181,7 +198,7 @@ export async function startPhoton(): Promise<boolean> {
       await Spectrum({ providers: providers as any });
   console.log(`[photon] connected via ${[cloud && "iMessage", useTerminal && "terminal"].filter(Boolean).join(" + ")}`);
   if (process.env.PLAYER_PHONE && cloud) {
-    const envPhone = normalizePhone(process.env.PLAYER_PHONE);
+    envPhone = normalizePhone(process.env.PLAYER_PHONE);
     if (!envPhone) console.error("[photon] PLAYER_PHONE in .env isn't a valid number (use +13145550123, digits only) — skipping it");
     else {
       try {
@@ -202,62 +219,125 @@ export async function startPhoton(): Promise<boolean> {
       void textPlayer(`${SIGNATURE[e.villager]} just landed on the Moon! Text "${VILLAGER_SHORT[e.villager]}: hi" to say hello.`);
     } else if (e.type === "approval_needed") {
       // Every "!" in the village also buzzes the player's phone.
-      const body = e.approval.body.length > 280 ? e.approval.body.slice(0, 277) + "…" : e.approval.body;
-      void textPlayer(`❗ ${SIGNATURE[e.villager]} needs your OK\n${e.approval.title}\n\n"${body}"\n\nReply YES to go ahead or NO to hold it.`);
+      // Each carries a code, so a reply says which one it answers. One too long to show
+      // whole can only be approved in the colony, where they can read all of it.
+      const code = approvalCode(e.approval.id);
+      const cut = e.approval.body.length > 280;
+      if (cut) markGameOnly(e.approval.id);
+      const body = cut ? e.approval.body.slice(0, 277) + "…" : e.approval.body;
+      const ask = cut
+        ? `It's too long to show here in full, so read it and approve it in the colony (or reply NO ${code} to hold it).`
+        : `Reply YES ${code} to go ahead or NO ${code} to hold it.`;
+      void textPlayer(`❗ ${SIGNATURE[e.villager]} needs your OK\n${e.approval.title}\n\n"${body}"\n\n${ask}`);
     }
   });
 
-  void (async () => {
-    for await (const [space, message] of app!.messages) {
-      try {
-        const content = message.content as { type: string; text?: string; markdown?: string };
-        const text = content.type === "text" ? content.text : content.type === "markdown" ? content.markdown : undefined;
-        if (!text?.trim()) continue;
+  void listen();
+  return true;
+}
 
-        // Texting the colony proves they have that phone. On the shared pool this
-        // first text is also what allows the colony to text them back.
-        const sender = message.sender?.id ?? space.id;
+/** The inbound loop. If Photon's stream ever dies, log it and listen again (backing off). */
+async function listen() {
+  for (let delay = 1_000; ; delay = Math.min(delay * 2, 5 * 60_000)) {
+    const started = Date.now();
+    try {
+      // (not awaited: a text waiting on a villager mustn't hold up a YES to their approval)
+      for await (const [space, message] of app!.messages) void inbound(space, message);
+      console.error("[photon] inbound stream ended");
+    } catch (err) {
+      console.error("[photon] inbound stream died:", err);
+    }
+    // (one that ran a good while starts the backoff over)
+    if (Date.now() - started > 10 * 60_000) delay = 1_000;
+    console.log(`[photon] listening again in ${Math.round(delay / 1000)}s`);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+}
+
+type Inbound = SpectrumApp["messages"] extends AsyncIterable<infer T> ? T : never;
+
+async function inbound(space: Space, message: Inbound[1]) {
+  try {
+    const content = message.content as { type: string; text?: string; markdown?: string };
+    const raw = content.type === "text" ? content.text : content.type === "markdown" ? content.markdown : undefined;
+    if (!raw?.trim()) return;
+    const text = raw.slice(0, MAX_TEXT);
+
+    // Only linked phones talk to the colony. Texting in the MoonPad's code proves they
+    // have that phone; on the shared pool it's also what lets the colony text them back.
+    const sender = message.sender?.id ?? space.id;
+    // (Photon's local terminal chat is the person at this computer)
+    const local = (message as { platform?: string }).platform === "terminal" || (space as { __platform?: string }).__platform === "terminal";
+    let justLinked = false;
+    if (!local && !world.phones[sender]) {
+      const p = pendingLinks.get(sender);
+      if (sender === envPhone) {
+        pendingLinks.delete(sender);
         spaces.set(sender, space);
-        const wasPending = pendingLinks.has(sender);
-        if (/^\+\d{8,15}$/.test(sender)) {
-          pendingLinks.delete(sender);
-          link(sender);
-        } else publishPhones();
-        emit({ type: "phone", direction: "in", text });
-        if (wasPending && /moon (village )?code|^\s*\d{4}\s*$/i.test(text)) {
-          await say(space, `${SIGNATURE.jade_rabbit}: Linked! This phone is now a line home to the Moon. Text "help" to see who's around, or text any villager by name.`);
-          continue;
-        }
-
-        const pending = oldestPending();
-        if (pending && (YES.test(text) || NO.test(text))) {
-          const approved = YES.test(text);
-          lastApprovalVia.set(pending.id, "phone");
-          resolveApproval(pending.id, approved);
-          await say(space, approved ? "🚀 On its way! Watch the sky." : "Got it — holding that one back.");
-          continue;
-        }
-
-        if (/^\s*(help|\?|who)\s*[?!.]*\s*$/i.test(text)) {
-          const here = residents().map((v) => VILLAGER_NAMES[v]).join(", ");
-          await say(space, `🌙 The Moon colony. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
-          continue;
-        }
-
-        const { villager, text: task } = route(text);
-        if (!isResident(villager)) {
-          await say(space, `🌙 ${VILLAGER_NAMES[villager]} hasn't moved in yet — build their home in the colony first. Text "help" to see who's here.`);
-          continue;
-        }
-        const reply = await app!.responding(space, () => chatText(villager, task, "phone"));
-        await say(space, `${SIGNATURE[villager]}: ${reply}`);
-      } catch (err) {
-        console.error("[photon] inbound error:", err);
+        link(sender);
+        justLinked = true;
+      } else if (!p) {
+        console.log(`[photon] ignoring a text from unlinked ${mask(sender)}`);
+        return;
+      } else if (Date.now() > p.expires) {
+        pendingLinks.delete(sender);
+        console.log(`[photon] ignoring ${mask(sender)}: their link code expired`);
+        return;
+      } else if (new RegExp(`(^|\\D)${p.code}(\\D|$)`).test(text)) {
+        pendingLinks.delete(sender);
+        spaces.set(sender, space);
+        link(sender);
+        justLinked = true;
+      } else {
+        const out = ++p.tries >= MAX_LINK_TRIES;
+        if (out) pendingLinks.delete(sender);
+        console.log(`[photon] wrong link code from ${mask(sender)} (${p.tries}/${MAX_LINK_TRIES})`);
+        await say(space, out ? "🌙 That code didn't match. Press LINK on the MoonPad again for a new one." : "🌙 That code didn't match. Text the code shown on the MoonPad.");
+        return;
       }
     }
-  })();
+    if (local && !spaces.has(sender)) {
+      spaces.set(sender, space);
+      publishPhones();
+    }
+    emit({ type: "phone", direction: "in", text });
+    if (justLinked && /moon (village )?code|^\s*\d{4}\s*$/i.test(text)) {
+      await say(space, `${SIGNATURE.jade_rabbit}: Linked! This phone is now a line home to the Moon. Text "help" to see who's around, or text any villager by name.`);
+      return;
+    }
 
-  return true;
+    // "YES", "no 4821", "👍 #4821": the code says which open question it answers.
+    const coded = /#?(\d{4})\s*[.!]*\s*$/.exec(text.trim());
+    const word = coded ? text.trim().slice(0, coded.index) : text;
+    if (anyPending() && (YES.test(word) || NO.test(word))) {
+      const approved = YES.test(word);
+      const target = phoneTarget(coded?.[1], approved);
+      if ("problem" in target) {
+        await say(space, `🌙 ${target.problem}`);
+        return;
+      }
+      lastApprovalVia.set(target.approval.id, "phone");
+      if (!resolveApproval(target.approval.id, approved)) lastApprovalVia.delete(target.approval.id);
+      await say(space, approved ? "🚀 On its way! Watch the sky." : "Got it — holding that one back.");
+      return;
+    }
+
+    if (/^\s*(help|\?|who)\s*[?!.]*\s*$/i.test(text)) {
+      const here = residents().map((v) => VILLAGER_NAMES[v]).join(", ");
+      await say(space, `🌙 The Moon colony. Neighbors here: ${here}.\nText one by name to catch up, e.g. "Nova: how was stargazing?" — anything else goes to Yutu the Jade Rabbit. For real work (mail, calendar, Canvas, searches), visit them at their house in the colony.`);
+      return;
+    }
+
+    const { villager, text: task } = route(text);
+    if (!isResident(villager)) {
+      await say(space, `🌙 ${VILLAGER_NAMES[villager]} hasn't moved in yet — build their home in the colony first. Text "help" to see who's here.`);
+      return;
+    }
+    const reply = await app!.responding(space, () => chatText(villager, task, "phone"));
+    await say(space, `${SIGNATURE[villager]}: ${reply}`);
+  } catch (err) {
+    console.error("[photon] inbound error:", err);
+  }
 }
 
 async function say(space: Space, text: string) {

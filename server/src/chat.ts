@@ -83,9 +83,19 @@ dates, names and numbers stay word for word). Reply with only the words you say.
 }
 
 const queues = new Map<VillagerId, Promise<unknown>>();
+/** Texts waiting (or being answered) per villager; each one is a full agent run. */
+const waiting = new Map<VillagerId, number>();
+const MAX_WAITING = 3;
 
 /** A text to a villager. Resolves with their reply (also emitted as a "text" event). */
 export function chatText(v: VillagerId, text: string, via: "moonpad" | "phone"): Promise<string> {
+  if ((waiting.get(v) ?? 0) >= MAX_WAITING) {
+    emit({ type: "text", villager: v, direction: "in", text, via });
+    const r = `Hold on, I'm still getting through your last few texts! Give me a minute.`;
+    emit({ type: "text", villager: v, direction: "out", text: r, via });
+    return Promise.resolve(r);
+  }
+  waiting.set(v, (waiting.get(v) ?? 0) + 1);
   const run = async () => {
     emit({ type: "text", villager: v, direction: "in", text, via });
     const reply = (r: string) => (emit({ type: "text", villager: v, direction: "out", text: r, via }), r);
@@ -105,7 +115,9 @@ export function chatText(v: VillagerId, text: string, via: "moonpad" | "phone"):
     }
   };
   // One conversation at a time per villager, so replies stay in order.
-  const next = (queues.get(v) ?? Promise.resolve()).then(run, run);
+  const next = (queues.get(v) ?? Promise.resolve())
+    .then(run, run)
+    .finally(() => waiting.set(v, Math.max(0, (waiting.get(v) ?? 1) - 1)));
   queues.set(v, next);
   return next;
 }

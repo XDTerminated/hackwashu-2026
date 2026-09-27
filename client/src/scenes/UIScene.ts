@@ -82,6 +82,8 @@ export class UIScene extends Phaser.Scene {
   private roster = new Map<VillagerId, { icon: Phaser.GameObjects.Image; dot: Phaser.GameObjects.Rectangle; shown: boolean }>();
   private shop!: Phaser.GameObjects.Container;
   private shopOpen = false;
+  /** A restart is already queued (the Market opened its shop). */
+  private restarting = false;
   private mm!: Phaser.GameObjects.Graphics;
   private mmTop!: Phaser.GameObjects.Graphics;
   private mmIcons = new Map<VillagerId, Phaser.GameObjects.Image>();
@@ -114,6 +116,9 @@ export class UIScene extends Phaser.Scene {
     this.banner = null;
     this.shopOpen = false;
     this.registry.set("shopOpen", false);
+    // (the Town Hall's cards belonged to the old screen: don't leave the world thinking one's open)
+    this.registry.set("townOpen", false);
+    this.restarting = false;
     this.actionHold = false;
     this.hint = null;
     this.shopTip = null;
@@ -224,8 +229,14 @@ export class UIScene extends Phaser.Scene {
     // The Market just opened its shop: rebuild the toolbar with the Shop button on it.
     const hadShop = shopOpen(store.progress.town);
     this.unsubs.push(onStoreChange(() => {
-      if (shopOpen(store.progress.town) !== hadShop) this.time.delayedCall(0, () => this.scene.restart());
+      if (shopOpen(store.progress.town) === hadShop || this.restarting) return;
+      // (several changes can land in one tick: restart just once)
+      this.restarting = true;
+      this.time.delayedCall(0, () => this.scene.restart());
     }));
+    const closeTown = () => this.townPanel.close();
+    this.game.events.on("close-town-panel", closeTown);
+    this.unsubs.push(() => this.game.events.off("close-town-panel", closeTown));
     // Friends (online): the list, the rocket, a gift; and flying off to a friend's island.
     this.friendsPanel = new FriendsPanel(this);
     const openFriends = (spec: FriendsSpec) => {
@@ -266,7 +277,7 @@ export class UIScene extends Phaser.Scene {
       this.friendsPanel.close();
     });
     // First time only: how to walk, then where to go.
-    const MOVED = "moon-hint-moved";
+    const MOVED = net.accountKey("moon-hint-moved");
     let seen = false;
     try {
       seen = localStorage.getItem(MOVED) === "1";
@@ -274,7 +285,7 @@ export class UIScene extends Phaser.Scene {
       /* show it */
     }
     // The very first time: the MoonPad opens on its setup screen, before anything else.
-    const SETUP = "moon-setup-shown";
+    const SETUP = net.accountKey("moon-setup-shown");
     let setupShown = true;
     try {
       setupShown = localStorage.getItem(SETUP) === "1";
@@ -331,6 +342,7 @@ export class UIScene extends Phaser.Scene {
     const onCoinFly = (c: { sx: number; sy: number; amount: number }) => this.coinFly(c.sx, c.sy, c.amount);
     this.game.events.on("coin-fly", onCoinFly);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.townPanel.close();
       this.unsubs.forEach((u) => u());
       this.unsubs = [];
       this.game.events.off("toggle-shop", this.toggleShop, this);
@@ -1080,8 +1092,9 @@ export class UIScene extends Phaser.Scene {
   private showAccount(confirming = false) {
     const a = store.account;
     if (!a) return;
-    const leave = (path: string, post = false) => {
-      if (!post) return void (location.href = path);
+    const leave = (path: string) => {
+      // (this browser forgets its "seen it" flags and MoonPad history for this account)
+      net.forgetThisBrowser();
       // A real form post, so the site can check it came from the game.
       const f = document.createElement("form");
       f.method = "POST";
@@ -1094,14 +1107,14 @@ export class UIScene extends Phaser.Scene {
         `This deletes your village, everything connected to it (Google, Canvas, your Claude Code link) and your account (${a.email}). It can't be undone.`,
         "Signing in again later starts a brand new village.",
       ], [
-        { label: "YES, DELETE IT ALL", onClick: () => leave("/auth/delete", true) },
+        { label: "YES, DELETE IT ALL", onClick: () => leave("/auth/delete") },
         { label: "KEEP MY VILLAGE", kind: "ok", onClick: () => this.showAccount() },
       ]);
     openInfo("MY ACCOUNT", [
       `Signed in as ${a.name ? `${a.name} (${a.email})` : a.email}. This village is yours alone: your connections and your Claude Code only show up here.`,
       "Sign out to switch accounts. Your village waits for you.",
     ], [
-      { label: "SIGN OUT", kind: "ok", onClick: () => leave("/auth/logout") },
+      { label: "SIGN OUT", kind: "ok", onClick: () => net.signOut() },
       { label: "DELETE MY DATA", onClick: () => this.showAccount(true) },
     ]);
   }

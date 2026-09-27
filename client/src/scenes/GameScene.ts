@@ -1752,7 +1752,8 @@ export class GameScene extends Phaser.Scene {
 
   private tryGrabMeteor() {
     const m = this.nearestChore("meteor", 24);
-    if (!m || !net.send({ type: "clear_chore", id: m.chore.id })) return;
+    // (not down yet by the server's clock: the server would say no, so no coins or pickup here either)
+    if (!m || (m.chore.landsAt ?? 0) > net.serverNow() || !net.send({ type: "clear_chore", id: m.chore.id })) return;
     this.choreViews.delete(m.chore.id);
     m.destroy("collect");
     sfx.coin();
@@ -2634,7 +2635,8 @@ export class GameScene extends Phaser.Scene {
     const dt = delta / 1000;
     this.updatePlayer(dt);
     this.ambient(dt);
-    const now = Date.now();
+    // (meteors land on the server's clock)
+    const now = net.serverNow();
     for (const c of this.choreViews.values()) c.update(now);
     this.updateSweep(dt);
     // Moondust dims the solar lamps it settles near.

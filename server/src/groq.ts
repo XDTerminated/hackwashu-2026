@@ -3,11 +3,11 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import Groq from "groq-sdk";
-import type { Clod, VillagerId } from "../../shared/game.js";
-import { runDelegate, runLeafTool, toolsFor, missingBuildingsNote } from "./agents.js";
+import type { VillagerId } from "../../shared/game.js";
+import { isChoreTask, recordSearch, runDelegate, runLeafTool, taskLive, toolsFor, missingBuildingsNote } from "./agents.js";
 import { memoryNote } from "./memory.js";
 import { audienceNote, personaFor, type Audience } from "./villagers.js";
-import { emit, newId, putClod, setVillager } from "./world.js";
+import { emit, setVillager } from "./world.js";
 
 const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
 // Web searches pull in big pages; Groq rate-limits per model, so the Stargazer
@@ -29,9 +29,9 @@ type Msg = Groq.Chat.Completions.ChatCompletionMessageParam;
 type GroqTool = Groq.Chat.Completions.ChatCompletionTool;
 
 /** Our tool defs are Anthropic-shaped; Groq speaks OpenAI function-calling. */
-function groqTools(v: VillagerId): GroqTool[] {
+function groqTools(v: VillagerId, readOnly: boolean): GroqTool[] {
   if (v === "stargazer") return [{ type: "browser_search" } as unknown as GroqTool];
-  return toolsFor(v).flatMap((t) => {
+  return toolsFor(v, readOnly).flatMap((t) => {
     if (!("input_schema" in t)) return [];
     const def = t as Anthropic.Beta.BetaTool;
     return [{ type: "function", function: { name: def.name, description: def.description ?? "", parameters: def.input_schema as Record<string, unknown> } }];
@@ -83,24 +83,12 @@ function surfaceSearches(v: VillagerId, taskId: string, executed: unknown) {
     } catch {
       /* keep empty */
     }
-    const clod: Clod = {
-      id: newId("clod"),
-      taskId,
-      villager: v,
-      building: "observatory",
-      label: `searching "${q.slice(0, 30)}"`,
-      status: "ready",
-      reward: 6,
-      result: `searched Earth for "${q}"`,
-    };
-    putClod({ ...clod });
-    emit({ type: "tool_start", villager: v, clod: { ...clod, status: "working" } });
-    emit({ type: "tool_end", villager: v, clodId: clod.id, ok: true, result: clod.result! });
+    recordSearch(v, taskId, q);
   }
 }
 
 export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
-  const tools = groqTools(v);
+  const tools = groqTools(v, isChoreTask(taskId));
   const messages: Msg[] = [
     { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience) },
     { role: "user", content: taskText },
@@ -108,6 +96,8 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
   let finalText = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // (the save changed under this task: stop, and leave the new one alone)
+    if (!taskLive(taskId)) break;
     setVillager(v, { status: "thinking", activity: "thinking…" });
     const ask = (model: string) =>
       withPatience(v, () => groq().chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}), temperature: 0.3 }));
@@ -121,6 +111,7 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
       searchModel = MODEL;
       res = await ask(MODEL);
     }
+    if (!taskLive(taskId)) break;
     const choice = res.choices[0];
     const msg = choice.message as Groq.Chat.Completions.ChatCompletionMessage & { reasoning?: string; executed_tools?: unknown };
 
@@ -147,7 +138,10 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
           return { role: "tool" as const, tool_call_id: c.id, content: "ERROR: arguments were not valid JSON — try again." };
         }
         const block = { type: "tool_use", id: c.id, name: c.function.name, input } as Anthropic.Beta.BetaToolUseBlock;
-        const r = c.function.name === "delegate" ? await runDelegate(v, taskId, block) : await runLeafTool(v, taskId, block);
+        // (each settles on its own, so one failing can't strand the others mid-approval)
+        const r = await (c.function.name === "delegate" ? runDelegate(v, taskId, block) : runLeafTool(v, taskId, block)).catch(
+          (err): Anthropic.Beta.BetaToolResultBlockParam => ({ type: "tool_result", tool_use_id: c.id, is_error: true, content: err instanceof Error ? err.message : String(err) }),
+        );
         const content = typeof r.content === "string" ? r.content : JSON.stringify(r.content);
         return { role: "tool" as const, tool_call_id: c.id, content: r.is_error ? `ERROR: ${content}` : content };
       }),

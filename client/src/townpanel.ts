@@ -58,7 +58,8 @@ export class TownPanel {
     this.scene.registry.set("townOpen", false);
     this.tip?.destroy();
     this.tip = null;
-    this.root.setVisible(false).removeAll(true);
+    // (on the scene's shutdown its objects may already be gone)
+    if (this.root.scene) this.root.setVisible(false).removeAll(true);
   }
 
   /** Materials or stages changed: redraw (if it's open). */

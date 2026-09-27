@@ -6,6 +6,7 @@
 import { VILLAGER_NAMES, type ColonyRequest, type GameEvent, type RequestKind, type VillagerId } from "../../shared/game.js";
 import { SHARD_COUNT, rockSpots } from "../../shared/layout.js";
 import { DECOR, happinessFor } from "../../shared/decor.js";
+import { makesStars } from "./agents.js";
 import { isResident } from "./services.js";
 import { decoRects, emit, onEvent, savePersist, world } from "./world.js";
 
@@ -73,7 +74,11 @@ function pick(day: string): ColonyRequest[] {
   const rocksLeft = rockSpots(decoRects(), world.clearedRocks).length;
   // (and nothing about decorating until the Market is open)
   const market = world.progress.town.stages.market >= 1;
-  const pool = POOL.filter((t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0) && (market || (t.kind !== "decorate" && t.kind !== "place")));
+  // (and no stars to pop until a neighbor who lives here can do real work that leaves one)
+  const stars = (Object.keys(VILLAGER_NAMES) as VillagerId[]).some(makesStars);
+  const pool = POOL.filter(
+    (t) => (t.kind !== "shard" || world.shards.length < SHARD_COUNT) && (t.kind !== "rock" || rocksLeft > 0) && (market || (t.kind !== "decorate" && t.kind !== "place")) && (stars || t.kind !== "pop"),
+  );
   const order = pool.map((t, i) => ({ t, r: seeded(seed + i * 17) })).sort((a, b) => a.r - b.r);
   const w = wish(seed);
   const picked = order.slice(0, w ? 2 : 3).map(({ t }, i) => {

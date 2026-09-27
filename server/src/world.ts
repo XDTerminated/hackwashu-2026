@@ -17,6 +17,7 @@ import {
   type Deco,
   type GameEvent,
   type Lantern,
+  MAX_LANTERNS,
   MOVE_INS,
   type Materials,
   type Progress,
@@ -31,7 +32,7 @@ import {
 import { freshTown, maxStage } from "../../shared/town.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
-import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockKey, rockRect, rockSpots, shardKey, shardSpots, type Rect, type RockKind } from "../../shared/layout.js";
+import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, lanternSpot, rockKey, rockRect, rockSpots, shardKey, shardSpots, tileAt, type Rect, type RockKind } from "../../shared/layout.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = join(DATA_DIR, "world.json");
@@ -82,7 +83,6 @@ interface World {
   lanterns: Lantern[];
   decos: Deco[];
   seq: number;
-  log: SeqEvent[];
 }
 
 const idle = (): VillagerState => ({ status: "idle", activity: "relaxing" });
@@ -123,7 +123,6 @@ function freshWorld(): World {
     lanterns: [],
     decos: [],
     seq: 0,
-    log: [],
   };
 }
 
@@ -133,12 +132,30 @@ const dist = (key: string, x: number, y: number) => {
   return Math.hypot(kx - x, ky - y);
 };
 
+/** Finished records (popped stars, answered letters) only matter for a while: keep the latest few. */
+const KEEP_RESOLVED = 50;
+function trimResolved<T>(rec: Record<string, T>, done: (t: T) => boolean) {
+  const old = Object.keys(rec).filter((k) => done(rec[k]));
+  for (const k of old.slice(0, Math.max(0, old.length - KEEP_RESOLVED))) delete rec[k];
+}
+
+/** Save files from a newer server version: kept exactly as they are, never written over. */
+const frozen = new Set<string>();
+
 function load(file = DATA_FILE): World {
   try {
     if (!existsSync(file)) return freshWorld();
     const w = JSON.parse(readFileSync(file, "utf8")) as World;
     if (w.version !== SAVE_VERSION) {
-      console.log("[world] save is from before the unlock chain — starting a fresh colony");
+      // Never lose a colony to a version change: keep a copy beside it first.
+      const aside = `${file}.v${w.version}-${Date.now()}`;
+      copyFileSync(file, aside);
+      if (typeof w.version === "number" && w.version > SAVE_VERSION) {
+        // A save from a newer server: don't write over it at all. Play on a fresh
+        // colony in memory only, so the newer server finds it untouched.
+        frozen.add(file);
+        console.error(`[world] ${file} is save version ${w.version}, newer than this server's ${SAVE_VERSION}: NOT loading it or saving over it (a copy is kept as ${aside}); nothing this session will be saved`);
+      } else console.log(`[world] save is version ${w.version}, older than ${SAVE_VERSION}: kept it as ${aside}, starting a fresh colony`);
       return freshWorld();
     }
     w.villagers.scholar ??= idle();
@@ -206,6 +223,13 @@ function load(file = DATA_FILE): World {
     // is a live view of your coding agents now, with nothing to save.
     delete (w as { office?: unknown }).office;
     w.decos.forEach((d, i) => (d.id ??= `deco_old${i}`));
+    // Lanterns keep their spot for good (older ones stood wherever their place in the list put them).
+    w.lanterns ??= [];
+    w.lanterns.forEach((l, i) => Object.assign(l, lanternAt(l, i)));
+    // (the event log used to be saved; nothing ever read it back)
+    delete (w as { log?: unknown }).log;
+    trimResolved(w.clods, (c) => c.status === "popped");
+    trimResolved(w.approvals, (a) => a.status !== "pending");
     w.lastChoreAt ??= {};
     // Anything mid-flight when the server stopped can't resume — its agent loop is gone.
     for (const c of Object.values(w.clods)) {
@@ -241,6 +265,12 @@ function load(file = DATA_FILE): World {
 let guest = process.env.MOON_GUEST === "1";
 export const isGuest = () => guest;
 
+/** Bumped every time the live world is swapped for another (guest, dev save, reset), so late work can tell its save is gone. */
+let gen = 0;
+export function worldGen(): number {
+  return gen;
+}
+
 export const world = guest ? freshWorld() : load();
 applyLayout(world.layout);
 ensurePaths();
@@ -256,6 +286,15 @@ function ensurePaths() {
   world.pathsV = 1;
 }
 
+/** Swap the live world's contents for another save's, in place (everyone holds the same `world` object). */
+function replaceWorld(w: World) {
+  gen++;
+  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
+  Object.assign(world, w);
+  applyLayout(world.layout);
+  ensurePaths();
+}
+
 /** Into guest play (a fresh colony, in memory only) or back to the real save. */
 export function setGuest(on: boolean) {
   // (already there: a reconnect asking again keeps the guest colony as it is)
@@ -263,11 +302,7 @@ export function setGuest(on: boolean) {
   // (the real save, just as it stands, before it's put aside)
   if (!guest) flushSave();
   guest = on;
-  const w = on ? freshWorld() : load(saveFile);
-  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
-  Object.assign(world, w);
-  applyLayout(world.layout);
-  ensurePaths();
+  replaceWorld(on ? freshWorld() : load(saveFile));
   console.log(on ? "[world] playing as a guest (nothing is saved)" : "[world] back on the real save");
   return true;
 }
@@ -309,10 +344,7 @@ export function switchWorld(dev: boolean): boolean {
   const next = dev ? DEV_FILE : DATA_FILE;
   const w = dev && !existsSync(DEV_FILE) ? showcase(JSON.parse(JSON.stringify(world)) as World) : load(next);
   saveFile = next;
-  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
-  Object.assign(world, w);
-  applyLayout(world.layout);
-  ensurePaths();
+  replaceWorld(w);
   flushSave();
   console.log(`[world] now on the ${dev ? "dev showcase" : "real"} save`);
   return true;
@@ -322,20 +354,13 @@ export function switchWorld(dev: boolean): boolean {
 export function resetWorld(): string {
   if (guest) {
     // (a guest's colony was never saved: just start it fresh)
-    for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
-    Object.assign(world, freshWorld());
-    applyLayout(world.layout);
-    ensurePaths();
+    replaceWorld(freshWorld());
     return "";
   }
   flushSave();
   const backup = `${saveFile}.before-reset-${Date.now()}`;
   if (existsSync(saveFile)) copyFileSync(saveFile, backup);
-  const w = freshWorld();
-  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
-  Object.assign(world, w);
-  applyLayout(world.layout);
-  ensurePaths();
+  replaceWorld(freshWorld());
   flushSave();
   console.log(`[world] reset to a fresh colony (the old save is kept as ${backup})`);
   return backup;
@@ -344,7 +369,8 @@ export function resetWorld(): string {
 /** Write to a temp file and rename, so a crash mid-write can't leave half a save. */
 function writeSave() {
   // (a guest's colony is never written anywhere)
-  if (guest) return;
+  // (nor is a newer server's save we couldn't load)
+  if (guest || frozen.has(saveFile)) return;
   mkdirSync(dirname(saveFile), { recursive: true });
   const tmp = `${saveFile}.tmp`;
   writeFileSync(tmp, JSON.stringify(world));
@@ -358,6 +384,8 @@ function flushSave() {
 }
 
 let saveTimer: NodeJS.Timeout | null = null;
+/** Saves are batched: at most one write a second (stopping writes the last one right away). */
+const SAVE_EVERY_MS = 1000;
 function persist() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
@@ -367,7 +395,19 @@ function persist() {
     } catch (err) {
       console.error("[world] save failed:", err);
     }
-  }, 250);
+  }, SAVE_EVERY_MS);
+}
+
+// Stopping (the gateway stops a copy with SIGTERM; Ctrl-C locally): write the pending save first.
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.once(sig, () => {
+    try {
+      if (saveTimer) flushSave();
+    } catch (err) {
+      console.error("[world] final save failed:", err);
+    }
+    process.exit(0);
+  });
 }
 
 type Listener = (e: SeqEvent) => void;
@@ -380,8 +420,6 @@ export function onEvent(fn: Listener) {
 
 export function emit(e: GameEvent) {
   const evt = { ...e, seq: ++world.seq, at: Date.now() } as SeqEvent;
-  world.log.push(evt);
-  if (world.log.length > 400) world.log.splice(0, world.log.length - 400);
   persist();
   for (const fn of listeners) fn(evt);
 }
@@ -411,6 +449,7 @@ export function snapshot(): Snapshot {
     introSeen: !!world.introSeen,
     guest,
     paths: world.paths,
+    serverNow: Date.now(),
     clearedRocks: world.clearedRocks,
     shards: world.shards,
     requests: world.requests.list,
@@ -433,10 +472,25 @@ export function putClod(c: Clod) {
 
 export function putApproval(a: Approval) {
   world.approvals[a.id] = a;
+  trimResolved(world.approvals, (a) => a.status !== "pending");
   persist();
 }
 
+/**
+ * Plant a task lantern on the first free slot of the rings around the plaza
+ * (on the island, clear of homes, decorations, rocks and other lanterns), and
+ * keep it there. Past MAX_LANTERNS the oldest one is retired.
+ */
 export function addLantern(l: Lantern) {
+  if (world.lanterns.length >= MAX_LANTERNS) world.lanterns.splice(0, world.lanterns.length - MAX_LANTERNS + 1);
+  const taken = occupied();
+  let at: { x: number; y: number } | undefined;
+  for (let i = 0; i < 16 * 10 && !at; i++) {
+    const p = lanternSpot(i);
+    if (canOccupy(tileAt(p), taken)) at = p;
+  }
+  // (nowhere free: squeeze onto the inner ring, which is always on the island)
+  Object.assign(l, at ?? lanternSpot(world.lanterns.length % 16));
   world.lanterns.push(l);
   persist();
 }
@@ -448,6 +502,7 @@ export function popClod(clodId: string): { ok: true; reward: number } | { ok: fa
   const reward = c.status === "ready" ? c.reward : 1;
   c.status = "popped";
   world.coins += reward;
+  trimResolved(world.clods, (c) => c.status === "popped");
   persist();
   return { ok: true, reward };
 }
@@ -558,7 +613,7 @@ export function regrowRocks(): { x: number; y: number }[] {
     world.clearedRocks = rest;
     grown.push({ x: rock.x, y: rock.y });
   }
-  persist();
+  if (grown.length) persist();
   return grown;
 }
 

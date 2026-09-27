@@ -78,7 +78,7 @@ export function clearChore(id: string): { ok: true; reward: number; kind: "dust"
   // Own keys only: "__proto__" or "constructor" must not look like a chore.
   const c = typeof id === "string" && Object.hasOwn(world.chores, id) ? world.chores[id] : undefined;
   if (!c || !Number.isFinite(c.reward)) return { ok: false, reason: "already gone" };
-  if (c.landsAt && Date.now() < c.landsAt) return { ok: false, reason: "it hasn't landed yet!" };
+  if (c.landsAt && Date.now() < c.landsAt - 3000) return { ok: false, reason: "it hasn't landed yet!" };
   delete world.chores[id];
   world.coins += c.reward;
   savePersist();
@@ -104,7 +104,14 @@ export function setChoreOptIn(v: VillagerId, enabled: boolean) {
   emit({ type: "chore_optin", optIn: world.choreOptIn });
 }
 
+/** Game tabs open right now: villager chores (real model calls) only run while someone's playing. */
+let present = 0;
+export function setPresence(connected: number): void {
+  present = Math.max(0, connected);
+}
+
 function villagerChores() {
+  if (present <= 0) return;
   const now = Date.now();
   for (const [v, on] of Object.entries(world.choreOptIn) as [VillagerId, boolean][]) {
     if (!on || !isResident(v) || isBusy(v)) continue;

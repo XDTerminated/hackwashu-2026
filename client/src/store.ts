@@ -4,7 +4,7 @@
 import { VISIT_ID } from "./visitparam";
 import { applyLayout } from "../../shared/layout";
 import { freshTown } from "../../shared/town";
-import { VILLAGER_NAMES, noMaterials, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
+import { MAX_LANTERNS, VILLAGER_NAMES, noMaterials, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
 
 export const store: Snapshot & { connected: boolean } = {
   coins: 0,
@@ -32,6 +32,7 @@ export const store: Snapshot & { connected: boolean } = {
   introSeen: false,
   guest: false,
   paths: {},
+  serverNow: 0,
   connected: false,
 };
 
@@ -152,6 +153,8 @@ export function applyEvent(e: SeqEvent) {
       break;
     case "task_done":
       store.lanterns.push(e.lantern);
+      // (the oldest ones retire, as on the server)
+      if (store.lanterns.length > MAX_LANTERNS) store.lanterns.splice(0, store.lanterns.length - MAX_LANTERNS);
       Object.assign(villager(e.villager), { status: "idle", activity: "relaxing" });
       break;
     case "clod_popped":

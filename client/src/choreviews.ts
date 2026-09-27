@@ -5,6 +5,7 @@
 import Phaser from "phaser";
 import type { Chore } from "../../shared/game";
 import { puff } from "./actors";
+import { serverNow } from "./net";
 import { sfxAt } from "./sfx";
 import { shadowKey } from "./textures";
 
@@ -31,7 +32,8 @@ export class ChoreView {
       this.objs.push(scene.add.sprite(chore.x, chore.y, `dust_${variant}_0`).play({ key: `dust-${variant}`, startFrame: variant % 2 }).setDepth(-7.5));
       return;
     }
-    if (Date.now() >= (chore.landsAt ?? 0)) {
+    // (landsAt is on the server's clock)
+    if (serverNow() >= (chore.landsAt ?? 0)) {
       this.land(false);
     } else {
       this.shadow = scene.add.image(chore.x, chore.y, shadowKey(scene, 6)).setDepth(-7.4);

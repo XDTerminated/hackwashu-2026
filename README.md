@@ -60,7 +60,7 @@ stops copies after 15 minutes idle (saves stay on disk). Each copy is about 70-1
 
    | Variable | Value |
    |---|---|
-   | `MOON_PUBLIC_URL` | `https://<your-app>.up.railway.app` |
+   | `MOON_PUBLIC_URL` | `https://<your-app>.up.railway.app` (required: the gateway won't start without it) |
    | `MOON_DATA_ROOT` | `/data` (the volume) |
    | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
    | `GROQ_API` | the villagers' brain |
@@ -186,8 +186,8 @@ and the work takes a while, walk in and watch them.
   `<session>/subagents/`. The server tails those files every second (`server/src/agentwatch.ts`); there's
   nothing to install or configure. It's read-only: the Office never steers your agents. Use
   `CLAUDE_PROJECTS_DIR` to point it somewhere else.
-- **Other tools** (Codex, Gemini, your own scripts) can put their agents in the Office by POSTing JSON to
-  `http://localhost:8787/agents/event`:
+- **Other tools** (Codex, Gemini, your own scripts) can put their agents in the Office by POSTing JSON
+  (`content-type: application/json`, from a tool, not a web page) to `http://localhost:8787/agents/event`:
   `{"session":"s1","title":"Fix login bug","agent":"w1","name":"Write failing test","tool":"Running npm test","status":"working"}`
   (fields: `session`, `title`, `project`, `agent` (omit or `"lead"` for the lead), `name`, `parent`,
   `status` thinking/working/waiting/done/failed, `activity`, `say`, `tool`, `result`, `model`).
@@ -237,6 +237,11 @@ It follows whatever address you ended up signed in at, so custom school domains 
 
 If Google sign-in is set up but Google would refuse it (the redirect URI isn't registered, or the Client
 ID is wrong), CONNECT GOOGLE shows exactly what to fix instead of Google's error page.
+
+The colony server only listens on this computer (`127.0.0.1`) and only answers to `localhost`,
+`127.0.0.1` or `[::1]`. To play from another device on your network, set `HOST=0.0.0.0` and
+`ALLOWED_HOSTS=<the address they use>` (comma-separated); connecting accounts, answering letters and
+asking villagers for real work still only works from the game on the colony's own computer.
 
 For testing without touching your save: `MOON_DATA_DIR=/some/folder PORT=8797 npm run dev:server`
 runs a server with its own data, and `http://localhost:5173/?server=8797` points the game at it.

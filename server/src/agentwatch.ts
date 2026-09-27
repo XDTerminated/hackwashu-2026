@@ -7,7 +7,7 @@
 // calls and results. Other tools can report in over HTTP (reportEvent).
 // Read-only: nothing here steers the agents. Stays on this computer.
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -432,19 +432,30 @@ export interface ReportedEvent {
   model?: string;
 }
 
+/** Reported sessions nobody's heard from in this long are forgotten. */
+const API_IDLE_MS = 2 * 60 * 60_000;
+/** At most this many reported sessions, and this many agents in each. */
+const API_MAX_SESSIONS = 50;
+const API_MAX_WORKERS = 20;
+
 /** POST /agents/event: any tool (Codex, Gemini, a script) can put its agents in the Office. */
 export function reportEvent(ev: ReportedEvent): string | null {
   if (!ev || typeof ev.session !== "string" || !ev.session.trim()) return "needs a session";
   const now = Date.now();
+  for (const [id, x] of tracked) if (x.source === "api" && now - x.lastAt > API_IDLE_MS) tracked.delete(id);
   const key = `api:${clip(ev.session, 80)}`;
   let s = tracked.get(key);
-  if (!s) tracked.set(key, (s = newSession(key, "api", now)));
+  if (!s) {
+    if ([...tracked.values()].filter((x) => x.source === "api").length >= API_MAX_SESSIONS) return "too many sessions";
+    tracked.set(key, (s = newSession(key, "api", now)));
+  }
   if (ev.title) s.title = clip(ev.title, 80);
   if (ev.project) s.project = clip(ev.project, 40);
   s.lastAt = now;
   const isLead = !ev.agent || ev.agent === "lead";
   let a = isLead ? s.lead : s.workers.get(clip(ev.agent, 80));
   if (!a) {
+    if (s.workers.size >= API_MAX_WORKERS) return "too many agents in that session";
     a = newAgent(clip(ev.agent, 80), clip(ev.name ?? ev.agent, 60), "agent", now, false, ev.parent ? clip(ev.parent, 80) : "lead", 1);
     s.workers.set(a.info.id, a);
   }
@@ -673,7 +684,12 @@ export function pairBridge(code: string, host: string): { token: string } | { er
   return { token: bridge.token };
 }
 
-const sameToken = (t: string) => !!bridge && typeof t === "string" && t.length === bridge.token.length && t === bridge.token;
+const sameToken = (t: string) => {
+  if (!bridge || typeof t !== "string") return false;
+  const a = Buffer.from(t);
+  const b = Buffer.from(bridge.token);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
 
 /** What the linked computer sees right now. */
 export function bridgeUpdate(token: string, raw: unknown): boolean {

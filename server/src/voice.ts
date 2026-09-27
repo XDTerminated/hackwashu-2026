@@ -4,7 +4,7 @@
 // leaves the server. When ElevenLabs can't help (no key, out of credits, the
 // account flagged), the game falls back to the browser's own voices.
 
-import { DATA_DIR } from "./env.js";
+import { DATA_DIR, hostAllowed } from "./env.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -141,6 +141,7 @@ const VILLAGERS = new Set<string>(Object.keys(VOICES));
 
 /** Only the game (served from this machine or the same host) may spend the voice credits. */
 function allowOrigin(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!hostAllowed(req.headers.host)) return false;
   const origin = req.headers.origin;
   if (!origin) return true;
   try {

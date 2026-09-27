@@ -72,7 +72,7 @@ export function initSpotify() {
     const s = existsSync(TOKEN_FILE) ? (JSON.parse(readFileSync(TOKEN_FILE, "utf8")) as Saved) : null;
     if (s?.refresh_token) {
       saved = s;
-      console.log(`[spotify] restored sign-in${s.account ? ` for ${s.account}` : ""}`);
+      console.log(`[spotify] restored sign-in${s.account && !HOSTED ? ` for ${s.account}` : ""}`);
     }
   } catch {
     /* no saved sign-in */

@@ -103,7 +103,18 @@ export async function myPullRequests() {
   return { yours: mine.map(view), waiting_on_your_review: review.map(view) };
 }
 
+/** "owner/name" only (no path tricks from the model), and a real issue/PR number. */
+function checkRepo(repo: string) {
+  if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo) || repo.split("/").some((part) => /^\.+$/.test(part))) throw new Error(`"${repo}" isn't a repo: use owner/name.`);
+  return repo;
+}
+function checkNumber(n: number) {
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`${n} isn't an issue or pull request number.`);
+  return n;
+}
+
 export async function repoIssues(repo: string) {
+  checkRepo(repo);
   const items = await gh<Item[]>("GET", `/repos/${repo}/issues?state=open&per_page=15&sort=updated`);
   return items.filter((i) => !i.pull_request).map((i) => ({ number: i.number, title: i.title, by: i.user?.login, updated: ago(i.updated_at) }));
 }
@@ -112,6 +123,7 @@ type CheckRun = { name: string; status: string; conclusion: string | null };
 
 /** How a branch or pull request's checks (CI) are doing. */
 async function checksFor(repo: string, ref: string) {
+  checkRepo(repo);
   const runs = (await gh<{ check_runs: CheckRun[] }>("GET", `/repos/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=30`)).check_runs;
   const failed = runs.filter((r) => r.conclusion && !["success", "skipped", "neutral"].includes(r.conclusion)).map((r) => r.name);
   const running = runs.filter((r) => r.status !== "completed").map((r) => r.name);
@@ -119,11 +131,14 @@ async function checksFor(repo: string, ref: string) {
 }
 
 export async function prStatus(repo: string, number: number) {
+  checkRepo(repo);
+  checkNumber(number);
   const pr = await gh<{ title: string; state: string; merged: boolean; draft: boolean; mergeable_state?: string; head: { sha: string; ref: string }; html_url: string; comments: number; review_comments: number }>("GET", `/repos/${repo}/pulls/${number}`);
   return { title: pr.title, state: pr.merged ? "merged" : pr.state, draft: pr.draft, branch: pr.head.ref, mergeable: pr.mergeable_state, comments: pr.comments + pr.review_comments, checks: await checksFor(repo, pr.head.sha), url: pr.html_url };
 }
 
 export async function recentCommits(repo: string, branch?: string) {
+  checkRepo(repo);
   const list = await gh<{ sha: string; commit: { message: string; author: { name: string; date: string } } }[]>("GET", `/repos/${repo}/commits?per_page=6${branch ? `&sha=${encodeURIComponent(branch)}` : ""}`);
   return list.map((c) => ({ sha: c.sha.slice(0, 7), message: c.commit.message.split("\n")[0], by: c.commit.author.name, when: ago(c.commit.author.date) }));
 }
@@ -137,6 +152,7 @@ export async function findRepo(folder: string): Promise<string | null> {
 
 /** A branch's pull request (if it has one) and how its checks are doing. */
 export async function branchStatus(repo: string, branch: string) {
+  checkRepo(repo);
   const owner = repo.split("/")[0];
   const prs = await gh<{ number: number; title: string; state: string; html_url: string }[]>("GET", `/repos/${repo}/pulls?state=all&head=${encodeURIComponent(`${owner}:${branch}`)}&per_page=1`);
   const checks = await checksFor(repo, branch).catch(() => null);
@@ -144,11 +160,14 @@ export async function branchStatus(repo: string, branch: string) {
 }
 
 export async function createIssue(repo: string, title: string, body: string) {
+  checkRepo(repo);
   const i = await gh<{ number: number; html_url: string }>("POST", `/repos/${repo}/issues`, { title, body });
   return { number: i.number, url: i.html_url };
 }
 
 export async function comment(repo: string, number: number, body: string) {
+  checkRepo(repo);
+  checkNumber(number);
   const c = await gh<{ html_url: string }>("POST", `/repos/${repo}/issues/${number}/comments`, { body });
   return { url: c.html_url };
 }

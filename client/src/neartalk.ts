@@ -181,6 +181,8 @@ export class NearTalk {
     },
     submit: () => this.submitTyped(),
     active: () => this.typing,
+    // (a MoonPad thread or a dialog took the keyboard: step out rather than freeze you mid-typing)
+    lost: () => this.leave(),
   };
   private offs: Array<() => void> = [];
 
@@ -204,6 +206,14 @@ export class NearTalk {
       }),
     );
     this.offs.push(onSfxToggle((m) => m && voice.stopSpeaking()));
+    // A different colony (guest, dev mode, another account): what was said here doesn't carry over.
+    this.offs.push(
+      net.onWorldChange(() => {
+        this.leave();
+        this.history.clear();
+        this.greeted.clear();
+      }),
+    );
   }
 
   destroy() {

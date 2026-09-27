@@ -13,7 +13,7 @@ import {
   type TaskSource,
   type VillagerId,
 } from "../../shared/game.js";
-import { waitForApproval } from "./approvals.js";
+import { denyPendingFor, waitForApproval } from "./approvals.js";
 import * as github from "./connectors/github.js";
 import * as spotify from "./connectors/spotify.js";
 import { MOCK, mockVillager } from "./mock.js";
@@ -22,7 +22,7 @@ import * as services from "./services.js";
 import { addFacts, befriend, memoryNote, remember } from "./memory.js";
 import { retell, splitNotes, tooLongToSay } from "./chat.js";
 import { audienceNote, personaFor, nameOf, type Audience } from "./villagers.js";
-import { addLantern, emit, newId, owns, putApproval, putClod, setVillager, world } from "./world.js";
+import { addLantern, emit, isGuest, newId, owns, putApproval, putClod, setVillager, world, worldGen } from "./world.js";
 import { agentsState } from "./agentwatch.js";
 
 const client = new Anthropic();
@@ -45,6 +45,8 @@ interface LeafTool {
   needsApproval?: (input: Record<string, unknown>) => Promise<{ title: string; body: string } | undefined>;
   /** Just a look around (no little star runs off to do it, and nothing to pop). */
   quiet?: boolean;
+  /** Writes to the player's accounts (drafts, sends, bookings, issues): never on a chore round. */
+  writes?: boolean;
   run: (input: Record<string, unknown>) => Promise<{ text: string; summary: string }>;
 }
 
@@ -121,6 +123,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
   draft_email: {
     owner: "postmaster",
+    writes: true,
     building: "post_office",
     reward: 8,
     def: {
@@ -149,6 +152,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
   send_email: {
     owner: "postmaster",
+    writes: true,
     building: "rocket_pad",
     reward: 12,
     def: {
@@ -158,9 +162,10 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
     },
     label: () => "launching mail to Earth",
     needsApproval: async (i) => {
-      const d = (await services.mail.getDraft(str(i.draft_id)).catch(() => null))?.data;
-      if (!d) return undefined; // run() will report the bad id
-      return { title: `Send "${d.subject}" to ${d.to}?`, body: d.body };
+      const d = (await services.mail.getDraft(str(i.draft_id)))?.data;
+      if (!d) throw new Error(`no draft with id ${str(i.draft_id)}`);
+      // (the recipient line carries any cc/bcc, so the letter says everyone it goes to)
+      return { title: `Send "${d.subject}" to ${d.to}?`, body: `To: ${d.to}\n\n${d.body}` };
     },
     run: async (i) => {
       const { data: d, source } = await services.mail.send(str(i.draft_id));
@@ -191,6 +196,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
   create_event: {
     owner: "timekeeper",
+    writes: true,
     building: "clock_tower",
     reward: 10,
     def: {
@@ -347,6 +353,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
   github_create_issue: {
     owner: "mechanic",
+    writes: true,
     building: "workshop",
     reward: 6,
     def: {
@@ -363,6 +370,7 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
   },
   github_comment: {
     owner: "mechanic",
+    writes: true,
     building: "workshop",
     reward: 4,
     def: {
@@ -494,7 +502,8 @@ const LEAF_TOOLS: Record<string, LeafTool> = {
 const WORKERS: VillagerId[] = ["postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const movedIn = services.isResident;
 
-export function toolsFor(v: VillagerId): Tool[] {
+/** `readOnly` (chore rounds): only tools that look, never ones that draft, send, book or file. */
+export function toolsFor(v: VillagerId, readOnly = false): Tool[] {
   if (v === "jade_rabbit") {
     if (!services.rabbitTeamwork()) return [];
     const available = WORKERS.filter(movedIn);
@@ -527,8 +536,14 @@ export function toolsFor(v: VillagerId): Tool[] {
   if (v === "dj" && !spotify.spotifyStatus().connected) return [];
   if (v === "mechanic" && !github.githubStatus().connected) return [];
   return Object.entries(LEAF_TOOLS)
-    .filter(([, t]) => t.owner === v && owns(t.building))
+    .filter(([, t]) => t.owner === v && owns(t.building) && !(readOnly && (t.writes || t.needsApproval)))
     .map(([, t]) => t.def);
+}
+
+/** Could this neighbor's work leave a glowing star to pop right now (they live here and have a working tool that makes one)? */
+export function makesStars(v: VillagerId): boolean {
+  if (v === "jade_rabbit" || !movedIn(v) || services.needsConnect(v)) return false;
+  return toolsFor(v).some((t) => "name" in t && (t.name === "web_search" || (LEAF_TOOLS[t.name] && !LEAF_TOOLS[t.name].quiet)));
 }
 
 export function missingBuildingsNote(v: VillagerId): string {
@@ -547,12 +562,31 @@ export function missingBuildingsNote(v: VillagerId): string {
 
 // ------------------------------------------------------------------ loop
 
+/** The save each running task started in; its world-writing effects stop if the live save is swapped (guest, dev mode, reset). */
+const taskGen = new Map<string, number>();
+
+/** Still the save this task started in? */
+export function taskLive(taskId: string): boolean {
+  return taskGen.get(taskId) === worldGen();
+}
+
+/** Tasks that took in tool output (mail, web pages, issues...): nothing from them is kept as a memory. */
+const untrusted = new Set<string>();
+export function sawToolOutput(taskId: string) {
+  untrusted.add(taskId);
+}
+
+const moved = (id: string): ToolResult => ({ type: "tool_result", tool_use_id: id, is_error: true, content: "The colony changed under you (a different save is loaded). Stop here." });
+
 export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse): Promise<ToolResult> {
   const tool = LEAF_TOOLS[block.name];
   const input = (block.input ?? {}) as Record<string, unknown>;
-  if (!tool || tool.owner !== v) {
+  // Only what this villager can use right now (their building's up, their account connected; nothing that writes on a chore round).
+  if (!tool || tool.owner !== v || !toolsFor(v, choreTasks.has(taskId)).some((t) => "name" in t && t.name === block.name)) {
     return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `unknown tool ${block.name}` };
   }
+  if (!taskLive(taskId)) return moved(block.id);
+  sawToolOutput(taskId);
   if (tool.quiet) {
     setVillager(v, { status: "working", activity: tool.label(input) });
     try {
@@ -560,6 +594,18 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
     } catch (err) {
       return { type: "tool_result", tool_use_id: block.id, is_error: true, content: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  // Anything that needs the player's OK fails closed: no approval letter, no run.
+  let gate: { title: string; body: string } | undefined;
+  if (tool.needsApproval) {
+    try {
+      gate = await tool.needsApproval(input);
+    } catch (err) {
+      return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `Couldn't ask the player about it: ${err instanceof Error ? err.message : String(err)}. Nothing was done.` };
+    }
+    if (!gate) return { type: "tool_result", tool_use_id: block.id, is_error: true, content: "Couldn't ask the player about it, so nothing was done." };
+    if (!taskLive(taskId)) return moved(block.id);
   }
 
   const clod: Clod = {
@@ -576,7 +622,6 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
   setVillager(v, { status: "working", activity: clod.label });
   emit({ type: "tool_start", villager: v, clod: { ...clod } });
 
-  const gate = await tool.needsApproval?.(input).catch(() => undefined);
   if (gate) {
     const approval: Approval = { id: newId("ok"), villager: v, clodId: clod.id, title: gate.title, body: gate.body, status: "pending" };
     clod.status = "stuck";
@@ -588,6 +633,8 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
 
     const approved = await waitForApproval(approval);
     const via = lastApprovalVia.get(approval.id) ?? "game";
+    lastApprovalVia.delete(approval.id);
+    if (!taskLive(taskId)) return moved(block.id);
     emit({ type: "approval_resolved", villager: v, approvalId: approval.id, clodId: clod.id, approved, via });
     setVillager(v, { status: "working", activity: clod.label });
 
@@ -603,6 +650,7 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
 
   try {
     const { text, summary } = await tool.run(input);
+    if (!taskLive(taskId)) return { type: "tool_result", tool_use_id: block.id, content: text };
     clod.status = "ready";
     clod.result = summary;
     putClod(clod);
@@ -610,6 +658,7 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
     return { type: "tool_result", tool_use_id: block.id, content: text };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (!taskLive(taskId)) return { type: "tool_result", tool_use_id: block.id, is_error: true, content: message };
     clod.status = "failed";
     clod.result = message;
     putClod(clod);
@@ -622,52 +671,79 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
 /** Neighbors each top-level task handed work to — the teamwork quest counts these. */
 const delegations = new Map<string, Set<VillagerId>>();
 
-/** Which channel answered each approval — set by the WS / Photon handlers. */
+/** Which channel answered each approval — set by the WS / Photon handlers, cleared once read. */
 export const lastApprovalVia = new Map<string, "game" | "phone">();
 
 export async function runDelegate(from: VillagerId, taskId: string, block: ToolUse): Promise<ToolResult> {
   const input = (block.input ?? {}) as Record<string, unknown>;
   const to = str(input.villager) as VillagerId;
   const task = str(input.task);
+  if (!toolsFor(from).some((t) => "name" in t && t.name === "delegate")) {
+    return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `unknown tool ${block.name}` };
+  }
   if (!WORKERS.includes(to) || !movedIn(to)) {
     return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `${to} hasn't moved in yet` };
   }
-  emit({ type: "handoff", from, to, text: task });
-  delegations.get(taskId)?.add(to);
-  const report = await runVillager(to, task, taskId, "report");
-  emit({ type: "handoff", from: to, to: from, text: report });
-  setVillager(to, { status: "idle", activity: "relaxing" });
-  return { type: "tool_result", tool_use_id: block.id, content: report || "(no report)" };
+  if (!taskLive(taskId)) return moved(block.id);
+  // One job at a time per neighbor (the player's own requests, or a second handoff in this same turn).
+  if (busy.has(to)) {
+    return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `${nameOf(to)} is busy with something else right now. Don't hand them more this turn.` };
+  }
+  busy.add(to);
+  sawToolOutput(taskId);
+  try {
+    emit({ type: "handoff", from, to, text: task });
+    delegations.get(taskId)?.add(to);
+    const report = await runVillager(to, task, taskId, "report");
+    if (taskLive(taskId)) emit({ type: "handoff", from: to, to: from, text: report });
+    return { type: "tool_result", tool_use_id: block.id, content: report || "(no report)" };
+  } catch (err) {
+    // (one neighbor failing mustn't sink the others working alongside them)
+    console.error(`[agents] ${to} (delegated) failed:`, err);
+    denyPendingFor(to);
+    return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `${nameOf(to)} couldn't finish: ${friendlyError(err)}` };
+  } finally {
+    busy.delete(to);
+    if (taskLive(taskId)) setVillager(to, { status: "idle", activity: "relaxing" });
+  }
 }
 
 /** Emit clods for server-side web searches after the fact — they already ran. */
 function surfaceServerTools(v: VillagerId, taskId: string, content: Anthropic.Beta.BetaContentBlock[]) {
   for (const b of content) {
     if (b.type !== "server_tool_use") continue;
-    const q = str((b.input as Record<string, unknown>)?.query);
-    const clod: Clod = {
-      id: newId("clod"),
-      taskId,
-      villager: v,
-      building: "observatory",
-      label: `searching "${q.slice(0, 30)}"`,
-      status: "ready",
-      reward: 6,
-      result: `searched Earth for "${q}"`,
-    };
-    putClod({ ...clod });
-    emit({ type: "tool_start", villager: v, clod: { ...clod, status: "working" } });
-    emit({ type: "tool_end", villager: v, clodId: clod.id, ok: true, result: clod.result! });
+    recordSearch(v, taskId, str((b.input as Record<string, unknown>)?.query));
   }
+}
+
+/** A web search the Stargazer ran: a clod at the Observatory (the scripted brain uses this too). */
+export function recordSearch(v: VillagerId, taskId: string, q: string) {
+  sawToolOutput(taskId);
+  if (!taskLive(taskId)) return;
+  const clod: Clod = {
+    id: newId("clod"),
+    taskId,
+    villager: v,
+    building: "observatory",
+    label: `searching "${q.slice(0, 30)}"`,
+    status: "ready",
+    reward: 6,
+    result: `searched Earth for "${q}"`,
+  };
+  putClod({ ...clod });
+  emit({ type: "tool_start", villager: v, clod: { ...clod, status: "working" } });
+  emit({ type: "tool_end", villager: v, clodId: clod.id, ok: true, result: clod.result! });
 }
 
 async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: taskText }];
-  const tools = toolsFor(v);
+  const tools = toolsFor(v, choreTasks.has(taskId));
   const system = personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience);
   let finalText = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // (the save changed under this task: stop, and leave the new one alone)
+    if (!taskLive(taskId)) break;
     setVillager(v, { status: "thinking", activity: "thinking…" });
 
     const response = await client.beta.messages.create({
@@ -682,6 +758,7 @@ async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string
       messages,
     });
 
+    if (!taskLive(taskId)) break;
     for (const b of response.content) {
       if (b.type === "thinking" && b.thinking.trim()) {
         setVillager(v, { thought: b.thinking.trim() });
@@ -714,8 +791,13 @@ async function runVillagerClaude(v: VillagerId, taskText: string, taskId: string
     messages.push({ role: "assistant", content: response.content });
     if (text && v !== "jade_rabbit") emit({ type: "say", villager: v, text });
 
+    // (each settles on its own, so one failing can't strand the others mid-approval)
     const results = await Promise.all(
-      uses.map((u) => (u.name === "delegate" ? runDelegate(v, taskId, u) : runLeafTool(v, taskId, u))),
+      uses.map((u) =>
+        (u.name === "delegate" ? runDelegate(v, taskId, u) : runLeafTool(v, taskId, u)).catch(
+          (err): ToolResult => ({ type: "tool_result", tool_use_id: u.id, is_error: true, content: err instanceof Error ? err.message : String(err) }),
+        ),
+      ),
     );
     messages.push({ role: "user", content: results });
   }
@@ -870,8 +952,24 @@ const busy = new Set<VillagerId>();
 /** Chore rounds are self-started, so they don't earn quest progress. */
 const choreTasks = new Set<string>();
 
+export function isChoreTask(taskId: string) {
+  return choreTasks.has(taskId);
+}
+
 export function isBusy(v: VillagerId) {
   return busy.has(v);
+}
+
+/** Every task is a real model run: at most this many start per window (fewer for a guest, who pays nothing). */
+const START_WINDOW_MS = 10 * 60_000;
+const startLimit = () => (isGuest() ? 8 : 20);
+const starts: number[] = [];
+function takeStart(): boolean {
+  const now = Date.now();
+  while (starts.length && now - starts[0] > START_WINDOW_MS) starts.shift();
+  if (starts.length >= startLimit()) return false;
+  starts.push(now);
+  return true;
 }
 
 /** A task from the player (in-game or by text). Resolves with the villager's reply. */
@@ -891,8 +989,13 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
   const needs = services.needsConnect(v);
   if (needs) return early(`Connect your ${needs === "google" ? "Google account" : "Canvas"} first (or try me on sample data), and I'm all yours!`);
   if (busy.has(v)) return early(`Still busy with your last request — hang tight!`);
+  if (!takeStart()) {
+    console.warn(`[agents] task limit reached (${startLimit()} per ${START_WINDOW_MS / 60_000} min); ${v} sat this one out`);
+    return early(`Phew, the whole colony's been run off its feet. Give us a few minutes' breather, then ask again?`);
+  }
 
   const taskId = newId("task");
+  taskGen.set(taskId, worldGen());
   busy.add(v);
   delegations.set(taskId, new Set());
   if (from === "chore") choreTasks.add(taskId);
@@ -913,6 +1016,8 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     // A text can end with a private note to remember; it's not part of the reply.
     let facts: string[] = [];
     if (texting) ({ reply, facts } = splitNotes(reply));
+    // (the save changed while they worked: nothing from this task goes into the new one)
+    if (!taskLive(taskId)) return reply;
     if (!texting) emit({ type: "say", villager: v, text: reply });
 
     const madeClods = Object.values(world.clods).some((c) => c.taskId === taskId);
@@ -928,13 +1033,15 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
       befriend(v, "visit");
     } else if (texting) {
       remember(v, text, reply, "text");
-      if (facts.length) addFacts(v, facts);
+      // Only from a plain chat: a turn that read mail, pages or issues could be carrying someone else's words.
+      if (facts.length && !untrusted.has(taskId)) addFacts(v, facts);
       befriend(v, "text");
     }
     return reply;
   } catch (error) {
     console.error(`[agents] ${v} failed:`, error);
     const msg = friendlyError(error);
+    if (!taskLive(taskId)) return msg;
     setVillager(v, { status: "error", activity: "stuck" });
     emit({ type: "building_error", villager: v, building: VILLAGER_HOME[v], message: msg });
     if (!texting) emit({ type: "say", villager: v, text: msg });
@@ -943,6 +1050,8 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     busy.delete(v);
     delegations.delete(taskId);
     choreTasks.delete(taskId);
-    if (world.villagers[v].status !== "error") setVillager(v, { status: "idle", activity: "relaxing" });
+    untrusted.delete(taskId);
+    if (taskLive(taskId) && world.villagers[v]?.status !== "error") setVillager(v, { status: "idle", activity: "relaxing" });
+    taskGen.delete(taskId);
   }
 }

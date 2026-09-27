@@ -11,7 +11,7 @@ import * as net from "./net";
 import type { PhoneLinkMsg } from "./net";
 import { closePanel, openConnect, openLinkClaude, setUiOpen } from "./panel";
 import { sfx } from "./sfx";
-import { agents, store } from "./store";
+import { agents, onStoreChange, store } from "./store";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import { Button, C, Label, TOOLBAR_H, fit, measure, ptext } from "./widgets";
 
@@ -38,12 +38,48 @@ const SAVE_KEY = "moonpad-v1";
 const threads = new Map<VillagerId, Msg[]>();
 const unread = new Map<VillagerId, number>();
 const lastSource = new Map<VillagerId, TaskSource>();
-const waiting = new Set<VillagerId>();
+/** Who's "typing..." back, and when they started (it gives up after a while: see WAIT_MS). */
+const waiting = new Map<VillagerId, number>();
+const WAIT_MS = 2 * 60_000;
 const unreadListeners = new Set<() => void>();
+/** Whose history is showing (see net.accountTag): a guest's stays in memory only. */
+let loadedFor: string | null = null;
+
+function startWaiting(v: VillagerId) {
+  const at = Date.now();
+  waiting.set(v, at);
+  window.setTimeout(() => {
+    if (waiting.get(v) !== at) return;
+    waiting.delete(v);
+    view?.refresh();
+  }, WAIT_MS);
+}
+
+/** Nobody's still typing back (a fresh snapshot, or the line went down). */
+function stopWaiting() {
+  if (!waiting.size) return;
+  waiting.clear();
+  view?.refresh();
+}
+
+/** Signed in as someone else, as a guest, or in dev mode: that world's own threads, not the last one's. */
+function switchAccount() {
+  const who = net.accountTag();
+  const tag = who === "guest" ? who : `${who}${store.devMode ? "-dev" : ""}`;
+  if (tag === loadedFor) return;
+  loadedFor = tag;
+  threads.clear();
+  unread.clear();
+  lastSource.clear();
+  waiting.clear();
+  if (tag !== "guest") load();
+  unreadListeners.forEach((fn) => fn());
+  view?.refresh();
+}
 
 function load() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(`${SAVE_KEY}:${loadedFor}`);
     if (!raw) return;
     const data = JSON.parse(raw) as { threads: [VillagerId, Msg[]][]; unread: [VillagerId, number][] };
     data.threads.forEach(([v, m]) => threads.set(v, m));
@@ -54,8 +90,9 @@ function load() {
 }
 
 function save() {
+  if (loadedFor === null || loadedFor === "guest") return;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ threads: [...threads], unread: [...unread] }));
+    localStorage.setItem(`${SAVE_KEY}:${loadedFor}`, JSON.stringify({ threads: [...threads], unread: [...unread] }));
   } catch {
     /* storage unavailable — history just won't persist */
   }
@@ -86,7 +123,18 @@ export function onUnreadChange(fn: () => void) {
 }
 
 export function initMoonPad() {
-  load();
+  try {
+    // (the old history, from before it was kept per account: nobody's in particular, so it goes)
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* nothing stored */
+  }
+  // (whose history to show is known once the colony's snapshot arrives)
+  net.onSnapshot(() => {
+    switchAccount();
+    stopWaiting();
+  });
+  onStoreChange(() => !store.connected && stopWaiting());
   net.onPhoneLink((msg) => view?.onPhoneLink(msg));
   // The Claude Code row follows the link (hosted): redraw when it changes, not on every agent step.
   let linkSeen = "";
@@ -103,7 +151,7 @@ export function initMoonPad() {
     if (e.type === "text") {
       if (e.direction === "in") {
         push(e.villager, { from: "you", text: e.text, tag: e.via === "phone" ? "from your phone" : undefined });
-        waiting.add(e.villager);
+        startWaiting(e.villager);
         view?.refresh();
       } else {
         waiting.delete(e.villager);

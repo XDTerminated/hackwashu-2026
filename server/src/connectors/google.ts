@@ -7,10 +7,11 @@
 // → put GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env. Then sign in from the
 // game (walk to the Post Office or Clock Tower and press E).
 
-import { DATA_DIR } from "../env.js";
+import { DATA_DIR, HOSTED } from "../env.js";
 import { calendar as calendarApi } from "@googleapis/calendar";
 import { gmail as gmailApi } from "@googleapis/gmail";
-import { OAuth2Client, type Credentials } from "google-auth-library";
+import { CodeChallengeMethod, OAuth2Client, type Credentials } from "google-auth-library";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,7 +98,7 @@ export async function initGoogle() {
   oauth().setCredentials(saved.tokens);
   account = saved.account;
   connected = true;
-  console.log(`[google] restored sign-in${account ? ` for ${account}` : ""}`);
+  console.log(`[google] restored sign-in${account && !HOSTED ? ` for ${account}` : ""}`);
 }
 
 /**
@@ -107,7 +108,8 @@ export async function initGoogle() {
  */
 export async function checkGoogleClient(): Promise<{ ok: true } | { ok: false; problem: string; fix: string }> {
   try {
-    const res = await fetch(googleAuthUrl(), { redirect: "manual" });
+    // (no state: this never comes back to us)
+    const res = await fetch(oauth().generateAuthUrl(authParams()), { redirect: "manual" });
     const to = res.headers.get("location") ?? "";
     const err = new URL(to, "https://accounts.google.com").searchParams.get("authError");
     if (!err) return { ok: true };
@@ -127,20 +129,45 @@ export function missingScopes(): string[] {
   return SCOPES.filter((s) => !granted.includes(s));
 }
 
-export function googleAuthUrl(): string {
-  // Hosted, suggest the account they signed in to the game with.
-  const hint = process.env.MOON_USER_EMAIL;
-  return oauth().generateAuthUrl({ access_type: "offline", prompt: "consent", scope: SCOPES, state: "moon-village", ...(hint ? { login_hint: hint } : {}) });
+// Each sign-in gets its own random state (checked on the way back) and PKCE verifier, good for 10 minutes.
+type Flow = { kind: "connect" | "signin"; verifier: string; at: number };
+const flows = new Map<string, Flow>();
+const FLOW_MS = 10 * 60_000;
+
+async function newFlow(kind: Flow["kind"]) {
+  for (const [k, f] of flows) if (Date.now() - f.at > FLOW_MS) flows.delete(k);
+  const state = `${kind}.${randomBytes(16).toString("hex")}`;
+  const { codeVerifier, codeChallenge } = await oauth().generateCodeVerifierAsync();
+  flows.set(state, { kind, verifier: codeVerifier, at: Date.now() });
+  return { state, code_challenge: codeChallenge, code_challenge_method: CodeChallengeMethod.S256 };
 }
 
-export async function finishGoogleAuth(code: string): Promise<string | undefined> {
-  const { tokens } = await oauth().getToken(code);
+/** The sign-in this callback finishes (used up), or null if it's unknown or too old. */
+export function takeGoogleFlow(state: string | null): Flow | null {
+  const f = state ? flows.get(state) : undefined;
+  if (!f || !state) return null;
+  flows.delete(state);
+  return Date.now() - f.at > FLOW_MS ? null : f;
+}
+
+const authParams = () => {
+  // Hosted, suggest the account they signed in to the game with.
+  const hint = process.env.MOON_USER_EMAIL;
+  return { access_type: "offline", prompt: "consent", scope: SCOPES, ...(hint ? { login_hint: hint } : {}) };
+};
+
+export async function googleAuthUrl(): Promise<string> {
+  return oauth().generateAuthUrl({ ...authParams(), ...(await newFlow("connect")) });
+}
+
+export async function finishGoogleAuth(code: string, codeVerifier: string): Promise<string | undefined> {
+  const { tokens } = await oauth().getToken({ code, codeVerifier });
   oauth().setCredentials(tokens);
   const profile = await gmail().users.getProfile({ userId: "me" });
   account = profile.data.emailAddress ?? undefined;
   save(tokens, account);
   connected = true;
-  console.log(`[google] connected ${account}`);
+  console.log(HOSTED ? "[google] connected" : `[google] connected ${account}`);
   return account;
 }
 
@@ -162,16 +189,16 @@ let me: { name: string; email: string } | null = (() => {
 /** Who signed in on the title screen (name and email), if anyone. */
 export const signedInAs = () => me;
 
-export function googleSigninUrl(): string {
-  return oauth().generateAuthUrl({ scope: ["openid", "email", "profile"], state: "signin", prompt: "select_account" });
+export async function googleSigninUrl(): Promise<string> {
+  return oauth().generateAuthUrl({ scope: ["openid", "email", "profile"], prompt: "select_account", ...(await newFlow("signin")) });
 }
 
 /** Finish a title-screen sign-in: who you are, and nothing more. */
-export async function finishGoogleSignin(code: string): Promise<{ name: string; email: string }> {
+export async function finishGoogleSignin(code: string, codeVerifier: string): Promise<{ name: string; email: string }> {
   // (a client of its own, so this never touches the Gmail and Calendar sign-in)
   const c = clientCreds();
   const g = new OAuth2Client(c.id, c.secret, GOOGLE_REDIRECT);
-  const { tokens } = await g.getToken(code);
+  const { tokens } = await g.getToken({ code, codeVerifier });
   const ticket = await g.verifyIdToken({ idToken: tokens.id_token ?? "", audience: c.id });
   const info = ticket.getPayload();
   if (!info?.email) throw new Error("Google didn't say who you are.");
@@ -264,7 +291,13 @@ export async function gmailRead(id: string): Promise<Email | undefined> {
 
 const encodeSubject = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s).toString("base64")}?=`);
 
+/** One recipient: "a@b.com" or "Name <a@b.com>", nothing that could add a header or a hidden address. */
+const ADDRESS = /^(?:[^\r\n<>,;"]{0,80}<[^\s<>,;@"]+@[^\s<>,;@"]+\.[^\s<>,;@"]+>|[^\s<>,;@"]+@[^\s<>,;@"]+\.[^\s<>,;@"]+)$/;
+
 export async function gmailDraft(to: string, subject: string, body: string, replyToId?: string): Promise<Draft> {
+  to = to.trim();
+  if (!ADDRESS.test(to)) throw new Error(`"${to.replace(/[\r\n]+/g, " ")}" isn't one email address. Write to one person, like name@example.com.`);
+  subject = subject.replace(/[\r\n]+/g, " ");
   const headers = [`To: ${to}`, `Subject: ${encodeSubject(subject)}`, "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"'];
   let threadId: string | undefined;
   if (replyToId) {
@@ -283,7 +316,11 @@ export async function gmailGetDraft(id: string): Promise<Draft | undefined> {
   try {
     const d = await gmail().users.drafts.get({ userId: "me", id, format: "full" });
     const h = d.data.message?.payload?.headers;
-    return { id, to: header(h, "To"), subject: header(h, "Subject"), body: textOf(d.data.message?.payload as Part), sent: false };
+    // (any Cc or Bcc is shown with the recipient, so the approval letter says everyone it goes to)
+    const cc = header(h, "Cc");
+    const bcc = header(h, "Bcc");
+    const to = [header(h, "To"), cc && `cc: ${cc}`, bcc && `bcc: ${bcc}`].filter(Boolean).join("; ");
+    return { id, to, subject: header(h, "Subject"), body: textOf(d.data.message?.payload as Part), sent: false };
   } catch {
     return undefined;
   }
@@ -293,7 +330,7 @@ export async function gmailSend(id: string): Promise<Draft> {
   const d = await gmailGetDraft(id);
   if (!d) throw new Error(`no draft with id ${id}`);
   await gmail().users.drafts.send({ userId: "me", requestBody: { id } });
-  console.log(`[google] ✉️  SENT to ${d.to}: "${d.subject}"`);
+  console.log("[google] ✉️  sent an email");
   return { ...d, sent: true };
 }
 
@@ -344,6 +381,6 @@ export async function calendarCreate(title: string, startLocal: string, endLocal
       end: { dateTime: withSeconds(endLocal), timeZone: TZ },
     },
   });
-  console.log(`[google] 📅 booked "${title}" at ${localISO(s)} local`);
+  console.log("[google] 📅 booked an event");
   return { id: res.data.id ?? "", title, start: localISO(s), end: localISO(e), notes };
 }

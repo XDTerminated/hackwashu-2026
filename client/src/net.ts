@@ -4,23 +4,24 @@
 import type { ClientMessage, SeqEvent, ServerMessage } from "../../shared/game";
 
 export type PhoneLinkMsg = Extract<ServerMessage, { type: "phone_link" }>;
-import { applyEvent, applySnapshot, setAgents, setConnected } from "./store";
+import { applyEvent, applySnapshot, setAgents, setConnected, store } from "./store";
 import { backHome, gotKicked, gotPeer, gotPeers, gotSession, peerChat, peerLeft, socialChanged } from "./multiplayer";
 import { VISIT_ID } from "./visitparam";
 
-// ?server=8797 points a test copy of the game at a test server.
-const TEST_PORT = new URLSearchParams(location.search).get("server");
+// ?server=8797 points a test copy of the game at a test server (npm run dev only).
+const TEST_PORT = import.meta.env.DEV ? new URLSearchParams(location.search).get("server") : null;
 /**
  * The hosted game (built, and served by the gateway once you've signed in):
  * everything goes to the site itself, which passes it to your own copy of
  * the colony server. On your computer (npm run dev) it's the server on :8787.
  */
-export const HOSTED = !import.meta.env.DEV && !TEST_PORT;
+export const HOSTED = !import.meta.env.DEV;
 const PORT = TEST_PORT ?? "8787";
+const SECURE = location.protocol === "https:";
 // (online, ?visit=<id> connects to a friend's island instead of your own)
-const URL = HOSTED ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${VISIT_ID ? `?visit=${encodeURIComponent(VISIT_ID)}` : ""}` : `ws://${location.hostname || "localhost"}:${PORT}`;
+const URL = HOSTED ? `${SECURE ? "wss" : "ws"}://${location.host}/ws${VISIT_ID ? `?visit=${encodeURIComponent(VISIT_ID)}` : ""}` : `${SECURE ? "wss" : "ws"}://${location.hostname || "localhost"}:${PORT}`;
 /** The colony server's http address (connect pages, voices). */
-export const SERVER_HTTP = HOSTED ? location.origin : `http://${location.hostname || "localhost"}:${PORT}`;
+export const SERVER_HTTP = HOSTED ? location.origin : `${SECURE ? "https" : "http"}://${location.hostname || "localhost"}:${PORT}`;
 const eventListeners = new Set<(e: SeqEvent) => void>();
 const noticeListeners = new Set<(text: string, tone?: "ok") => void>();
 const snapshotListeners = new Set<() => void>();
@@ -50,6 +51,7 @@ const SIGNIN_NOTES: Record<string, string> = {
   signedout: "Signed out. See you soon!",
   ended: "You were signed out. Sign in to get back to your village.",
   deleted: "Your village and account are deleted.",
+  busy: "Lots of guests right now. Try again in a few minutes, or sign in.",
 };
 
 /** Connect to the colony: right away on your computer; online, once we know you're signed in. */
@@ -92,7 +94,59 @@ export function localGuest(on: boolean) {
   wantGuest = on;
   send({ type: "guest_mode", on });
 }
-export const signOut = () => void (location.href = "/auth/logout");
+/** Sign out (a POST, so another site can't sign you out), then back to the title. */
+export function signOut() {
+  forgetThisBrowser();
+  void fetch("/auth/logout", { method: "POST", credentials: "same-origin" })
+    .catch(() => {})
+    .finally(() => void (location.href = "/?signin=signedout"));
+}
+
+/** Forget this browser's "seen it" flags and MoonPad history (sound settings stay): signing out, deleting. */
+export function forgetThisBrowser() {
+  try {
+    const keep = new Set(["moon-music-off-v2", "moon-mic-v2"]);
+    for (const k of Object.keys(localStorage)) if ((k.startsWith("moon-") || k.startsWith("moonpad")) && !k.endsWith("-muted") && !keep.has(k)) localStorage.removeItem(k);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+/**
+ * Whose game this is, for keeping this browser's flags and MoonPad history apart per
+ * account: a short hash of the signed-in email online, "guest" for a guest, "local" on your computer.
+ */
+export function accountTag(): string {
+  const guest = HOSTED ? auth.guest || store.guest : store.guest;
+  if (guest) return "guest";
+  if (!HOSTED) return "local";
+  const email = auth.email || store.account?.email || "";
+  if (!email) return "out";
+  let h = 0x811c9dc5;
+  for (let i = 0; i < email.length; i++) h = Math.imul(h ^ email.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+
+/** A localStorage key of this account's own. */
+export const accountKey = (key: string) => `${key}:${accountTag()}`;
+
+// ---------------------------------------------------------------- the server's clock
+
+/** Server time minus this computer's (from the last snapshot), so meteor landings line up. */
+let clockOffset = 0;
+/** Now, on the server's clock. */
+export const serverNow = () => Date.now() + clockOffset;
+
+// ---------------------------------------------------------------- switching worlds
+
+/** What world the snapshots are from (account, guest, dev mode): a change means a different colony. */
+let worldSig: string | null = null;
+const worldListeners = new Set<() => void>();
+/** A snapshot from a different world (guest, dev mode or another account): old conversations don't belong. */
+export function onWorldChange(fn: () => void) {
+  worldListeners.add(fn);
+  return () => worldListeners.delete(fn);
+}
 
 export function connect() {
   try {
@@ -115,7 +169,13 @@ export function connect() {
       return;
     }
     if (msg.type === "snapshot") {
+      // (the server's clock, for anything timed on it: meteors landing)
+      clockOffset = (msg.snapshot.serverNow ?? Date.now()) - Date.now();
       applySnapshot(msg.snapshot);
+      const sig = `${accountTag()}|${store.guest}|${store.devMode}`;
+      const switched = worldSig !== null && worldSig !== sig;
+      worldSig = sig;
+      if (switched) worldListeners.forEach((fn) => fn());
       snapshotListeners.forEach((fn) => fn());
     } else if (msg.type === "event") {
       applyEvent(msg.event);

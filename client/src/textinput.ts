@@ -8,12 +8,16 @@ export interface InputOwner {
   submit(): void;
   /** Still on screen and wanting keystrokes? (Used to win focus back after a click.) */
   active(): boolean;
+  /** Another box took the keyboard (a window opened over this one). */
+  lost?(): void;
 }
 
 let owner: InputOwner | null = null;
 
 export function claimInput(o: InputOwner) {
+  const prev = owner;
   owner = o;
+  if (prev && prev !== o) prev.lost?.();
   input.value = "";
   setTimeout(() => input.focus(), 0);
 }

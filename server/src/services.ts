@@ -216,7 +216,8 @@ export function buildPlot(b: BuildingId): string | null {
 
 /** Build an extension onto a neighbor's home (the Mail Rocket, the Workshop) with materials. */
 export function buildExtension(b: BuildingId): string | null {
-  const ext = EXTENSIONS[b];
+  // Own keys only, and a real id: ["rocket_pad"] would find the same entry and end up in `revealed`.
+  const ext = typeof b === "string" && Object.hasOwn(EXTENSIONS, b) ? EXTENSIONS[b] : undefined;
   if (!ext) return null;
   if (world.buildings[b]) return `The ${BUILDINGS[b].name} is already built.`;
   if (!isResident(ext.by)) return `${VILLAGER_SHORT[ext.by]} has to live here first.`;
@@ -265,7 +266,8 @@ function moveIn(d: MoveInDef, gift = d.gift) {
 /** Take a landmark up a stage (materials, and for the grand stage a story item and maybe a real job). */
 export function upgradeLandmark(id: LandmarkId): string | null {
   const town = world.progress.town;
-  if (!LANDMARKS[id]) return null;
+  // (own keys only: "constructor" isn't a landmark)
+  if (typeof id !== "string" || !Object.hasOwn(LANDMARKS, id)) return null;
   const blocked = upgradeBlocker(town, id, world.materials);
   if (blocked) return blocked;
   const up = LANDMARKS[id].up[town.stages[id]];

@@ -787,12 +787,14 @@ class Dialog {
     logTalk(talkingTo, "you", text);
     sfx.blip();
     if (net.send({ type: "task", villager: talkingTo, text })) this.expectReply();
-    else this.add("sys", "The line to the colony server is down - start it with npm run dev:server.");
+    else this.add("sys", LINE_DOWN);
   }
 }
 
 let dialog: Dialog | null = null;
 let talkingTo: VillagerId | null = null;
+/** What a dialog says when a message can't go out (the colony server isn't there). */
+const LINE_DOWN = "The line to the colony server is down - start it with npm run dev:server.";
 
 // ---------------------------------------------------------------- picking up where you left off
 // Walk off mid-conversation and come back soon, and it carries on: what was
@@ -829,6 +831,11 @@ export function setUiOpen(open: boolean) {
 }
 
 export function initPanel() {
+  // A different colony (guest, dev mode, another account): conversations here don't carry over.
+  net.onWorldChange(() => {
+    closePanel();
+    talks.clear();
+  });
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isPanelOpen()) closePanel();
   });
@@ -1043,8 +1050,8 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
       secret: true,
       placeholder: "paste a GitHub token (ghp_... or github_pat_...)",
       onSubmit: (token) => {
-        net.send({ type: "connect_github", token });
-        dialog?.add("sys", "Checking that token with GitHub...");
+        if (net.send({ type: "connect_github", token })) dialog?.add("sys", "Checking that token with GitHub...");
+        else dialog?.add("sys", LINE_DOWN);
       },
     });
     dialog.add("them", `${home ? `${name} is all moved in! ` : ""}Connect your GitHub and Tinker keeps an eye on your pull requests, issues and checks, and on the branch your Claude Code is working on. Filing an issue or a comment always comes to your door first.`);
@@ -1123,6 +1130,8 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
 // ---------------------------------------------------------------- Canvas, any school
 
 const SCHOOL_KEY = "moon-canvas-school";
+/** Stops listening for the open "Find your school" search's results. */
+let offSchools: (() => void) | null = null;
 type School = { name: string; domain: string };
 
 function savedSchool(): School | null {
@@ -1153,14 +1162,17 @@ function openCanvasConnect(v: VillagerId, title: string, face: Face, sampleButto
           return pickSchool(v, title, face, sampleButton, { name: domain, domain });
         }
         dialog?.add("you", typed);
+        if (!net.send({ type: "canvas_schools", query: typed })) return void dialog?.add("sys", LINE_DOWN);
         dialog?.showTyping();
-        net.send({ type: "canvas_schools", query: typed });
       },
     });
     dialog.add("them", "Mabel the Scholar reads your Canvas: courses, due dates, announcements. Which school are you at? Type its name below.");
     dialog.setButtons([fromAccounts ? { label: "BACK", onClick: () => openAccounts() } : sampleButton]);
-    const off = net.onCanvasSchools((_q, schools, error) => {
+    // (one listener at a time: reopening this step, or closing the window, drops the last one)
+    offSchools?.();
+    const off = (offSchools = net.onCanvasSchools((_q, schools, error) => {
       off();
+      offSchools = null;
       if (!dialog?.visible || callingFor !== v) return;
       dialog.hideTyping();
       if (error || !schools.length) {
@@ -1173,7 +1185,7 @@ function openCanvasConnect(v: VillagerId, title: string, face: Face, sampleButto
       // Short, numbered buttons (the full names are listed just above).
       const short = (name: string) => (name.length > 11 ? `${name.slice(0, 10).trimEnd()}.` : name);
       dialog.setButtons(top.map((s, i) => ({ label: `${i + 1}. ${short(s.name)}`.toUpperCase(), kind: i === 0 ? "ok" : "", onClick: () => pickSchool(v, title, face, sampleButton, s) })));
-    });
+    }));
     toggleCb(true);
     return;
   }
@@ -1183,8 +1195,8 @@ function openCanvasConnect(v: VillagerId, title: string, face: Face, sampleButto
     secret: true,
     face,
     onSubmit: (token) => {
-      net.send({ type: "connect_canvas", token, baseUrl: school.domain });
-      dialog?.add("sys", "Checking that token with Canvas...");
+      if (net.send({ type: "connect_canvas", token, baseUrl: school.domain })) dialog?.add("sys", "Checking that token with Canvas...");
+      else dialog?.add("sys", LINE_DOWN);
     },
   });
   if (net.HOSTED) {
@@ -1265,6 +1277,8 @@ let panelSeq = 0;
 export function closePanel() {
   panelSeq++;
   accountsOpen = false;
+  offSchools?.();
+  offSchools = null;
   if (!dialog?.visible) return;
   // (the clock for "coming back soon" starts when you walk off)
   const left = talkingTo && talks.get(talkingTo);
@@ -1303,7 +1317,7 @@ export const shortModel = (m: string) => m.replace(/^claude-/, "").replace(/-\d{
 const active = (a: AgentInfo) => a.status !== "done" && a.status !== "failed";
 
 function statsLine(a: AgentInfo) {
-  const took = ago((a.doneAt ?? Date.now()) - a.startedAt);
+  const took = ago((a.doneAt ?? net.serverNow()) - a.startedAt);
   const tokens = a.tokens >= 1000 ? `${(a.tokens / 1000).toFixed(1)}k` : String(a.tokens);
   return [
     `${MARK[a.status]} ${AGENT_STATUS[a.status]}${active(a) ? `: ${excerpt(a.now, 70)}` : ""}`,
@@ -1312,7 +1326,7 @@ function statsLine(a: AgentInfo) {
 }
 
 function workerLine(w: AgentInfo) {
-  return `${MARK[w.status]} ${excerpt(w.name, 60)}\n${AGENT_STATUS[w.status]}${active(w) ? `: ${excerpt(w.now, 70)}` : ""} (${ago((w.doneAt ?? Date.now()) - w.startedAt)}, ${w.tools} tool call${w.tools === 1 ? "" : "s"})`;
+  return `${MARK[w.status]} ${excerpt(w.name, 60)}\n${AGENT_STATUS[w.status]}${active(w) ? `: ${excerpt(w.now, 70)}` : ""} (${ago((w.doneAt ?? net.serverNow()) - w.startedAt)}, ${w.tools} tool call${w.tools === 1 ? "" : "s"})`;
 }
 
 function leadLine(s: AgentSession) {
@@ -1453,7 +1467,7 @@ function linkStatus() {
   if (!l) return "";
   if (l.status === "linked") return `✓ Linked: ${l.host}. Your agents will walk into the Office.`;
   if (l.status === "lost") return `The link went quiet. Is the command still running on ${l.host}? If you closed it, press NEW CODE and run it again.`;
-  if (l.status === "waiting") return `Waiting for the command... (this code works for ${Math.max(1, Math.ceil(((l.expiresAt ?? 0) - Date.now()) / 60_000))} more min)`;
+  if (l.status === "waiting") return `Waiting for the command... (this code works for ${Math.max(1, Math.ceil(((l.expiresAt ?? 0) - net.serverNow()) / 60_000))} more min)`;
   return "Getting a code...";
 }
 
@@ -1477,7 +1491,7 @@ export function openLinkClaude() {
   callingFor = null;
   const l = agents.state.link;
   // Need a code? Ask for one (it arrives with the next update).
-  if (l && (l.status === "off" || (l.status === "waiting" && (l.expiresAt ?? 0) < Date.now()))) net.send({ type: "office_link", on: true });
+  if (l && (l.status === "off" || (l.status === "waiting" && (l.expiresAt ?? 0) < net.serverNow()))) net.send({ type: "office_link", on: true });
   renderLink();
   toggleCb(true);
 }

@@ -4,8 +4,10 @@
 // Settings → "+ New Access Token" → paste it into the game at the Library.
 // Or set CANVAS_TOKEN (and optionally CANVAS_BASE_URL) in .env.
 
-import { DATA_DIR } from "../env.js";
+import { DATA_DIR, HOSTED } from "../env.js";
+import { lookup } from "node:dns/promises";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { BlockList, isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { htmlToText } from "./google.js";
@@ -35,22 +37,43 @@ export async function initCanvas() {
     if (existsSync(CRED_FILE)) cred = JSON.parse(readFileSync(CRED_FILE, "utf8"));
     else if (process.env.CANVAS_TOKEN) cred = { baseUrl: (process.env.CANVAS_BASE_URL ?? DEFAULT_CANVAS).replace(/\/$/, ""), token: process.env.CANVAS_TOKEN };
     if (cred && !cred.account) cred.account = (await api<{ name: string }>("/users/self")).name;
-    if (cred) console.log(`[canvas] connected${cred.account ? ` as ${cred.account}` : ""} (${cred.baseUrl})`);
+    if (cred) console.log(`[canvas] connected${cred.account && !HOSTED ? ` as ${cred.account}` : ""} (${cred.baseUrl})`);
   } catch (err) {
     console.error("[canvas] saved token didn't work:", err instanceof Error ? err.message : err);
     cred = null;
   }
 }
 
+// Addresses a Canvas school never lives at (this machine, the private network, the cloud's metadata service).
+const PRIVATE = new BlockList();
+for (const [net, bits] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3]] as const) PRIVATE.addSubnet(net, bits, "ipv4");
+for (const [net, bits] of [["::", 128], ["::1", 128], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) PRIVATE.addSubnet(net, bits, "ipv6");
+
+function privateAddress(ip: string) {
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i)?.[1];
+  if (mapped) return PRIVATE.check(mapped, "ipv4");
+  return PRIVATE.check(ip, isIP(ip) === 6 ? "ipv6" : "ipv4");
+}
+
+/** A Canvas address must be a public name (not an IP, not something on this machine or its network). */
+async function checkCanvasHost(baseUrl: string) {
+  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host)) throw new Error("Use your school's Canvas address (like wustl.instructure.com), not an IP address.");
+  const addrs = await lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length) throw new Error(`Couldn't find ${host}. Check the Canvas address.`);
+  if (addrs.some((a) => privateAddress(a.address))) throw new Error(`${host} isn't a public Canvas address.`);
+}
+
 /** Validate a pasted token against Canvas, then keep it. */
 export async function connectCanvas(token: string, baseUrl = DEFAULT_CANVAS): Promise<string> {
   const c = { baseUrl: baseUrl.trim().replace(/\/$/, ""), token: token.trim() };
-  if (!/^https:\/\//.test(c.baseUrl)) throw new Error("Canvas URL must start with https://");
+  if (!/^https:\/\/[^/?#@]+$/.test(c.baseUrl)) throw new Error("Canvas URL must start with https://");
+  await checkCanvasHost(c.baseUrl);
   const me = await api<{ name: string }>("/users/self", {}, c);
   cred = { ...c, account: me.name };
   mkdirSync(dirname(CRED_FILE), { recursive: true });
   writeFileSync(CRED_FILE, JSON.stringify(cred), { mode: 0o600 });
-  console.log(`[canvas] connected as ${me.name}`);
+  console.log(HOSTED ? "[canvas] connected" : `[canvas] connected as ${me.name}`);
   return me.name;
 }
 

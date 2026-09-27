@@ -82,6 +82,7 @@ window.addEventListener("resize", () => {
     // first (cleanly), and a cutscene picks up at the shot it was on.
     closePanel();
     closeMoonPad();
+    game.events.emit("close-town-panel");
     for (const key of ["UI", "Title"]) if (game.scene.isActive(key)) game.scene.getScene(key).scene.restart();
     const ui = game.scene.getScene("UI");
     if (ui?.sys.isSleeping() && !relayoutOnWake) {

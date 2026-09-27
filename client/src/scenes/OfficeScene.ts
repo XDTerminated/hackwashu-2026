@@ -430,7 +430,7 @@ export class OfficeScene extends Phaser.Scene {
 
   /** The first time in: one sentence on what this place is. */
   private firstVisit() {
-    const KEY = "moon-office-agents-seen";
+    const KEY = net.accountKey("moon-office-agents-seen");
     try {
       if (localStorage.getItem(KEY) === "1") return;
       localStorage.setItem(KEY, "1");
