@@ -354,7 +354,7 @@ windows.)
 
 Walk with **WASD** / arrow keys. Everything else is on the **icon toolbar** at the bottom (hover an icon for its name):
 
-- **MoonPad** (tablet): text any villager who's moved in to get to know them. Texts are just conversation: villagers remember what you tell them (saved on the server with the colony) and friendship grows, shown as hearts. Ask for real work over text and they'll invite you to their house; tasks only run when you ask in person, and those visits count double toward friendship. A red badge means new replies.
+- **MoonPad** (tablet): text any villager who's moved in to get to know them. Texts reach the real villager, tools and all: ask Hoot about your inbox or Nova to look something up by text and they do it, and anything that sends or books still waits for your OK. Villagers remember what you tell them (saved on the server with the colony) and friendship grows, shown as hearts; visits in person count double. A red badge means new replies.
 - **Shop** (crate): 34 decorations in four tabs (Garden, Cozy, Sci-Fi, Party), from a 20¢ shrub to a 150¢ Star Portal (prices are checked on the server). Each tile shows who loves it.
 - **Quests** (scroll) · **Help** (?)
 - **Music** (note) and **Sound effects** (speaker): separate mutes, remembered per browser.
@@ -380,8 +380,8 @@ already placed in the world) says who loves it and, in the world, whose yard it'
 
 Set `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET` (Photon dashboard → Settings) and `PLAYER_PHONE`
 in `.env`. The Jade Rabbit texts you when you land. Text any villager by name to chat
-(`Stargazer: how was stargazing?`); anything else goes to the Rabbit; like the MoonPad, texts build
-the friendship and real work waits for a visit; `help` lists who's
+(`Stargazer: how was stargazing?`); anything else goes to the Rabbit; like the MoonPad, texts reach the real
+villager, tools and all ("Hoot: anything important in my inbox?"), and build the friendship; `help` lists who's
 around. Approval letters also arrive as texts: reply YES or NO. No credentials yet? `PHOTON_TERMINAL=1`
 runs the same flow in Photon's terminal chat.
 
