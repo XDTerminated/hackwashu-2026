@@ -376,6 +376,11 @@ export const VERB_ICON: Record<string, string> = {
 
 /** Tiny 7x7 villager heads, for the minimap and the roster (texture `vicon_<id>_0`). */
 export const VILLAGER_ICONS: Record<string, PixelSprite> = {
+  // you: your helmet, for your lines in a conversation
+  you: {
+    palette: { K: "#3b2a3a", W: "#f6efe2", V: "#1f3a4d", L: "#8fd0f0" },
+    frames: [[".KKKKK.", "KWWWWWK", "KWVVVWK", "KWVLVWK", "KWVVVWK", "KWWWWWK", ".KKKKK."]],
+  },
   jade_rabbit: {
     palette: { K: "#3b2a3a", W: "#fff6e6", P: "#e89aa8", G: "#7fd0ad" },
     frames: [[".K...K.", "KWK.KWK", "KWKKKWK", "KWWWWWK", "KWKWKWK", "KGWPWGK", ".KKKKK."]],

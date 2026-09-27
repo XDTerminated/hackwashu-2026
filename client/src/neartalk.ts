@@ -162,7 +162,7 @@ export class NearTalk {
     mic: Phaser.GameObjects.Image;
     micWord: Phaser.GameObjects.BitmapText;
     logBg: Phaser.GameObjects.Graphics;
-    log: Phaser.GameObjects.BitmapText[];
+    log: (Phaser.GameObjects.BitmapText | Phaser.GameObjects.Image)[];
   } | null = null;
   private owner: InputOwner = {
     render: () => {
@@ -581,7 +581,7 @@ export class NearTalk {
     }
 
     if (barOnly) return;
-    // the conversation so far: names in their own column, messages wrapped beside them
+    // the conversation so far: each speaker's little icon and name in their own column, messages (smaller) wrapped beside them
     for (const t of c.log) t.destroy();
     c.log = [];
     c.logBg.clear();
@@ -593,14 +593,15 @@ export class NearTalk {
     const maxH = Math.min(170, bottom - Math.round(H * LIFT_TO) - 20);
     const names = [...new Set(lines.map((l) => (l.you ? "You" : VILLAGER_SHORT[this.with!])))];
     const probe = ptext(scene, 0, 0, "", C.ink, "pxb");
-    const nameW = Math.max(...names.map((n) => (probe.setText(n), measure(probe).w))) + 8;
+    const ICON = 10;
+    const nameW = ICON + Math.max(...names.map((n) => (probe.setText(n), measure(probe).w))) + 8;
     probe.destroy();
     const textW = barW - PAD * 2 - nameW;
     let y = bottom - PAD + 2;
     for (let i = lines.length - 1; i >= 0; i--) {
       const l = lines[i];
       const color = l.you ? 0xffd98a : 0xffffff;
-      const msg = pin(ptext(scene, x0 + PAD + nameW, 0, l.text, l.you ? 0xfff0cf : 0xf0ecf8), 1);
+      const msg = pin(ptext(scene, x0 + PAD + nameW, 0, l.text, l.you ? 0xfff0cf : 0xf0ecf8, "sm"), 1);
       msg.setMaxWidth(textW).setLineSpacing(2);
       const h = measure(msg).h;
       if (bottom - (y - h) > maxH && c.log.length) {
@@ -609,8 +610,9 @@ export class NearTalk {
       }
       y -= h;
       msg.setY(y);
-      const name = pin(ptext(scene, x0 + PAD, y, l.you ? "You" : VILLAGER_SHORT[this.with!], color, "pxb"), 1);
-      c.log.push(msg, name);
+      const icon = pin(scene.add.image(x0 + PAD, y, l.you ? "vicon_you_0" : `vicon_${this.with}_0`).setOrigin(0, 0), 1);
+      const name = pin(ptext(scene, x0 + PAD + ICON, y, l.you ? "You" : VILLAGER_SHORT[this.with!], color, "pxb"), 1);
+      c.log.push(msg, icon, name);
       y -= 7; // breathing room between messages
     }
     const top = y - PAD + 9;
