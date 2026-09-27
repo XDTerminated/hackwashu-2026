@@ -142,14 +142,14 @@ points at what's next.
 |---|---|---|---|
 | **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new moonfolk | room for 2, and the Office can be built | room for all 3 |
 | **Fountain** | dry and cracked | water again: moonfolk make daily wishes | the star turns: friendships grow faster |
-| **Roads & Lamps** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
+| **Roads** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
 | **Market** | a collapsed cart: no shop yet (the Shop button appears once it's repaired) | a striped stall: all Garden and Cozy | a real shop: everything |
 
 | Upgrade | Repaired needs | Grand needs |
 |---|---|---|
 | Town Hall | 4 moonstone, 3 stardust, 1 glow ore | 4 moonstone, 2 ice, 2 scrap, the Old Colony Charter, a real job from Hoot, Cog, Mabel or Yutu |
 | Fountain | 3 moonstone, 2 stardust | 2 moon shards, 2 ice, 1 helium-3, the Fountain Valve, a web search by Nova |
-| Roads & Lamps | 3 moonstone, 2 stardust | 2 ice, 1 glow ore, the Lamp Lens |
+| Roads | 3 moonstone, 2 stardust | 2 ice, 1 glow ore, the Lamp Lens |
 | Market | 2 moonstone, 2 stardust, 1 moon shard | 2 scrap, 2 helium-3, the Shop Bell |
 
 **New moonfolk:** Hoot, Cog and Mabel each have a ruined lot. Clear its rubble (2 piles) and repair it with

@@ -141,7 +141,7 @@ function reveal(b: BuildingId) {
 
 /** Tell the game: lots, materials and coins (and what was just picked up, and where). */
 export function announceProgress(gained?: Partial<Materials>, at?: { x: number; y: number }) {
-  emit({ type: "progress", progress: world.progress, materials: { ...world.materials }, coins: world.coins, ...(gained ? { gained } : {}), ...(at ? { at } : {}) });
+  emit({ type: "progress", progress: world.progress, materials: { ...world.materials }, coins: world.coins, ...(gained ? { gained } : {}), ...(at ? { where: at } : {}) });
 }
 
 /** Picked something up (sweeping, a meteor rock, ...). */

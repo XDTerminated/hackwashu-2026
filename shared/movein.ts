@@ -93,6 +93,14 @@ export function materialUses(m: Material): string[] {
   return out;
 }
 
+/** What taking a landmark up its next stage does, in a few words (for the goal). */
+const WHY: Record<LandmarkId, (next: number) => string> = {
+  town_hall: () => "Room for one more moonfolk",
+  fountain: (n) => (n === 1 ? "Moonfolk make daily wishes" : "Friendships grow faster"),
+  roads: (n) => (n === 1 ? "Clears the rockfall to the north" : "Clears the rockfall to the south"),
+  market: (n) => (n === 1 ? "Opens the Shop" : "The Shop stocks everything"),
+};
+
 /** Landmarks in the order worth doing them: the roads open the map, the rest follow. */
 const LANDMARK_ORDER: LandmarkId[] = ["roads", "fountain", "market", "town_hall"];
 
@@ -106,8 +114,12 @@ const landmarkGoal = (s: MoveInState, id: LandmarkId): Goal => {
     up.item && !town.items.includes(up.item) ? `Needs the ${ITEMS[up.item].name}: ${ITEMS[up.item].from}` : "",
     up.task && !town.tasks.includes(up.task) ? TASKS[up.task] : "",
   ].filter(Boolean);
-  const text = `Upgrade the ${name} (${stageName(id, stage + 1)})`;
-  return { kind: "landmark", id, text, title: text, needs: up.needs, how: extra.length ? extra.join(". ") : `E at the ${name}`, ready: !upgradeBlocker(town, id, s.materials) };
+  // (the roads are a Town Hall project: there's nowhere else to fix them from)
+  const where = id === "roads" ? "the Town Hall" : `the ${name}`;
+  const title = id === "roads" ? (stage === 0 ? "Fix the Roads" : "Make the Roads grand") : `Upgrade the ${name} (${stageName(id, stage + 1)})`;
+  const why = WHY[id](stage + 1);
+  const text = `${title}: ${why.toLowerCase()} (E at ${where})`;
+  return { kind: "landmark", id, text, title, needs: up.needs, how: extra.length ? extra.join(". ") : `${why}. E at ${where}`, ready: !upgradeBlocker(town, id, s.materials) };
 };
 
 /** What to do with a neighbor's plot next, in words. */

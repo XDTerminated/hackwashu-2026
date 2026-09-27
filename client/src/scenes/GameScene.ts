@@ -1550,7 +1550,8 @@ export class GameScene extends Phaser.Scene {
         for (const m of MOVE_INS_HOMES()) if (onMap(m, store.progress, store.buildings) && !store.buildings[m] && !this.constructing.has(m)) this.placeBuilding(m, false);
         this.townChanged();
         if (e.gained) {
-          const at = e.at ?? { x: this.player.x, y: this.player.y };
+          // (where it came from: not "at", which every event carries as its time)
+          const at = e.where ?? { x: this.player.x, y: this.player.y };
           const text = (Object.entries(e.gained) as [Material, number][]).filter(([, n]) => n).map(([m, n]) => `+${n}${MAT_GLYPH[m]}`).join("  ");
           if (text) this.floatText(at.x, at.y - 34, text, 0xc8e8ff, 1600);
         }

@@ -136,7 +136,7 @@ export class TownView {
         x: px,
         y: line + 10,
         d: d + 10,
-        act: () => openInfo("ROCKFALL", [`A rockfall seals off the ${area} of the crater. ${area === "north" ? "Repair the Roads & Lamps (at the Town Hall) and the crews will clear it." : "Make the Roads & Lamps grand (at the Town Hall) and the crews will clear it."}`]),
+        act: () => openInfo("ROCKFALL", [`A rockfall seals off the ${area} of the crater. ${area === "north" ? "Fix the Roads and the crews will clear it: that's a project at the Town Hall (press E there)." : "Make the Roads grand and the crews will clear it: that's a project at the Town Hall (press E there)."}`]),
       });
     }
     return out;

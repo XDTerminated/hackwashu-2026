@@ -55,8 +55,8 @@ export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
     up: [{ needs: { moonstone: 3, stardust: 2 } }, { needs: { shard: 2, ice: 2, helium: 1 }, item: "valve", task: "nova_search" }],
   },
   roads: {
-    name: "Roads & Lamps",
-    perks: ["Broken roads; rockfalls seal off the north and south", "Roads fixed: the north of the crater opens up", "Grand roads: the south opens up too"],
+    name: "Roads",
+    perks: ["Broken roads and dark street lamps; rockfalls seal off the north and south", "Roads fixed and the street lamps lit: the north of the crater opens up", "Grand roads: the south opens up too"],
     up: [{ needs: { moonstone: 3, stardust: 2 } }, { needs: { ice: 2, ore: 1 }, item: "lens" }],
   },
   market: {

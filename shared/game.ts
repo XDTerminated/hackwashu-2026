@@ -552,7 +552,7 @@ export type GameEvent =
   /** Which services the player chose to run on sample data. */
   | { type: "sandbox"; sandbox: Partial<Record<Service, boolean>> }
   /** Moving-in progress changed (rubble cleared, a repair, materials picked up). `gained` floats up at `at`. */
-  | { type: "progress"; progress: Progress; materials: Materials; coins: number; gained?: Partial<Materials>; at?: { x: number; y: number } }
+  | { type: "progress"; progress: Progress; materials: Materials; coins: number; gained?: Partial<Materials>; where?: { x: number; y: number } }
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean; hello?: string; gift?: number; next?: VillagerId | null }
   | { type: "plot_revealed"; building: BuildingId }
   /** A neighbor's plot: bought (set it down next), placed, or built up a stage. */
