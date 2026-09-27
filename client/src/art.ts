@@ -95,16 +95,17 @@ const TORSO_UP = [
   ".KOOKWWWWWWWWWWKOOK.",
 ];
 
-// (in profile: the arm hangs at the side, glove at the bottom; the chest patch shows at the front)
+// (in profile: slimmer than from the front, the life-support pack at the back,
+// the arm hanging at the side, glove at the bottom, and the chest patch at the front)
 const TORSO_SIDE = [
-  ".KKWWWWWWWWWWWWKK...",
-  "KWGGWWWWWWWWWWWWWK..",
-  "KWGGWWWWKWKWWWWWWK..",
-  "KWGGWWWWKWKWWOOOWK..",
-  "KWGGWWWWKWKWWOoOWK..",
-  "KWGGWWWWKWKWWOOOWK..",
-  "KWWGWWWWKWKWWWWWWK..",
-  "KWWWWWWWKOKWWWWWK...",
+  "....KWWWWWWWWWK.....",
+  ".KKKKWWWWWWWWWK.....",
+  ".KWGKWKWKWWWWWK.....",
+  ".KWGKWKWKWWOOWK.....",
+  ".KWGKWKWKWWOoWK.....",
+  ".KWGKWKWKWWOOWK.....",
+  ".KKKKWKWKWWWWWK.....",
+  "....KWKOKWWWWWK.....",
 ];
 
 const LEGS_IDLE = [
