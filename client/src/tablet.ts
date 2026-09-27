@@ -207,6 +207,11 @@ class MoonPadView {
   private screen = { x: 0, y: 0, w: 0, h: 0 };
   private scroll = 0;
   private contentH = 0;
+  /** The scrolling part of the screen (a thread's messages, or the connect list). */
+  private scrollArea = { y: 0, h: 0 };
+  /** Buttons that scroll: off-screen ones can't be clicked through the bars. */
+  private scrollButtons: Button[] = [];
+  private scrollbar: Phaser.GameObjects.Graphics | null = null;
   private inputT: Phaser.GameObjects.BitmapText | null = null;
   private cursor: Phaser.GameObjects.Rectangle | null = null;
   /** A villager's thread, the phone-linking screen, the connections screen, or null for the contact list. */
@@ -227,7 +232,7 @@ class MoonPadView {
     this.body = scene.make.container({}, false);
     this.maskG = scene.make.graphics({}, false);
     scene.input.on("wheel", (_p: unknown, _o: unknown, _dx: number, dy: number) => {
-      if (!this.visible || !this.showing || this.showing === "phones" || this.showing === "connect") return;
+      if (!this.visible || !this.showing || this.showing === "phones") return;
       this.scroll += dy > 0 ? 11 : -11;
       this.applyScroll();
     });
@@ -254,7 +259,8 @@ class MoonPadView {
 
   showThread(v: View) {
     this.showing = v;
-    this.scroll = 1e9;
+    // (a chat opens at its latest message; the connect list at the top)
+    this.scroll = v === "connect" ? 0 : 1e9;
     if (v !== "connect") this.welcome = false;
     if (v === "connect") releaseInput(this.owner);
     else if (v === "phones") {
@@ -285,6 +291,8 @@ class MoonPadView {
     this.screen = { x: x + 6, y: y + 20, w: w - 12, h: h - 31 };
     this.root.removeAll(true);
     this.body = this.scene.make.container({}, false);
+    this.scrollButtons = [];
+    this.scrollbar = null;
     this.inputT = null;
     this.cursor = null;
 
@@ -411,12 +419,20 @@ class MoonPadView {
 
   private renderConnect() {
     const s = this.screen;
-    let y = s.y + 17;
+    // The list scrolls (mouse wheel) between the title bar and the bottom bar;
+    // rows are laid out from 0 in the body, which applyScroll moves.
+    const area = { y: s.y + 14, h: s.h - 35 };
+    this.scrollArea = area;
+    this.maskG.fillRect(s.x, area.y, s.w, area.h);
+    this.body.setMask(this.maskG.createGeometryMask());
+    // (under the title and bottom bars, which are added after it)
+    this.root.addAt(this.body, 1);
+    let y = 3;
     const c = store.connections;
     const sandbox = store.progress.sandbox;
     if (this.welcome) {
       const hi = ptext(this.scene, s.x + 6, y, "Link your accounts so your moonfolk can help with your real life. Skip anything you like; it's all here in the MoonPad later.", C.ink).setMaxWidth(s.w - 12);
-      this.root.add(hi);
+      this.body.add(hi);
       y += measure(hi).h + 6;
     }
     const result = (...names: string[]) => (this.test ?? []).filter((r) => names.includes(r.name));
@@ -489,16 +505,24 @@ class MoonPadView {
       const title = ptext(this.scene, s.x + 6, y + 1, `${mark} ${r.title}`, failed ? C.red : C.ink, "pxb");
       const detail = failed ? failed.detail : passed ? `${r.line} · tested ✓` : r.line;
       const line = ptext(this.scene, s.x + 14, y + 12, detail, color).setMaxWidth(s.w - 20 - btnW);
-      this.root.add([title, line]);
-      if (btn) this.root.add(btn);
+      this.body.add([title, line]);
+      if (btn) {
+        this.body.add(btn);
+        this.scrollButtons.push(btn);
+      }
       const rowH = Math.max(25, 12 + measure(line).h + 5);
       const sep = this.scene.make.graphics({}, false).fillStyle(0xe6d3ad, 1).fillRect(s.x + 4, y + rowH - 2, s.w - 8, 1);
-      this.root.add(sep);
+      this.body.add(sep);
       y += rowH;
     }
     // test everything for real (read-only)
     const testBtn = new Button(this.scene, s.x + 4, y + 3, this.testing ? "TESTING..." : "TEST CONNECTIONS", 0xa998c4, () => this.runTest(), s.w - 8);
-    this.root.add(testBtn);
+    this.body.add(testBtn);
+    this.scrollButtons.push(testBtn);
+    this.contentH = y + 3 + 15 + 4;
+    this.scrollbar = this.scene.make.graphics({}, false);
+    this.root.add(this.scrollbar);
+    this.applyScroll();
     if (this.welcome) {
       const fy = s.y + s.h - 18;
       const bar = this.scene.make.graphics({}, false).fillStyle(0xe6d3ad, 1).fillRect(s.x, fy - 3, s.w, 21);
@@ -644,6 +668,7 @@ class MoonPadView {
   private renderThread(v: VillagerId) {
     const s = this.screen;
     const area = { x: s.x + 5, y: s.y + 16, w: s.w - 10, h: s.h - 16 - 21 };
+    this.scrollArea = { y: area.y, h: area.h };
     this.maskG.fillRect(area.x, area.y, area.w, area.h);
     this.body.setMask(this.maskG.createGeometryMask());
     const msgs = [...(threads.get(v) ?? [])];
@@ -681,9 +706,23 @@ class MoonPadView {
   }
 
   private applyScroll() {
-    const areaH = this.screen.h - 16 - 21;
-    this.scroll = Phaser.Math.Clamp(this.scroll, 0, Math.max(0, this.contentH - areaH));
-    this.body.setY(this.screen.y + 16 - Math.round(this.scroll));
+    const { y, h } = this.scrollArea;
+    const max = Math.max(0, this.contentH - h);
+    this.scroll = Phaser.Math.Clamp(this.scroll, 0, max);
+    this.body.setY(y - Math.round(this.scroll));
+    // Only buttons fully in view take clicks.
+    for (const b of this.scrollButtons) {
+      const top = b.y - this.scroll;
+      if (b.input) b.input.enabled = top >= 0 && top + 15 <= h;
+    }
+    // A thin scrollbar when there's more than fits.
+    const bar = this.scrollbar?.clear();
+    if (bar && max > 0) {
+      const x = this.screen.x + this.screen.w - 3;
+      const thumb = Math.max(10, Math.round((h * h) / this.contentH));
+      bar.fillStyle(0xe6d3ad, 1).fillRect(x, y + 1, 2, h - 2);
+      bar.fillStyle(0xa998c4, 1).fillRect(x, y + 1 + Math.round(((h - 2 - thumb) * this.scroll) / max), 2, thumb);
+    }
   }
 
   private renderInput() {
