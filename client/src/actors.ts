@@ -406,6 +406,11 @@ export class VillagerActor {
   private lastX = 0;
   private lastY = 0;
   private dustT = 0;
+  /** How long they've stood still (breathing after a moment, dozing off after a long while, like you). */
+  private stillT = 0;
+  private nextZ = 0;
+  /** Each breathes at their own pace, so the town doesn't breathe in step. */
+  private readonly breathEvery = 0.8 + Math.random() * 0.35;
 
   update(time: number) {
     const s = this.sprite;
@@ -422,11 +427,20 @@ export class VillagerActor {
         puff(this.scene, s.x - (vx / v) * 6, s.y - 1);
       }
     }
+    const moved = s.x !== this.lastX || s.y !== this.lastY;
     this.lastT = time;
     this.lastX = s.x;
     this.lastY = s.y;
+    // Standing still: a breath every second or so (a pixel down and back), and after a long
+    // quiet spell with nothing to do, a doze (zzz). Anything that moves them starts it over.
+    this.stillT = moved || this.lift ? 0 : this.stillT + dt;
+    const breath = this.stillT > 1.2 && Math.floor(this.stillT / this.breathEvery) % 2 === 1 ? 1 : 0;
+    if (this.stillT > 45 && this.isFree && this.stillT > this.nextZ) {
+      this.nextZ = this.stillT + 2.6;
+      floatEmote(this.scene, s.x + 6, s.y - s.height + 2, "zzz", -14);
+    } else if (this.stillT <= 45) this.nextZ = 0;
     // (a hop lifts the picture, not the villager: the shadow stays on the ground)
-    const lift = Math.round(this.lift);
+    const lift = Math.round(this.lift) - breath;
     if (s.originY !== 1 + lift / s.height) s.setOrigin(0.5, 1 + lift / s.height);
     if (this.walkTween && !this.strolling) this.walkTween.timeScale = this.speed;
     const x = Math.round(s.x);
