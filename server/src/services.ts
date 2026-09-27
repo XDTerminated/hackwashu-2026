@@ -1,7 +1,8 @@
 // The line between the game and the player's real accounts. Every read or
 // write goes through here: live account if connected, labeled sample data if
-// the player chose "use sandbox for now". Also owns who has moved in: each
-// neighbor's lot is a ruin to clear, repair, build on and decorate.
+// the player chose "use sandbox for now". Also owns the town and who has moved
+// in: each neighbor's lot is a ruin to clear and repair (as many as the Town
+// Hall has room for), and the town's landmarks go up stage by stage.
 
 import {
   BUILDINGS,
@@ -10,6 +11,7 @@ import {
   MATERIAL_SOURCE,
 
   VILLAGER_SERVICE,
+  MOVE_INS,
   currentMoveIn,
   moveInAt,
   type BuildingId,
@@ -21,6 +23,8 @@ import {
   type VillagerId,
 } from "../../shared/game.js";
 import { happinessFor } from "../../shared/decor.js";
+import { SPOTS } from "../../shared/layout.js";
+import { ARRIVAL_GIFTS, ITEMS, LANDMARKS, NODES, NODE_MATERIAL, STAGE_NAME, TASKS, digSpots, neighborCap, openAt, upgradeBlocker, type LandmarkId, type TownTask } from "../../shared/town.js";
 import { nextStep as sharedNextStep } from "../../shared/movein.js";
 import * as canvas from "./connectors/canvas.js";
 import * as google from "./connectors/google.js";
@@ -166,19 +170,125 @@ export function missingFor(needs: Partial<Materials>): string | null {
   return short.map((m) => `${(needs[m] ?? 0) - world.materials[m]} more ${MATERIAL_NAME[m]} (${MATERIAL_SOURCE[m]})`).join(", ");
 }
 
+/** Repairing a lot moves its neighbor right in (if the Town Hall has room). */
 export function repairLot(b: BuildingId): string | null {
   const d = workable(b);
   if (!d) return "There's nothing to repair there.";
   const lot = lotOf(d);
   if (lot.repaired) return null;
   if (lot.cleared.length < d.rubble) return "Clear the rubble off the lot first.";
+  const cap = neighborCap(world.progress.town);
+  if (world.progress.movedIn.length >= cap) return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"} right now. Upgrade it to make room.`;
   const missing = missingFor(d.repair);
   if (missing) return `The foundation needs ${missing}.`;
   for (const m of MATERIALS) world.materials[m as Material] -= d.repair[m] ?? 0;
   lot.repaired = true;
+  moveIn(d);
+  return null;
+}
+
+/** They're home: the house stands, they arrive (with a gift), and the town may hand you a story item. */
+function moveIn(d: MoveInDef, gift = d.gift) {
+  world.progress.movedIn.push(d.villager);
+  world.buildings[d.home] = true;
+  if (d.home === "post_office") world.buildings.mailbox = true;
+  world.coins += gift;
+  if (d.villager === "postmaster") reveal("rocket_pad");
   savePersist();
+  const now = residents();
+  lastResidents = new Set(now);
+  emit({ type: "building_built", building: d.home, coins: world.coins });
+  emit({ type: "villager_arrived", villager: d.villager, residents: now, rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift, next: null });
+  const nth = world.progress.movedIn.length;
+  const present = ARRIVAL_GIFTS.find((g) => g.nth === nth);
+  const town = world.progress.town;
+  if (present && !town.items.includes(present.item) && !town.used.includes(present.item)) {
+    town.items.push(present.item);
+    savePersist();
+    emit({ type: "item_found", item: present.item, by: present.by === "newcomer" ? d.villager : present.by, text: present.text });
+  }
+  announceProgress();
+}
+
+// ---------------------------------------------------------------- the town
+
+/** Take a landmark up a stage (materials, and for the grand stage a story item and maybe a real job). */
+export function upgradeLandmark(id: LandmarkId): string | null {
+  const town = world.progress.town;
+  if (!LANDMARKS[id]) return null;
+  const blocked = upgradeBlocker(town, id, world.materials);
+  if (blocked) return blocked;
+  const up = LANDMARKS[id].up[town.stages[id] as 0 | 1];
+  for (const m of MATERIALS) world.materials[m] -= up.needs[m] ?? 0;
+  if (up.item) {
+    town.items = town.items.filter((i) => i !== up.item);
+    town.used.push(up.item);
+  }
+  town.stages[id] = (town.stages[id] + 1) as 1 | 2;
+  savePersist();
+  emit({ type: "landmark_upgraded", landmark: id, stage: town.stages[id] });
   announceProgress();
   return null;
+}
+
+const today = () => new Date().toDateString();
+
+/** Pick up ice, scrap, helium-3 or glow ore at one of the spots (they grow back each day). */
+export function harvest(id: string): string | null {
+  const node = NODES.find((n) => n.id === id);
+  if (!node) return null;
+  const town = world.progress.town;
+  if (!openAt(town, node.x, node.y)) return "A rockfall blocks the way. Fix the roads first.";
+  if (town.day !== today()) {
+    town.day = today();
+    town.harvested = [];
+  }
+  if (town.harvested.includes(id)) return "Picked clean for today. It'll be back tomorrow.";
+  town.harvested.push(id);
+  emit({ type: "harvested", id, x: node.x, y: node.y });
+  gain({ [NODE_MATERIAL[node.kind]]: 1 }, { x: node.x, y: node.y });
+  return null;
+}
+
+/** Dig up a story item at a sparkling spot. */
+export function dig(id: string): string | null {
+  const town = world.progress.town;
+  const spot = digSpots(SPOTS.town_hall).find((s) => s.id === id);
+  if (!spot || town.dug.includes(id)) return null;
+  if (!spot.when(town)) return "Nothing to dig here yet.";
+  town.dug.push(id);
+  if (!town.items.includes(spot.item) && !town.used.includes(spot.item)) town.items.push(spot.item);
+  savePersist();
+  emit({ type: "item_found", item: spot.item, x: spot.x, y: spot.y });
+  announceProgress();
+  return null;
+}
+
+/** A real job done for you: some grand stages need one. */
+export function taskDone(t: TownTask) {
+  const town = world.progress.town;
+  if (town.tasks.includes(t)) return;
+  town.tasks.push(t);
+  savePersist();
+  announceProgress();
+}
+
+/** Dev/demo: materials, every story item and both tasks, so any stage can be shown. */
+export function devTown() {
+  const town = world.progress.town;
+  for (const i of Object.keys(ITEMS) as (keyof typeof ITEMS)[]) if (!town.items.includes(i) && !town.used.includes(i)) town.items.push(i);
+  for (const t of Object.keys(TASKS) as TownTask[]) if (!town.tasks.includes(t)) town.tasks.push(t);
+  world.coins += 200;
+  gain({ moonstone: 30, stardust: 30, shard: 8, ore: 8, ice: 10, scrap: 8, helium: 8 });
+}
+
+/** The town, in words (for Yutu, the mayor). */
+export function townNote(): string {
+  const town = world.progress.town;
+  const stages = (Object.keys(LANDMARKS) as LandmarkId[]).map((id) => `${LANDMARKS[id].name}: ${STAGE_NAME[town.stages[id]]}`).join(", ");
+  const cap = neighborCap(town);
+  const held = town.items.map((i) => ITEMS[i].name);
+  return `The town (you're its mayor): ${stages}. The Town Hall has room for ${cap} new neighbor${cap === 1 ? "" : "s"} (${world.progress.movedIn.length} moved in).${held.length ? ` The player is holding: ${held.join(", ")}.` : ""}`;
 }
 
 /** Why a house can't be built yet (its lot isn't ready), or null. */
@@ -191,11 +301,9 @@ export function lotBlocker(b: BuildingId): string | null {
   return null;
 }
 
-/** Rubble still blocking the lot being worked on (for the daily "clear a rock" request). */
+/** Rubble still on the neighbors' lots (for the daily "clear a rock" request). */
 export function rubbleLeft(): number {
-  const d = currentMoveIn(world.progress);
-  if (!d || !world.progress.revealed.includes(d.home)) return 0;
-  return d.rubble - (world.progress.lots[d.home]?.cleared.length ?? 0);
+  return MOVE_INS.filter((d) => !world.progress.movedIn.includes(d.villager) && world.progress.revealed.includes(d.home)).reduce((n, d) => n + d.rubble - (world.progress.lots[d.home]?.cleared.length ?? 0), 0);
 }
 
 /** Different things this neighbor loves, in their yard. */
@@ -203,50 +311,24 @@ export function lovedInYard(v: VillagerId) {
   return happinessFor(v, world.decos).items.filter((i) => i.loved).length;
 }
 
-/** After building or decorating: is the next neighbor's home ready? Then they move in. */
-export function checkMoveIn() {
-  const d = currentMoveIn(world.progress);
-  if (!d || !owns(d.home) || lovedInYard(d.villager) < d.loves) return;
-  world.progress.movedIn.push(d.villager);
-  world.coins += d.gift;
-  const next = currentMoveIn(world.progress);
-  if (d.villager === "postmaster") reveal("rocket_pad");
-  if (next) reveal(next.home);
-  savePersist();
-  const now = residents();
-  lastResidents = new Set(now);
-  emit({ type: "villager_arrived", villager: d.villager, residents: now, rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift: d.gift, next: next?.villager ?? null });
-  announceProgress();
-}
-
-/** Dev/demo prep: finish the current lot outright (materials, house, a loved decoration's worth). */
+/** Dev/demo prep: the next neighbor not home yet moves in outright (never mind the Town Hall). */
 export function devMoveIn() {
   const d = currentMoveIn(world.progress);
   if (!d) return;
   world.progress.lots[d.home] = { cleared: [...Array(d.rubble).keys()], repaired: true };
-  world.buildings[d.home] = true;
-  if (d.home === "post_office") world.buildings.mailbox = true;
-  world.progress.movedIn.push(d.villager);
-  const next = currentMoveIn(world.progress);
-  if (d.villager === "postmaster") reveal("rocket_pad");
-  if (next) reveal(next.home);
-  savePersist();
-  lastResidents = new Set(residents());
-  emit({ type: "building_built", building: d.home, coins: world.coins });
-  emit({ type: "villager_arrived", villager: d.villager, residents: residents(), rabbitTeamwork: rabbitTeamwork(), hello: d.hello, gift: 0, next: next?.villager ?? null });
-  announceProgress();
+  moveIn(d, 0);
 }
 
 /** Dev/demo prep (DEV_TOOLS=1 only): a pile of materials and coins. */
 export function devMaterials() {
   world.coins += 100;
-  gain({ moonstone: 10, stardust: 10, shard: 3 });
+  gain({ moonstone: 10, stardust: 10, shard: 3, ore: 2 });
 }
 
-/** The next step for the lot being worked on, in words (for Yutu's prompt). */
+/** What to work on next, in words (for Yutu's prompt). */
 export function nextStep(): string {
   const n = sharedNextStep({ progress: world.progress, materials: world.materials, buildings: world.buildings, coins: world.coins, decos: world.decos });
-  return n ? `${n.step.text} (for ${BUILDINGS[n.def.home].name}).` : "Everyone is home.";
+  return n ? n.text : "Everyone is home and the town is grand.";
 }
 
 // ---------------------------------------------------------------- data access

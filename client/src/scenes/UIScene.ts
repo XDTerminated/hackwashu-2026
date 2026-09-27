@@ -1,3 +1,5 @@
+import { inStock } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, STAGE_NAME, TASKS, neighborCap } from "../../../shared/town";
 import Phaser from "phaser";
 import { BUILDINGS, MATERIALS, MATERIAL_NAME, MOVE_INS, VILLAGER_HOME, VILLAGER_NAMES, VILLAGER_SHORT, type VillagerId, type VillagerStatus } from "../../../shared/game";
 import { PHONE } from "../font";
@@ -15,7 +17,7 @@ import { VERB_ICON } from "../icons";
 import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 import { isMicOn, onMicToggle, toggleMic } from "../neartalk";
 import { micSupported } from "../mic";
-import { CHAPTER_AFTER, FINALE_VILLAGER, pending, setFinalePending, type Chapter } from "../story";
+import { CHAPTER_AFTER, FINALE_AT, newNeighbors, pending, setFinalePending, type Chapter } from "../story";
 import { checklist, nextStep } from "../../../shared/movein";
 import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
@@ -172,8 +174,9 @@ export class UIScene extends Phaser.Scene {
         if (e.type === "villager_arrived" && e.hello) {
           // A neighbor moved in: the next chapter (or, with everyone home, the finale),
           // once they've said hello. (Played from update() when you're outside with nothing open.)
-          const ch = CHAPTER_AFTER[e.villager];
-          if (e.villager === FINALE_VILLAGER) setFinalePending(true, 9000);
+          const count = newNeighbors(e.residents);
+          const ch = CHAPTER_AFTER[count];
+          if (count >= FINALE_AT) setFinalePending(true, 9000);
           else if (ch) pending.chapter = { ch, at: Date.now() + 9000 };
         }
         if (e.type === "requests" && e.completed) {
@@ -268,8 +271,15 @@ export class UIScene extends Phaser.Scene {
     // moonstone · stardust · shards
     let mx = 22 + measure(this.coins).w + 8;
     MATERIALS.forEach((m, i) => {
+      // (seven won't fit: the basics, plus whatever else you're carrying)
+      this.matCounts[i].setText(String(store.materials[m]));
+      // (and only as many as fit: the Quests window lists them all)
+      const show = (m === "moonstone" || m === "stardust" || store.materials[m] > 0) && mx + 9 + measure(this.matCounts[i]).w <= HUD_W - 2;
+      this.matIcons[i].setVisible(show);
+      this.matCounts[i].setVisible(show);
+      if (!show) return;
       this.matIcons[i].setX(mx);
-      this.matCounts[i].setText(String(store.materials[m])).setX(mx + 9);
+      this.matCounts[i].setX(mx + 9);
       mx += 9 + measure(this.matCounts[i]).w + 6;
     });
     // Clods only when there are some.
@@ -304,9 +314,9 @@ export class UIScene extends Phaser.Scene {
       y += 10;
     });
 
-    // The next step of the moving-in checklist (wraps onto a second line rather than getting cut off).
+    // The next goal (wraps onto a second line rather than getting cut off).
     const n = nextStep({ progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos });
-    this.quest.setText(n ? `★ ${VILLAGER_SHORT[n.def.villager]}'s lot: ${n.step.text}` : "★ Every neighbor has moved in!");
+    this.quest.setText(n ? `★ ${n.text}` : "★ Everyone's home and the town is grand!");
     this.quest.setY(y + 4);
     const bottom = y + 4 + measure(this.quest).h + 6;
     this.hud.clear();
@@ -840,20 +850,40 @@ export class UIScene extends Phaser.Scene {
   }
 
   private showQuests() {
-    // Moving in: who's home, the checklist for whoever's next, and how many are still on Earth.
+    // The town (Yutu's projects), then the neighbors, then what you're carrying.
     const state = { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
     const next = nextStep(state);
-    const lines = MOVE_INS.flatMap((m) => {
-      const who = VILLAGER_NAMES[m.villager];
-      if (store.progress.movedIn.includes(m.villager)) return [`✓ ${who} moved in`];
-      if (m !== next?.def) return [];
-      return [`★ Bring ${who} home: fix up the ${BUILDINGS[m.home].name} lot\n${checklist(m, state).map((st) => `${st.done ? "✓" : "○"} ${st.text}`).join("\n")}`];
+    const town = store.progress.town;
+    const townLines = LANDMARK_IDS.map((id) => {
+      const stage = town.stages[id];
+      const def = LANDMARKS[id];
+      const now = `${stage === 2 ? "✓" : "○"} ${def.name}: ${STAGE_NAME[stage]}. ${def.perks[stage]}.`;
+      if (stage >= 2) return now;
+      const up = def.up[stage as 0 | 1];
+      const needs = [
+        ...MATERIALS.filter((m) => up.needs[m]).map((m) => `${store.materials[m] >= (up.needs[m] ?? 0) ? "✓" : "○"} ${up.needs[m]} ${MATERIAL_NAME[m]} (${store.materials[m]})`),
+        ...(up.item ? [`${town.items.includes(up.item) ? "✓" : "○"} the ${ITEMS[up.item].name}${town.items.includes(up.item) ? "" : `: ${ITEMS[up.item].from}`}`] : []),
+        ...(up.task ? [`${town.tasks.includes(up.task) ? "✓" : "○"} ${TASKS[up.task]}`] : []),
+      ];
+      return `${now}\n   Next (${STAGE_NAME[stage + 1]}): ${def.perks[stage + 1]}.\n   ${needs.join(" · ")}`;
     });
-    const later = MOVE_INS.filter((m) => !store.progress.movedIn.includes(m.villager) && m !== next?.def).length;
-    if (later > 0) lines.push(`??? - ${later} more neighbor${later === 1 ? "" : "s"} waiting on Earth`);
-    lines.push(`Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}. Moonstone: clear boulders, rubble, fallen meteor rocks. Stardust: sweep moondust. Shards: the wilds.`);
+    const cap = neighborCap(town);
+    const neighborLines = MOVE_INS.map((m) => {
+      const who = VILLAGER_NAMES[m.villager];
+      if (store.progress.movedIn.includes(m.villager)) return `✓ ${who} moved in`;
+      return `○ ${who}: the old ${BUILDINGS[m.home].name} lot\n   ${checklist(m, state).map((st) => `${st.done ? "✓" : "○"} ${st.text}`).join("\n   ")}`;
+    });
+    const held = town.items.map((i) => `${ITEMS[i].name}: "${ITEMS[i].line}"`);
+    const lines = [
+      `THE TOWN (Yutu is mayor)${next ? `  ★ ${next.text}` : ""}`,
+      ...townLines,
+      `NEIGHBORS (the Town Hall has room for ${cap} new, ${store.progress.movedIn.length} moved in)`,
+      ...neighborLines,
+      ...(held.length ? ["STORY ITEMS", ...held] : []),
+      `Materials: ${MATERIALS.map((m) => `${store.materials[m]} ${MATERIAL_NAME[m]}`).join(" · ")}.`,
+    ];
     const finished = !next;
-    const story = finished ? [...lines, "Every line home is open."] : lines;
+    const story = finished ? [...lines, "Every line home is open, and the town is grand."] : lines;
     // "Yutu: Sweep 3 moondust drifts (1/3) · 30¢" (the server's text carries the full name)
     const ask = (r: (typeof store.requests)[number]) => `${VILLAGER_SHORT[r.villager]}: ${r.text.replace(/^[^:]*:\s*/, "")}`;
     const requests = store.requests.map((r) => (r.done ? `✓ ${ask(r)} · paid` : `○ ${ask(r)}${r.goal > 1 ? ` (${r.count}/${r.goal})` : ""} · ${r.reward}¢`));
@@ -863,13 +893,15 @@ export class UIScene extends Phaser.Scene {
       : `★ Moon Shards: all ${SHARD_COUNT} found. The beacon shines again.`;
     const buttons = [{ label: "WATCH INTRO", onClick: () => this.playCutscene("Intro") }];
     if (finished) buttons.push({ label: "WATCH FINALE", onClick: () => this.playCutscene("Ending") });
-    openInfo("QUESTS", ["TODAY'S REQUESTS", ...requests, shards, "THE STORY", ...story], buttons);
+    openInfo("QUESTS", [...story, "TODAY'S REQUESTS", ...requests, shards], buttons);
   }
 
   private showHelp() {
     openInfo("HOW TO PLAY", [
       "Walk with WASD or the arrow keys (keep holding to run). The gold ★ always points to your current goal: over their head when they're on screen, an arrow at the edge when they're not.",
-      "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot here. Clear its rubble, repair the foundation with materials, build the house with coins, and put something they love in the yard: then they move in. Materials: moonstone (clear boulders, rubble and fallen meteor rocks), stardust (sweep moondust), moon shards (glinting in the wilds). Once they're home, connect your account so they can help with your real stuff, or try them on sample data.",
+      "THE TOWN: Yutu is mayor, and the old town is in ruins. Its four landmarks (Town Hall, Fountain, Roads & Lamps, Market) each go ruined, repaired, grand: E at the Town Hall for the projects board (or E at the Fountain and the Market). The Town Hall makes room for new neighbors, the Fountain brings wishes and faster friendships, the Roads open the north and south of the crater, the Market stocks more decorations.",
+      "NEW NEIGHBORS: each neighbor still on Earth has a ruined lot. Clear its rubble and repair it with materials, and they move right in (as many as the Town Hall has room for; you pick who).",
+      "MATERIALS: moonstone (boulders, rubble, meteors), stardust (sweep moondust), moon shards (the wilds), glow ore (meteors, old glowing craters), ice crystals (the north), scrap metal and helium-3 (the south). The grand stages also need a story item (dug up, or a neighbor's gift), and a couple need a real job done by a neighbor.",
       "The toolbar icons (hover for names): MoonPad, Shop (B), Quests, Help, the pencil for edit mode, music (M) and sound effects. To talk, stand next to a neighbor and press E: just speak (the mic comes on by itself) or type and press Enter; ESC leaves. The mic button turns voice off (and on again). Their answers pop up over their heads. Press E (or SPACE) to do whatever you're standing next to: talk, clear rubble or a rock, repair, build, pop a star, grab a moon-rock, switch a light; hold it to sweep dust. The green button on the right does the same with a click. ESC closes any window.",
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
@@ -1010,7 +1042,8 @@ export class UIScene extends Phaser.Scene {
       const tx = x0 + pad + (i % cols) * (tw + gap);
       const ty = y0 + top + Math.floor(i / cols) * (th + gap);
       const sel = i === this.shopSel;
-      const afford = store.coins >= item.price;
+      const stocked = inStock(store.progress.town.stages.market, item);
+      const afford = stocked && store.coins >= item.price;
       const tile = this.add.graphics();
       const draw = (hover: boolean) => {
         tile.clear();
@@ -1019,7 +1052,7 @@ export class UIScene extends Phaser.Scene {
       draw(false);
       const icon = this.add.image(tx + tw / 2, ty + 59, item.texture).setOrigin(0.5, 1);
       if (!afford) icon.setAlpha(0.55);
-      const price = ptext(this, 0, ty + 60, `${item.price}¢`, afford ? C.ink : C.red, "pxb");
+      const price = ptext(this, 0, ty + 60, stocked ? `${item.price}¢` : "LOCKED", afford ? C.ink : stocked ? C.red : C.inkSoft, "pxb");
       price.setX(tx + Math.round((tw - measure(price).w) / 2));
       // Who loves it: their little heads in the corner. A gold ★ if someone's wishing for it today.
       const heads = item.likes.map((v, k) => this.add.image(tx + 3 + k * 8, ty + 3, `vicon_${v}_0`).setOrigin(0));
@@ -1050,15 +1083,16 @@ export class UIScene extends Phaser.Scene {
     const dy = y0 + top + gridH + 8;
     const panel = this.add.graphics();
     pixBox(panel, x0 + pad, dy, pw - pad * 2, 46, C.paperLight, C.paperDark);
-    const afford = store.coins >= item.price;
+    const stocked = inStock(store.progress.town.stages.market, item);
+    const afford = stocked && store.coins >= item.price;
     const btnW = 64;
     const name = ptext(this, x0 + pad + 6, dy + 5, item.name, C.ink, "pxb");
     const blurb = ptext(this, x0 + pad + 6, dy + 16, item.blurb, C.inkSoft).setMaxWidth(pw - pad * 2 - btnW - 18);
     const fans = item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ");
     const wish = store.requests.find((r) => r.kind === "wish" && !r.done && r.item === item.id);
-    const loves = ptext(this, x0 + pad + 6, dy + 31, wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`, wish ? 0xb07a10 : C.coral);
-    const buy = new Button(this, x0 + pw - pad - btnW - 6, dy + 16, afford ? `BUY ${item.price}¢` : `NEED ${item.price}¢`, afford ? C.greenBtn : 0x8a8199, () => {
-      if (store.coins < item.price) {
+    const loves = ptext(this, x0 + pad + 6, dy + 31, !stocked ? `Not in stock yet: upgrade the Market (${store.progress.town.stages.market === 0 ? "repaired" : "grand"}) to sell this.` : wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`, wish ? 0xb07a10 : C.coral);
+    const buy = new Button(this, x0 + pw - pad - btnW - 6, dy + 16, !stocked ? "LOCKED" : afford ? `BUY ${item.price}¢` : `NEED ${item.price}¢`, afford ? C.greenBtn : 0x8a8199, () => {
+      if (!afford) {
         sfx.deny();
         this.cameras.main.shake(120, 0.004);
         return;

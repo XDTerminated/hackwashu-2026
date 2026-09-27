@@ -79,9 +79,9 @@ export const PLAZA = { x: Math.round(CX / TILE) * TILE, y: Math.round((CY + 70) 
 /** The plaza's radius (its paving; the grand fountain stands in the middle). */
 export const PLAZA_R = 120;
 
-/** Every building starts on one circle around the plaza, evenly spaced, clockwise from north. */
+/** Every building starts on one circle around the plaza, evenly spaced, clockwise from north: the Town Hall faces the fountain. */
 export const RING_RADIUS = 300;
-const RING: BuildingId[] = ["player_house", "library", "clock_tower", "observatory", "post_office", "rabbit_burrow"];
+const RING: BuildingId[] = ["town_hall", "library", "market", "clock_tower", "observatory", "post_office", "player_house", "rabbit_burrow"];
 
 function onRing(b: BuildingId) {
   const a = -Math.PI / 2 + (RING.indexOf(b) / RING.length) * Math.PI * 2;
@@ -92,6 +92,9 @@ const spot = (b: BuildingId, texture: string, fw: number, fh: number, tall: numb
 
 export const SPOTS: Record<BuildingId, BuildingSpot> = {
   player_house: spot("player_house", "b_player_house", 52, 40, 108, { dx: 0, dy: 14 }),
+  // The town's landmarks (their look changes with each stage: see town.ts).
+  town_hall: spot("town_hall", "b_town_hall", 60, 40, 132, { dx: 0, dy: 14 }),
+  market: spot("market", "b_market", 36, 24, 76, { dx: 0, dy: 12 }),
   library: spot("library", "b_library", 60, 40, 120, { dx: 0, dy: 14 }),
   // Hoot's Mail Rocket: an annex built onto the Post Office (placed beside it, below).
   rocket_pad: { x: 0, y: 0, texture: "b_rocket_pad", fw: 24, fh: 24, tall: 112, door: { dx: 0, dy: 14 } },

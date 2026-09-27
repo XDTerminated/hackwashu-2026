@@ -37,6 +37,8 @@ const REQUESTS_VERSION = 3;
  * that isn't in their yard yet. Placing it there makes them happier too.
  */
 function wish(seed: number): ColonyRequest | null {
+  // (wishes start once the fountain runs again)
+  if (world.progress.town.stages.fountain < 1) return null;
   const who = (["jade_rabbit", "stargazer", "postmaster", "timekeeper", "scholar"] as VillagerId[]).filter(isResident);
   if (!who.length) return null;
   const v = who[Math.floor(seeded(seed + 91) * who.length)];

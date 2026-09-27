@@ -411,6 +411,22 @@ export const MATERIAL_ICONS: Record<string, PixelSprite> = {
     palette: { K: "#3b2a3a", Y: "#f5c542", W: "#fff6c8" },
     frames: [["...Y...", "...W...", "YWWWWWY", "...W...", ".Y.Y.Y.", "Y.....Y", "...Y..."]],
   },
+  ore: {
+    palette: { K: "#3b2a3a", O: "#ffb347", Y: "#ffe7a0", D: "#6f6886" },
+    frames: [[".......", "..KKK..", ".KOYOK.", "KDOYOOK", "KDDOODK", ".KDDDK.", "..KKK.."]],
+  },
+  ice: {
+    palette: { K: "#2f4f6f", I: "#8fd0f0", W: "#e8f7ff", B: "#5aa0c8" },
+    frames: [["...K...", "..KWK..", ".KWIIK.", ".KWIBK.", "KWIIIBK", "KIIBBBK", ".KKKKK."]],
+  },
+  scrap: {
+    palette: { K: "#3b2a3a", M: "#8e97a8", L: "#c3cad6", R: "#a0583a" },
+    frames: [[".......", ".KKKK..", ".KLMMK.", "KKKMRRK", "KLMMRRK", "KMMMMK.", ".KKKK.."]],
+  },
+  helium: {
+    palette: { K: "#2f5f58", G: "#a8e8d0", W: "#ffffff", L: "#e4fff4" },
+    frames: [["...W...", ".......", "..KKK..", ".KLGGK.", "KLGGGGK", "KGGGGGK", ".KKKKK."]],
+  },
   shard: {
     palette: { K: "#1f4a5a", C: "#8ff0f0", W: "#e8fbff", B: "#4fb8c8" },
     frames: [["...K...", "..KWK..", "..KCK..", ".KWCBK.", ".KCCBK.", "..KBK..", "...K..."]],

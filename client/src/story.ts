@@ -16,22 +16,24 @@ export const FIRST_CHAPTER: Chapter = {
   line: "Stranded on the Moon with a rabbit, a stargazer and no signal.",
 };
 
-/** The chapter that begins when a neighbor moves in. */
-export const CHAPTER_AFTER: Partial<Record<VillagerId, Chapter>> = {
-  postmaster: {
+/** The chapter that begins when the first, then the second, new neighbor moves in (you choose who). */
+export const CHAPTER_AFTER: Record<number, Chapter> = {
+  1: {
     n: 2,
-    title: "KEEPING TIME",
-    line: "Hoot is home and the letters are flowing. Next: fix up the old clock tower lot for Cog.",
+    title: "A TOWN AGAIN",
+    line: "A new neighbor is home. Mayor Yutu has plans: the Town Hall, the Fountain, the Roads, the Market.",
   },
-  timekeeper: {
+  2: {
     n: 3,
-    title: "THE SCHOLAR",
-    line: "Cog keeps the colony on time. Last one: Mabel the Scholar's old library lot.",
+    title: "THE LAST LOT",
+    line: "Two new neighbors home. Make the Town Hall grand and there's room for the last one.",
   },
 };
 
-/** The last neighbor home plays the finale. */
-export const FINALE_VILLAGER: VillagerId = MOVE_INS[MOVE_INS.length - 1].villager;
+/** How many new neighbors are home, given everyone who lives here. */
+export const newNeighbors = (residents: VillagerId[]) => MOVE_INS.filter((m) => residents.includes(m.villager)).length;
+/** With every new neighbor home, the finale plays. */
+export const FINALE_AT = MOVE_INS.length;
 
 const PENDING = "moon-finale-pending";
 

@@ -23,7 +23,9 @@ import {
   type Snapshot,
   type VillagerId,
   type VillagerState,
+  noMaterials,
 } from "../../shared/game.js";
+import { freshTown } from "../../shared/town.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
 import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockKey, rockRect, rockSpots, shardKey, shardSpots, type Rect, type RockKind } from "../../shared/layout.js";
@@ -31,7 +33,8 @@ import { ROCK_STONE, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout,
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = join(DATA_DIR, "world.json");
 
-const SAVE_VERSION = 2;
+// 3: the town (landmarks, Town Hall room for neighbors): everyone starts fresh.
+const SAVE_VERSION = 3;
 
 /** What a villager remembers about the player, across texts and visits. */
 export interface VillagerMemory {
@@ -74,20 +77,19 @@ const idle = (): VillagerState => ({ status: "idle", activity: "relaxing" });
 function freshWorld(): World {
   const buildings: Partial<Record<BuildingId, boolean>> = {};
   for (const b of Object.values(BUILDINGS)) if (b.starter) buildings[b.id] = true;
-  // The first lot (Hoot's) is there from the start, in ruins.
-  const progress: Progress = { revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office", MOVE_INS[0].home], sandbox: {}, movedIn: [], lots: {} };
-  // Online, people come to see their coding agents: the Office is open from day one.
-  if (HOSTED) buildings.office = true;
+  // Every neighbor's lot is there from the start, in ruins: the Town Hall decides how many can move in.
+  const progress: Progress = { town: freshTown(), revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office", ...MOVE_INS.map((m) => m.home)], sandbox: {}, movedIn: [], lots: {} };
   // Demo prep / testing: everything built and revealed, everyone home.
   if (process.env.UNLOCK_ALL === "1") {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
     progress.revealed = Object.values(BUILDINGS).map((b) => b.id);
     everyoneHome(progress);
+    progress.town = { ...freshTown(), stages: { town_hall: 2, fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
   }
   return {
     version: SAVE_VERSION,
     coins: 50,
-    materials: { moonstone: 0, stardust: 0, shard: 0 },
+    materials: noMaterials(),
     chores: {},
     phones: {},
     choreOptIn: {},
@@ -127,7 +129,8 @@ function load(file = DATA_FILE): World {
     w.clearedRocks ??= [];
     w.shards ??= [];
     w.requests ??= { day: "", list: [] };
-    w.materials ??= { moonstone: 0, stardust: 0, shard: 0 };
+    w.materials = { ...noMaterials(), ...w.materials };
+    w.progress.town ??= freshTown();
     // Saves from the old quest chain: whoever had a house then has moved in
     // (their lot counts as cleared and repaired). The quest counters go.
     if (!Array.isArray(w.progress.movedIn)) {
@@ -200,7 +203,8 @@ function showcase(w: World): World {
   for (const b of Object.keys(BUILDINGS) as BuildingId[]) w.buildings[b] = true;
   w.progress.revealed = Object.keys(BUILDINGS) as BuildingId[];
   everyoneHome(w.progress);
-  w.materials = { moonstone: 99, stardust: 99, shard: 12 };
+  w.materials = { moonstone: 99, stardust: 99, shard: 12, ore: 20, ice: 20, scrap: 20, helium: 20 };
+  w.progress.town = { ...freshTown(), stages: { town_hall: 2, fountain: 2, roads: 2, market: 2 }, used: ["charter", "valve", "lens", "bell"], tasks: ["nova_search", "real_job"] };
   w.progress.sandbox = { ...w.progress.sandbox, google: true, canvas: true };
   w.coins = Math.max(w.coins, 5000);
   for (const a of Object.values(w.approvals)) if (a.status === "pending") a.status = "denied";

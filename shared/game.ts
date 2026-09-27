@@ -1,6 +1,8 @@
 // Contract shared by the agent server and the game client.
 // The server is the source of truth; the client renders and animates.
 
+import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
+
 export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager";
 
 /** Ada the Team Lead lives and works in the Office, not out on the island. */
@@ -15,7 +17,9 @@ export type BuildingId =
   | "rocket_pad"
   | "library"
   | "observatory"
-  | "office";
+  | "office"
+  | "town_hall"
+  | "market";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -38,6 +42,8 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   clock_tower: { id: "clock_tower", name: "Clock Tower", price: 60, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
   library: { id: "library", name: "Library", price: 90, starter: false, resident: "scholar", unlocks: "Mabel the Scholar: reads your Canvas courses, assignments and announcements" },
   rocket_pad: { id: "rocket_pad", name: "Mail Rocket", price: 0, starter: false, unlocks: "an upgrade to Hoot's Post Office: he can send your emails to Earth (with your OK)" },
+  town_hall: { id: "town_hall", name: "Town Hall", price: 0, starter: true, unlocks: "Yutu's office as mayor: upgrade it to make room for more neighbors" },
+  market: { id: "market", name: "Market", price: 0, starter: true, unlocks: "decorations: upgrade it for more stock" },
   office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
 };
 
@@ -186,21 +192,25 @@ export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
 export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web" };
 
 // ---------------------------------------------------------------- moving in
-// Animal Crossing style: each neighbor still on Earth has a lot on the Moon,
-// and it's a ruin. Clear the rubble, repair the foundation with materials you
-// collect around the island, build the house with coins, and put something
-// they love in the yard: then they move in. Connecting your real account
-// comes after, when you want them to work with your real stuff.
+// Each neighbor still on Earth has a lot on the Moon, and it's a ruin: clear
+// the rubble and repair it with materials you collect, and they move in (as
+// many as the Town Hall has room for; you pick who). Connecting your real
+// account comes after, when you want them to work with your real stuff.
 
-export type Material = "moonstone" | "stardust" | "shard";
+export type Material = "moonstone" | "stardust" | "shard" | "ore" | "ice" | "scrap" | "helium";
 export type Materials = Record<Material, number>;
-export const MATERIALS: Material[] = ["moonstone", "stardust", "shard"];
-export const MATERIAL_NAME: Record<Material, string> = { moonstone: "moonstone", stardust: "stardust", shard: "moon shard" };
+export const MATERIALS: Material[] = ["moonstone", "stardust", "shard", "ore", "ice", "scrap", "helium"];
+export const noMaterials = (): Materials => ({ moonstone: 0, stardust: 0, shard: 0, ore: 0, ice: 0, scrap: 0, helium: 0 });
+export const MATERIAL_NAME: Record<Material, string> = { moonstone: "moonstone", stardust: "stardust", shard: "moon shard", ore: "glow ore", ice: "ice crystal", scrap: "scrap metal", helium: "helium-3" };
 /** Where each one comes from (shown when you're short). */
 export const MATERIAL_SOURCE: Record<Material, string> = {
   moonstone: "clear boulders and rubble, or grab fallen meteor rocks",
   stardust: "sweep moondust drifts",
   shard: "find Moon Shards glinting in the wilds",
+  ore: "grab fallen meteors, or dig it out of the old glowing craters",
+  ice: "chip it from the crystals in the shadowed north (fix the roads first)",
+  scrap: "salvage it from the old wrecks in the south (the grand roads open it)",
+  helium: "scoop the shimmering dust in the south (the grand roads open it)",
 };
 
 export interface MoveInDef {
@@ -224,9 +234,9 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "postmaster",
     home: "post_office",
-    rubble: 3,
+    rubble: 2,
     repair: { moonstone: 3, stardust: 2 },
-    loves: 1,
+    loves: 0,
     teaser: { by: "stargazer", text: "My telescope caught a signal: an owl postmaster on Earth wants to move up! The old post office lot is a wreck, though (follow the gold ★). Clear it, fix the foundation, build, and make it cozy." },
     hello: "Hoo! What a lovely little post office. I'm moving in! Connect your Google when you'd like me to read your mail.",
     gift: 20,
@@ -234,9 +244,9 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "timekeeper",
     home: "clock_tower",
-    rubble: 3,
-    repair: { moonstone: 4, stardust: 3, shard: 1 },
-    loves: 2,
+    rubble: 2,
+    repair: { moonstone: 3, stardust: 2, ore: 1 },
+    loves: 0,
     teaser: { by: "postmaster", text: "Hoo! Invitations, deadlines, meetings... this colony needs someone to keep time. My friend Cog, a clockwork fellow on Earth, would come if the old clock tower lot were fixed up." },
     hello: "Tick... tock! A tower of my own. I'm home. Connect your Google Calendar and I'll keep your week in order.",
     gift: 25,
@@ -244,9 +254,9 @@ export const MOVE_INS: MoveInDef[] = [
   {
     villager: "scholar",
     home: "library",
-    rubble: 4,
-    repair: { moonstone: 5, stardust: 3, shard: 2 },
-    loves: 2,
+    rubble: 2,
+    repair: { moonstone: 3, stardust: 2, shard: 1 },
+    loves: 0,
     teaser: { by: "timekeeper", text: "Tick... your week is packed with classes. Mabel the Scholar knows Canvas inside out, and the old library lot is waiting for her. It needs work, mind you." },
     hello: "Books! Shelves! A reading nook! I'm staying. Connect your Canvas and I'll tell you what's due.",
     gift: 30,
@@ -263,6 +273,8 @@ export interface LotState {
 }
 
 export interface Progress {
+  /** The town's landmarks, story items and the rest (see town.ts). */
+  town: Town;
   revealed: BuildingId[];
   /** Services the player chose to run on sample data for now. */
   sandbox: Partial<Record<Service, boolean>>;
@@ -442,6 +454,9 @@ export type GameEvent =
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean; hello?: string; gift?: number; next?: VillagerId | null }
   | { type: "plot_revealed"; building: BuildingId }
   | { type: "rubble_cleared"; building: BuildingId; index: number }
+  | { type: "landmark_upgraded"; landmark: LandmarkId; stage: Stage }
+  | { type: "item_found"; item: TownItem; by?: VillagerId; text?: string; x?: number; y?: number }
+  | { type: "harvested"; id: string; x: number; y: number }
   | { type: "chore_spawned"; chore: Chore }
   | { type: "chore_cleared"; id: string; kind: "dust" | "meteor"; reward: number; coins: number }
   | { type: "chore_gone"; id: string }
@@ -481,7 +496,10 @@ export type ClientMessage =
   | { type: "phone_unlink"; id: string }
   | { type: "set_chore_optin"; villager: VillagerId; enabled: boolean }
   /** Dev/demo-prep only; ignored unless the server runs with DEV_TOOLS=1. */
-  | { type: "dev"; action: "move_in" | "materials" | "meteor" | "dust" }
+  | { type: "upgrade"; landmark: LandmarkId }
+  | { type: "harvest"; id: string }
+  | { type: "dig"; id: string }
+  | { type: "dev"; action: "move_in" | "materials" | "meteor" | "dust" | "town" }
   | { type: "disconnect"; service: "google" | "canvas" };
 
 export type ServerMessage =

@@ -1,3 +1,4 @@
+import { drawDigSpot, drawHeliumNode, drawIceNode, drawMarket, drawOreNode, drawScrapNode, drawTownHall } from "./townart";
 import Phaser from "phaser";
 import { drawStar } from "./star";
 import type { PixelSprite } from "./art";
@@ -64,7 +65,7 @@ const MARBLE = { base: "#e2dce8", dark: "#b8b0c4", light: "#f6f2fa" };
 const GOLDC = { base: "#f5c542", dark: "#c99a3e", light: "#fff1b0" };
 
 /** A marble bowl: front wall, gold-lipped rim, water. */
-function bowl(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, wall: number) {
+function bowl(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, wall: number, dry = false) {
   disc(ctx, INK, cx, cy + wall + 0.5, rx + 1, ry + 1.5);
   disc(ctx, MARBLE.dark, cx, cy + wall, rx, ry);
   disc(ctx, MARBLE.base, cx, cy + wall - 1, rx, ry - 1, cy + wall);
@@ -72,15 +73,21 @@ function bowl(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, wall: nu
   disc(ctx, GOLDC.base, cx, cy, rx, ry);
   disc(ctx, MARBLE.light, cx, cy, rx - 1, ry - 1);
   disc(ctx, INK, cx, cy + 0.5, rx - 3.5, ry - 2.6);
-  disc(ctx, P_WATER.base, cx, cy + 0.5, rx - 4.5, ry - 3.4);
-  disc(ctx, P_WATER.dark, cx + 2, cy + 1.5, (rx - 4.5) * 0.55, (ry - 3.4) * 0.45);
+  // (dry: a cracked, dusty basin instead of water)
+  disc(ctx, dry ? "#9a93a8" : P_WATER.base, cx, cy + 0.5, rx - 4.5, ry - 3.4);
+  disc(ctx, dry ? "#8a8199" : P_WATER.dark, cx + 2, cy + 1.5, (rx - 4.5) * 0.55, (ry - 3.4) * 0.45);
+  if (dry) for (let i = 0; i < 3; i++) rect(ctx, INK, Math.round(cx - rx / 3 + i * (rx / 3)), Math.round(cy + (i % 2)), Math.max(2, Math.round(rx / 6)), 1);
 }
 
-/** The Earthrise Fountain: three tiers of marble and gold under a turning star (120 x 100). */
-function drawPlazaFountain(ctx: Ctx, f: number) {
-  bowl(ctx, 60, 82, 57, 13, 5);
+/**
+ * The Earthrise Fountain (120 x 100) in its three stages: dry and cracked,
+ * flowing again, then flowing under a turning star.
+ */
+function drawPlazaFountain(ctx: Ctx, f: number, stage = 2) {
+  const dry = stage === 0;
+  bowl(ctx, 60, 82, 57, 13, 5, dry);
   // lily pads in the great basin
-  for (const [x, y] of [[20, 84], [98, 80], [34, 90], [84, 90]] as const) {
+  if (!dry) for (const [x, y] of [[20, 84], [98, 80], [34, 90], [84, 90]] as const) {
     disc(ctx, "#3f8a4a", x, y, 3.5, 2);
     disc(ctx, "#5fb86a", x - 0.5, y - 0.5, 2.5, 1.2);
     rect(ctx, "#f07a9a", x + 1, y - 1, 1, 1);
@@ -91,7 +98,7 @@ function drawPlazaFountain(ctx: Ctx, f: number) {
     rect(ctx, GOLDC.base, x - 2, 73, 5, 6);
     rect(ctx, GOLDC.light, x - 2, 73, 2, 1);
     for (let i = 0; i < 9; i++) {
-      if ((i + f) % 3 === 0) continue;
+      if (dry || (i + f) % 3 === 0) continue;
       const t = i / 8;
       rect(ctx, P_WATER.light, Math.round(x + dir * (4 + t * 22)), Math.round(72 - Math.sin(t * Math.PI) * 10 + t * 6), 2, 1);
     }
@@ -102,13 +109,20 @@ function drawPlazaFountain(ctx: Ctx, f: number) {
   rect(ctx, MARBLE.light, 52, 52, 3, 30);
   rect(ctx, MARBLE.dark, 65, 52, 3, 30);
   for (const y of [58, 70]) rect(ctx, GOLDC.base, 52, y, 16, 2);
-  bowl(ctx, 60, 50, 30, 7, 3);
+  bowl(ctx, 60, 50, 30, 7, 3, dry);
   // upper tier
   rect(ctx, INK, 55, 28, 10, 22);
   rect(ctx, MARBLE.base, 56, 28, 8, 22);
   rect(ctx, MARBLE.light, 56, 28, 2, 22);
   rect(ctx, GOLDC.base, 56, 38, 8, 1);
-  bowl(ctx, 60, 28, 16, 4.5, 2);
+  bowl(ctx, 60, 28, 16, 4.5, 2, dry);
+  if (dry) {
+    // cracks down the marble, and a chip off the top tier
+    for (const [x, y0, n] of [[55, 56, 9], [62, 30, 7], [40, 84, 5], [80, 86, 6]] as const)
+      for (let i = 0; i < n; i++) rect(ctx, INK, x + (i % 2), y0 + i, 1, 1);
+    rect(ctx, MARBLE.dark, 64, 24, 3, 3);
+    return;
+  }
   // water falling from the tiers
   for (let y = 0; y < 30; y++) {
     if ((y + f * 2) % 5 === 4) continue;
@@ -126,7 +140,7 @@ function drawPlazaFountain(ctx: Ctx, f: number) {
   // gold orb pedestal and the turning star
   disc(ctx, INK, 60, 25, 4.5, 3);
   disc(ctx, GOLDC.base, 60, 25, 3.5, 2);
-  drawStar(ctx, 48, 0, 25, { face: false, rot: (f * Math.PI) / 16 });
+  if (stage === 2) drawStar(ctx, 48, 0, 25, { face: false, rot: (f * Math.PI) / 16 });
   // sparkles on the water
   const glints = [[[22, 80], [70, 86], [96, 84], [50, 49]], [[40, 84], [88, 80], [26, 88], [68, 50]], [[58, 88], [30, 82], [104, 86], [56, 27]]][f];
   for (const [x, y] of glints) rect(ctx, "#ffffff", x, y, 2, 1);
@@ -703,7 +717,25 @@ export function buildTextures(scene: Phaser.Scene) {
   for (const v of [0, 1]) canvasTex(scene, `rubble_${v}`, 24, 18, (ctx) => drawRubble(ctx, v));
 
   canvasTex(scene, "ship", 28, 57, drawShip);
+  // the fountain's stages: dry (one frame), then flowing, then flowing under the star
+  canvasTex(scene, "plaza_fountain_dry", 120, 100, (ctx) => drawPlazaFountain(ctx, 0, 0));
+  for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_mid_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f, 1));
   for (const f of [0, 1, 2]) canvasTex(scene, `plaza_fountain_${f}`, 120, 100, (ctx) => drawPlazaFountain(ctx, f));
+  // the town's landmarks, stage by stage (the plain key is the grand one)
+  for (const st of [0, 1, 2]) {
+    canvasTex(scene, `b_town_hall_${st}`, 124, 136, (ctx) => drawTownHall(ctx, st));
+    canvasTex(scene, `b_market_${st}`, 76, 80, (ctx) => drawMarket(ctx, st));
+  }
+  canvasTex(scene, "b_town_hall", 124, 136, (ctx) => drawTownHall(ctx, 2));
+  canvasTex(scene, "b_market", 76, 80, (ctx) => drawMarket(ctx, 2));
+  // things to find around the crater
+  canvasTex(scene, "node_ice", 20, 21, drawIceNode);
+  canvasTex(scene, "node_scrap", 22, 14, drawScrapNode);
+  canvasTex(scene, "node_ore", 20, 13, drawOreNode);
+  for (const f of [0, 1]) {
+    canvasTex(scene, `node_helium_${f}`, 22, 12, (ctx) => drawHeliumNode(ctx, f));
+    canvasTex(scene, `dig_${f}`, 16, 11, (ctx) => drawDigSpot(ctx, f));
+  }
   canvasTex(scene, "obelisk", 18, 58, drawObelisk);
   canvasTex(scene, "topiary", 16, 24, drawTopiary);
   canvasTex(scene, "plaza_garden", 44, 24, drawPlazaGarden);
@@ -874,6 +906,9 @@ export function buildAnims(scene: Phaser.Scene) {
   for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
   mk("shard-twinkle", ["shard_0", "shard_1", "shard_2", "shard_1"], 4);
   mk("plaza-fountain", ["plaza_fountain_0", "plaza_fountain_1", "plaza_fountain_2"], 4);
+  mk("plaza-fountain-mid", ["plaza_fountain_mid_0", "plaza_fountain_mid_1", "plaza_fountain_mid_2"], 4);
+  mk("helium-shimmer", ["node_helium_0", "node_helium_1"], 2);
+  mk("dig-sparkle", ["dig_0", "dig_1"], 2);
   mk("jade_rabbit-idle", ["rabbit_0", "rabbit_1"], 1.5);
   mk("postmaster-idle", ["postmaster_0", "postmaster_0", "postmaster_0", "postmaster_1"], 2);
   mk("timekeeper-idle", ["timekeeper_0", "timekeeper_1"], 1);

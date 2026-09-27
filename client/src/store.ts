@@ -2,11 +2,12 @@
 // the world scene animates the same events at a watchable pace on its own.
 
 import { applyLayout } from "../../shared/layout";
-import { VILLAGER_NAMES, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
+import { freshTown } from "../../shared/town";
+import { VILLAGER_NAMES, noMaterials, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
 
 export const store: Snapshot & { connected: boolean } = {
   coins: 0,
-  materials: { moonstone: 0, stardust: 0, shard: 0 },
+  materials: noMaterials(),
   buildings: {},
   villagers: {} as Record<VillagerId, VillagerState>,
   clods: [],
@@ -16,7 +17,7 @@ export const store: Snapshot & { connected: boolean } = {
   lastSeq: 0,
   phoneLinked: false,
   connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
-  progress: { revealed: [], sandbox: {}, movedIn: [], lots: {} },
+  progress: { town: freshTown(), revealed: [], sandbox: {}, movedIn: [], lots: {} },
   residents: ["jade_rabbit"],
   rabbitTeamwork: false,
   chores: [],

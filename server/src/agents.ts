@@ -5,7 +5,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BUILDINGS,
-  currentMoveIn,
   VILLAGER_HOME,
   type Approval,
   type BuildingId,
@@ -300,10 +299,7 @@ export function toolsFor(v: VillagerId): Tool[] {
 
 export function missingBuildingsNote(v: VillagerId): string {
   if (v === "jade_rabbit") {
-    const d = currentMoveIn(world.progress);
-    const quest = d
-      ? `\n\nThe player's current goal: getting ${nameOf(d.villager)} to move in. Next step: ${services.nextStep()} (Materials: moonstone from clearing boulders, rubble and fallen meteor rocks; stardust from sweeping moondust; moon shards from the wilds. Coins from popping clods after neighbors finish work, sweeping, meteors and requests.)`
-      : "\n\nEvery neighbor has moved in.";
+    const quest = `\n\n${services.townNote()} The player's next goal: ${services.nextStep()} (Materials: moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust; moon shards from the wilds; glow ore from meteors and the old glowing craters; ice crystals in the north and scrap metal and helium-3 in the south, once the roads are fixed. Coins from popping the stars neighbors leave after real work, sweeping, meteors and requests.)`;
     const guide = services.rabbitTeamwork()
       ? ""
       : "\n\nRight now you're just the guide: you can't hand out work until two neighbors live here. Point the player at their current goal instead.";
@@ -594,6 +590,8 @@ export async function startTask(v: VillagerId, text: string, from: TaskSource): 
     if (!texting) emit({ type: "say", villager: v, text: reply });
 
     const madeClods = Object.values(world.clods).some((c) => c.taskId === taskId);
+    // Real work done for you counts toward the town (a couple of grand upgrades need it).
+    if (madeClods && from !== "chore") services.taskDone(v === "stargazer" ? "nova_search" : "real_job");
     if (madeClods) {
       const lantern = { id: newId("lantern"), taskId, villager: v, summary: reply.slice(0, 140), at: Date.now() };
       addLantern(lantern);

@@ -97,36 +97,54 @@ Hoot arrives, 3: The Scholar when Cog does). When the last neighbor moves in, th
 with every neighbor home and fireworks overhead, then four bars of signal and a video call from the
 family at the same dinner table ("...Every. Single. Call."). Rewatch it from the Quests dialog.
 
-## Unlocking the colony
+## The town
 
-The villagers: **Yutu the Jade Rabbit** (your guide), **Nova the Stargazer** (web research), **Hoot the Postmaster** (Gmail),
-**Cog the Timekeeper** (Calendar) and **Mabel the Scholar** (Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ...").
+The villagers: **Yutu the Jade Rabbit** (your guide, and the town's mayor), **Nova the Stargazer** (web
+research), **Hoot the Postmaster** (Gmail), **Cog the Timekeeper** (Calendar) and **Mabel the Scholar**
+(Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ..."). **Ada the Team Lead** runs the Office.
 
-You start with Yutu and Nova. The other neighbors are waiting on Earth, and each one's lot on the Moon is an
-old ruin. Like moving villagers in in Animal Crossing, each lot has a **checklist** (on its sign, in Quests,
-and the gold ★ always points at the next step):
+You start with Yutu and Nova in the ruins of an old colony. Stardew-style, you bring the **town** back:
+four landmarks, each going **ruined → repaired → grand**. E at the Town Hall for the projects board (or E at
+the Fountain or the Market); the Quests window lists everything, and the gold ★ always points at what's next.
 
-1. **Clear the rubble** off the lot (press E on each pile; each gives a moonstone).
-2. **Repair the foundation** with materials you collect around the island.
-3. **Build the house** with coins.
-4. **Decorate:** put something they love in the yard (hover a decoration, or check the Shop, to see who loves it).
+| Landmark | Ruined (start) | Repaired | Grand |
+|---|---|---|---|
+| **Town Hall** (the old colony's dome, north of the plaza) | room for 1 new neighbor | room for 2, and the Office can be built | room for all 3 |
+| **Fountain** | dry and cracked | water again: neighbors make daily wishes | the star turns: friendships grow faster |
+| **Roads & Lamps** | broken roads, dark lamps; rockfalls seal the north and south of the crater | the north opens | the south opens |
+| **Market** | a collapsed cart: a few basic decorations | a striped stall: all Garden and Cozy | a real shop: everything |
 
-Then they move in (with a hello and a housewarming gift), the next lot opens, and a new chapter starts.
-**Connecting your real account comes after they move in**: the first time you talk to them they ask for
-it (or try them on sample data), and then they work with your real mail, calendar or classes.
+| Upgrade | Repaired needs | Grand needs |
+|---|---|---|
+| Town Hall | 4 moonstone, 3 stardust, 1 glow ore | 4 moonstone, 2 ice, 2 scrap, the Old Colony Charter, a real job from Hoot, Cog, Mabel or Yutu |
+| Fountain | 3 moonstone, 2 stardust | 2 moon shards, 2 ice, 1 helium-3, the Fountain Valve, a web search by Nova |
+| Roads & Lamps | 3 moonstone, 2 stardust | 2 ice, 1 glow ore, the Lamp Lens |
+| Market | 2 moonstone, 2 stardust, 1 moon shard | 2 scrap, 2 helium-3, the Shop Bell |
 
-| Neighbor | Lot | Rubble | Foundation needs | House | Yard |
-|---|---|---|---|---|---|
-| Hoot the Postmaster | Post Office | 3 | 3 moonstone, 2 stardust | 30¢ | 1 thing Hoot loves |
-| Cog the Timekeeper | Clock Tower | 3 | 4 moonstone, 3 stardust, 1 moon shard | 60¢ | 2 things Cog loves |
-| Mabel the Scholar | Library | 4 | 5 moonstone, 3 stardust, 2 moon shards | 90¢ | 2 things Mabel loves |
+**New neighbors:** Hoot, Cog and Mabel each have a ruined lot. Clear its rubble (2 piles) and repair it with
+materials, and they move right in, up to the Town Hall's room; you pick the order. Decorating their yard with
+things they love is optional and grows your friendship. **Connecting your real account comes after they move
+in**: the first time you talk to them they ask for it (or try them on sample data).
 
-**Materials:** moonstone from clearing boulders (free now: small rocks give 1, big ones 2 or 3), rubble and
-fallen meteor rocks; stardust from sweeping moondust drifts; moon shards from the 12 glinting in the wilds
-(spending them doesn't un-find them: find all 12 and the beacon still relights). **Coins** come from popping
-stars after your neighbors finish work (so using them pays), sweeping, meteors, requests and shards.
-Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), built onto its east wall with a brass mail tube from the Post Office into the rocket. It lets him send your replies, with your OK, and it moves with the Post Office in edit mode.
-Saves from the old quest chain carry over: anyone who had a house counts as moved in.
+| Neighbor | Lot | Repair needs |
+|---|---|---|
+| Hoot the Postmaster | Post Office | 3 moonstone, 2 stardust |
+| Cog the Timekeeper | Clock Tower | 3 moonstone, 2 stardust, 1 glow ore |
+| Mabel the Scholar | Library | 3 moonstone, 2 stardust, 1 moon shard |
+
+**Materials:** moonstone from boulders, rubble and fallen meteors; stardust from sweeping moondust; moon shards
+(12 glint around the crater); **glow ore** from meteors and three old glowing craters; **ice crystals** in the
+shadowed north; **scrap metal** from wrecks and **helium-3** from shimmering dust in the south. Gathering spots
+grow back each day. **Story items** (one line of flavor each): the Old Colony Charter is dug up at the Town Hall
+once it's repaired, the Lamp Lens is out in the north, Yutu gives you the Fountain Valve when your first new
+neighbor moves in, and your second new neighbor brings the Shop Bell. **Coins** come from popping the stars
+your neighbors leave after real work, sweeping, meteors, requests and shards.
+
+Hoot moving in also opens an upgrade for his Post Office: the **Mail Rocket** (free), which lets him send your
+replies, with your OK. The town came in with save version 3: older saves start fresh.
+
+**Demo fast mode** (with `DEV_TOOLS=1` on the server): send `{type: "dev", action: "town"}` for a pile of every
+material, all four story items and both jobs done, so any stage can be shown in seconds.
 
 ## The Office (for developers)
 

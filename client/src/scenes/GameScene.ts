@@ -1,3 +1,5 @@
+import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, type LandmarkId } from "../../../shared/town";
+import { TownView, openLandmark, openTownBoard } from "../townview";
 import Phaser from "phaser";
 import {
   BUILDINGS,
@@ -64,7 +66,7 @@ const HELLOS: Record<VillagerId, string[]> = {
  * Somewhere someone can stand: feet on the island, and head over it too, so at
  * the island's back edge you stop short instead of standing against open space.
  */
-const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6, y - 26) && inIslandXY(x + 6, y - 26);
+const onGround = (x: number, y: number) => inIslandXY(x, y) && inIslandXY(x - 6, y - 26) && inIslandXY(x + 6, y - 26) && openAt(store.progress.town, x, y);
 
 /** Every neighbor's home (the lots that go from ruin to house). */
 const MOVE_INS_HOMES = () => MOVE_INS.map((m) => m.home);
@@ -165,6 +167,10 @@ export class GameScene extends Phaser.Scene {
     this.solids = [];
 
     this.bakeGround();
+    // The town: rockfalls over the parts the roads haven't reached, things to gather, things to dig up.
+    this.town = new TownView(this);
+    this.town.refresh();
+    this.townStages = { ...store.progress.town.stages };
 
     this.add.image(LANDING.x, LANDING.y - 1, shadowKey(this, 34)).setDepth(-8);
     this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
@@ -292,7 +298,7 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(900, () => {
         const text = ready
           ? `Welcome back! The neighbors finished ${ready} thing${ready === 1 ? "" : "s"} while you were away - pop the glowing stars to collect!`
-          : "Welcome to the Moon! A new neighbor's lot is waiting: follow the gold ★ to fix it up. I'm always around if you need me.";
+          : "Welcome to the Moon! I'm Yutu, the mayor. The old town's in ruins, but we'll bring it back: follow the gold ★. E at the Town Hall shows every project.";
         // Off-screen (or down behind the toolbar), a bubble would go unseen: send it as a message instead.
         const v = this.cameras.main.worldView;
         const seen = rabbit.x > v.x + 40 && rabbit.x < v.right - 40 && rabbit.y - 40 > v.y + 30 && rabbit.y < v.bottom - 60;
@@ -357,6 +363,14 @@ export class GameScene extends Phaser.Scene {
   /** Short on a material: the nearest place to get some (for the ★). */
   private materialSource(m: Material): { x: number; y: number; label: string } | null {
     const near = <T extends { x: number; y: number }>(list: T[]) => list.sort((a, b) => this.distTo(a.x, a.y) - this.distTo(b.x, b.y))[0];
+    const town = store.progress.town;
+    const node = NODES.find((n) => NODE_MATERIAL[n.kind] === m) ? near(NODES.filter((n) => NODE_MATERIAL[n.kind] === m && openAt(town, n.x, n.y) && !town.harvested.includes(n.id))) : undefined;
+    if (node) return { x: node.x, y: node.y - 16, label: `${MATERIAL_NAME[m]}` };
+    if (m === "ice" || m === "scrap" || m === "helium") return { ...this.landmarkAt("roads"), label: "Fix the roads to reach it" };
+    if (m === "ore") {
+      const met = near([...this.choreViews.values()].filter((c) => c.chore.kind === "meteor").map((c) => ({ x: c.chore.x, y: c.chore.y })));
+      return met ? { x: met.x, y: met.y - 14, label: "A meteor: glow ore" } : null;
+    }
     if (m === "stardust") {
       const d = near([...this.choreViews.values()].filter((c) => c.chore.kind === "dust").map((c) => ({ x: c.chore.x, y: c.chore.y })));
       return d ? { x: d.x, y: d.y - 14, label: "Sweep for stardust" } : null;
@@ -369,30 +383,41 @@ export class GameScene extends Phaser.Scene {
     return sh ? { x: sh.x, y: sh.y - 14, label: "A Moon Shard" } : null;
   }
 
+  /** Where you go to upgrade a landmark: the fountain in the plaza; the Town Hall, Market and roads at their buildings. */
+  private landmarkAt(id: LandmarkId): { x: number; y: number } {
+    if (id === "fountain") return { x: PLAZA.x, y: PLAZA.y - 50 };
+    const s = SPOTS[id === "market" ? "market" : "town_hall"];
+    return { x: s.x, y: s.y - 24 };
+  }
+
   /**
-   * Where the next step of the moving-in checklist is: the rubble, the lot,
-   * the nearest place to get a missing material, or the yard to decorate.
+   * Where the next goal is: the rubble or the lot, a story item to dig up, a
+   * landmark to upgrade, or the nearest place to get a missing material.
    */
   questTarget(): { x: number; y: number; label: string } | null {
     const n = nextStep(this.moveState());
     if (!n) return null;
+    if (n.kind === "dig") return { x: n.spot.x, y: n.spot.y - 14, label: "Dig here" };
+    if (n.kind === "landmark") {
+      const up = LANDMARKS[n.id].up[store.progress.town.stages[n.id] as 0 | 1];
+      const short = !n.ready && MATERIALS.find((m) => (up.needs[m] ?? 0) > store.materials[m]);
+      const src = short && this.materialSource(short);
+      if (src) return src;
+      return { ...this.landmarkAt(n.id), label: `Upgrade the ${LANDMARKS[n.id].name}` };
+    }
     const { def, step } = n;
     const s = SPOTS[def.home];
-    if (!s) return null;
     if (step.key === "rubble") {
       const cleared = store.progress.lots[def.home]?.cleared ?? [];
       const r = this.rubbleSpots(def).find((x) => !cleared.includes(x.i));
       if (r) return { x: r.x, y: r.y - 14, label: "Clear rubble" };
     }
-    if (step.key === "repair" && !step.ready) {
+    if (!step.ready) {
       const short = MATERIALS.find((m) => (def.repair[m] ?? 0) > store.materials[m]);
       const src = short && this.materialSource(short);
       if (src) return src;
     }
-    if (step.key === "repair") return { x: s.x, y: s.y - 24, label: "Repair" };
-    if (step.key === "build") return { x: s.x, y: s.y - 24, label: step.ready ? "Build" : `Build (${BUILDINGS[def.home].price}¢)` };
-    const d = this.doorOf(def.home);
-    return { x: d.x, y: d.y - 34, label: `Decorate ${VILLAGER_SHORT[def.villager]}'s yard` };
+    return { x: s.x, y: s.y - 24, label: "Repair" };
   }
 
   /** Moved in, but their account isn't connected (and no sample data chosen) yet. */
@@ -413,7 +438,7 @@ export class GameScene extends Phaser.Scene {
       .map((d) => `${d.name} ${d.price}¢`);
     openInfo(`${who.toUpperCase()} WANTS TO MOVE IN`, [
       ...steps.map((st) => `${st.done ? "✓" : "○"} ${st.text}`),
-      `${who} loves: ${loves.join(", ")}... (hover any decoration to see who loves it). Put them in the yard around the ${BUILDINGS[def.home].name}.`,
+      `Once they're home, ${who} loves: ${loves.join(", ")}... Decorations they love in their yard grow your friendship.`,
     ], [{ label: "SHOP", kind: "ok", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]);
   }
 
@@ -424,10 +449,16 @@ export class GameScene extends Phaser.Scene {
       const have = store.materials[m];
       return `${have >= need ? "✓" : "○"} ${need} ${MATERIAL_NAME[m]} (you have ${have})${have >= need ? "" : `: ${MATERIAL_SOURCE[m]}`}`;
     });
-    const ready = MATERIALS.every((m) => (def.repair[m] ?? 0) <= store.materials[m]);
-    openInfo("REPAIR THE FOUNDATION", [`The old ${BUILDINGS[def.home].name}'s foundation is cracked through. Rebuilding it takes:`, ...lines], [
+    const cap = neighborCap(store.progress.town);
+    const room = store.progress.movedIn.length < cap;
+    const ready = room && MATERIALS.every((m) => (def.repair[m] ?? 0) <= store.materials[m]);
+    openInfo("REPAIR THE LOT", [
+      `Rebuild the old ${BUILDINGS[def.home].name} and ${VILLAGER_SHORT[def.villager]} moves right in. It takes:`,
+      ...lines,
+      room ? `✓ Room at the Town Hall (${store.progress.movedIn.length}/${cap} new neighbors)` : `○ The Town Hall is full (${cap}/${cap}): upgrade it to make room (E at the Town Hall).`,
+    ], [
       {
-        label: ready ? "REPAIR" : "NEED MATERIALS",
+        label: ready ? "REPAIR" : room ? "NEED MATERIALS" : "NO ROOM YET",
         kind: ready ? "ok" : "",
         onClick: () => {
           closePanel();
@@ -483,7 +514,7 @@ export class GameScene extends Phaser.Scene {
     this.pathTex = paths;
     const ctx = paths.getContext();
     ctx.clearRect(0, 0, WORLD_W, WORLD_H);
-    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b);
+    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
     paths.refresh();
     this.add.image(0, 0, "paths").setOrigin(0).setDepth(-9.5);
 
@@ -510,9 +541,12 @@ export class GameScene extends Phaser.Scene {
     };
     const fy = P.y + 16;
     this.add.image(P.x, P.y + 8, shadowKey(this, 116)).setDepth(-8);
-    this.add.sprite(P.x, fy, "plaza_fountain_0").setOrigin(0.5, 1).setDepth(fy).play("plaza-fountain");
-    this.add.image(P.x, P.y - 58, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa07a).setAlpha(0.3).setDepth(fy + 1);
-    this.add.image(P.x, P.y + 4, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0x9fe3f0).setAlpha(0.18).setDepth(fy + 1);
+    this.fountain = {
+      sprite: this.add.sprite(P.x, fy, "plaza_fountain_dry").setOrigin(0.5, 1).setDepth(fy),
+      star: this.add.image(P.x, P.y - 58, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffe08a).setAlpha(0.3).setDepth(fy + 1),
+      water: this.add.image(P.x, P.y + 4, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0x9fe3f0).setAlpha(0.18).setDepth(fy + 1),
+    };
+    this.applyFountain();
     // The great basin is an oval (about 114 x 31 on screen): block it in thin
     // slices so you walk around the rim, never into the water. A little
     // wider than the art, since your feet are the point that collides, and
@@ -526,6 +560,71 @@ export class GameScene extends Phaser.Scene {
     // Obelisks stand just outside the rim, between the paths; the paving stays open.
     // (every other gap: a ring of eight read as clutter)
     plazaRing().obelisks.forEach((o, i) => i % 2 === 0 && prop("obelisk", o.x - P.x, o.y - P.y, 14));
+  }
+
+  // ================================================================ the town
+
+  private town!: TownView;
+  private townStages!: Record<LandmarkId, number>;
+  private fountain?: { sprite: Phaser.GameObjects.Sprite; star: Phaser.GameObjects.Image; water: Phaser.GameObjects.Image };
+
+  private roadsBroken() {
+    return store.progress.town.stages.roads === 0;
+  }
+
+  /** The Town Hall and Market look like the stage they're at. */
+  private textureOf(b: BuildingId) {
+    return b === "town_hall" || b === "market" ? `${SPOTS[b].texture}_${store.progress.town.stages[b]}` : SPOTS[b].texture;
+  }
+
+  private applyFountain() {
+    const f = this.fountain;
+    if (!f) return;
+    const stage = store.progress.town.stages.fountain;
+    if (stage === 0) f.sprite.stop().setTexture("plaza_fountain_dry");
+    else f.sprite.play(stage === 1 ? "plaza-fountain-mid" : "plaza-fountain");
+    f.water.setVisible(stage >= 1);
+    f.star.setVisible(stage === 2);
+  }
+
+  private redrawPaths() {
+    const ctx = this.pathTex.getContext();
+    ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+    for (const b of BUILDING_IDS) if (store.buildings[b] && !isAnnex(b)) drawBuildingPath(ctx, b, this.roadsBroken());
+    this.pathTex.refresh();
+  }
+
+  /** After any progress: redraw what's gathered or dug, and celebrate any landmark that went up a stage. */
+  private townChanged() {
+    this.town.refresh();
+    const now = store.progress.town.stages;
+    for (const id of LANDMARK_IDS) {
+      if (now[id] === this.townStages[id]) continue;
+      const up = now[id] > this.townStages[id];
+      this.townStages[id] = now[id];
+      this.applyLandmark(id, up);
+    }
+  }
+
+  private applyLandmark(id: LandmarkId, celebrate: boolean) {
+    const at = id === "fountain" ? { x: PLAZA.x, y: PLAZA.y - 30 } : id === "roads" ? { x: this.player.x, y: this.player.y - 20 } : { x: SPOTS[id].x, y: SPOTS[id].y - 40 };
+    if (id === "town_hall" || id === "market") this.placeBuilding(id, false);
+    if (id === "fountain") this.applyFountain();
+    if (id === "roads") {
+      this.redrawPaths();
+      // the crews clear the rockfall that just opened
+      const line = store.progress.town.stages.roads === 1 ? NORTH_Y : SOUTH_Y;
+      for (let i = 0; i < 24; i++) this.time.delayedCall(i * 50, () => puff(this, Phaser.Math.Between(200, WORLD_W - 200), line + Phaser.Math.Between(-10, 10)));
+    }
+    if (!celebrate) return;
+    for (let i = 0; i < 10; i++) this.time.delayedCall(i * 60, () => puff(this, at.x + Phaser.Math.Between(-30, 30), at.y + Phaser.Math.Between(-10, 20)));
+    const burst = this.add.particles(at.x, at.y, "spark", { speed: { min: 50, max: 140 }, lifespan: 700, quantity: 26, alpha: { start: 1, end: 0 }, emitting: false }).setDepth(99985);
+    burst.explode(26);
+    this.time.delayedCall(800, () => burst.destroy());
+    sfx.buy();
+    const stage = store.progress.town.stages[id];
+    const perk = LANDMARKS[id].perks[stage];
+    this.game.events.emit("npc-toast", { who: VILLAGER_NAMES.jade_rabbit, text: `The ${LANDMARKS[id].name} is ${STAGE_NAME[stage]}! ${perk}.` });
   }
 
   private rocks: Rock[] = [];
@@ -655,7 +754,7 @@ export class GameScene extends Phaser.Scene {
   /** Lay a building's path (after it's built) and light its doorway lamp. */
   private layPath(b: BuildingId) {
     if (isAnnex(b)) return;
-    drawBuildingPath(this.pathTex.getContext(), b);
+    drawBuildingPath(this.pathTex.getContext(), b, this.roadsBroken());
     this.pathTex.refresh();
     const lamp = lampSpots((x) => x === b).find((p) => p.building === b);
     if (lamp) this.addLamp(lamp.x, lamp.y);
@@ -674,7 +773,7 @@ export class GameScene extends Phaser.Scene {
       if (!isAnnex(b)) objs.push(this.add.image(s.x, s.y - 2, `grounds_${b}`).setOrigin(0.5, 0).setDepth(-9.2));
       // The launch pad's base is a landing disc lying flat on the ground: a shadow under it reads as a second, floating disc.
       if (b !== "rocket_pad") objs.push(this.add.image(s.x, s.y - 1, shadowKey(this, s.fw * 2.2)).setDepth(-8));
-      const img = this.add.image(s.x, s.y, s.texture).setOrigin(0.5, 1).setDepth(s.y);
+      const img = this.add.image(s.x, s.y, this.textureOf(b)).setOrigin(0.5, 1).setDepth(s.y);
       objs.push(img);
       // Signs hang above the roofline so villagers at the door never cover them.
       const top = s.y - img.height - 2;
@@ -750,6 +849,20 @@ export class GameScene extends Phaser.Scene {
       const hands = this.add.graphics().setDepth(s.y + 0.6);
       this.clockHands = { g: hands, x: s.x, y: s.y - 96, drawn: "" };
       return [hands];
+    }
+    const town = store.progress.town;
+    if (b === "town_hall" && town.stages.town_hall === 2) {
+      // the beacon on the dome's mast
+      const beacon = this.add.image(s.x + 0.5, s.y - 136 + 22, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff5a4a).setDepth(s.y + 1);
+      pulse(beacon, 0.15, 0.9, 900);
+      return [beacon];
+    }
+    if (b === "market" && town.stages.market === 2) {
+      return [12, 66].map((px) => {
+        const g = this.add.image(s.x - 38 + px, s.y - 80 + 37, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffc070).setDepth(s.y + 1);
+        pulse(g, 0.3, 0.6, 1500 + px * 7);
+        return g;
+      });
     }
     if (b === "rocket_pad") {
       // the beacon on top of the Mail Rocket's gantry
@@ -1324,11 +1437,27 @@ export class GameScene extends Phaser.Scene {
           if (store.buildings[m]) this.refreshNeedSign(m);
           else this.placeBuilding(m, false);
         }
+        this.townChanged();
         if (e.gained) {
           const at = e.at ?? { x: this.player.x, y: this.player.y };
           const text = (Object.entries(e.gained) as [Material, number][]).filter(([, n]) => n).map(([m, n]) => `+${n} ${MATERIAL_NAME[m]}`).join("  ");
           if (text) this.floatText(at.x, at.y - 34, text, 0xc8e8ff, 1600);
         }
+        break;
+      }
+
+      case "item_found": {
+        const item = ITEMS[e.item];
+        const needFor = LANDMARK_IDS.find((id) => LANDMARKS[id].up.some((u) => u.item === e.item));
+        const text = `${e.text ? `${e.text} ` : ""}Got the ${item.name}: "${item.line}"${needFor ? ` (for the grand ${LANDMARKS[needFor].name})` : ""}`;
+        this.game.events.emit("npc-toast", { who: e.by ? VILLAGER_NAMES[e.by] : item.name, text });
+        if (e.x !== undefined && e.y !== undefined) {
+          this.floatText(e.x, e.y - 30, item.name, 0xfff0a0, 2200);
+          const burst = this.add.particles(e.x, e.y - 8, "spark", { speed: { min: 40, max: 110 }, lifespan: 600, quantity: 16, alpha: { start: 1, end: 0 }, tint: 0xfff0a0, emitting: false }).setDepth(99985);
+          burst.explode(16);
+          this.time.delayedCall(700, () => burst.destroy());
+        }
+        sfx.bell();
         break;
       }
 
@@ -1592,6 +1721,14 @@ export class GameScene extends Phaser.Scene {
       const door = this.doorOf(home);
       add({ verb: "CALL", label: `[E] call ${VILLAGER_NAMES[v]}`, x: door.x, y: door.y + 18, d: Math.min(dist(door.x, door.y), dist(bell.x, bell.y - 6)), act: () => this.ringBell(v), atDoor: true }, 44);
     }
+    // The town's landmarks: the Town Hall's board, the Market, the Fountain. Gathering and digging.
+    const th = this.doorOf("town_hall");
+    add({ verb: "BOARD", label: "[E] town projects", x: th.x, y: th.y + 16, d: dist(th.x, th.y), act: () => openTownBoard() }, 40);
+    const mk = this.doorOf("market");
+    add({ verb: "CHECK", label: "[E] the Market", x: mk.x, y: mk.y + 14, d: dist(mk.x, mk.y), act: () => openLandmark("market", [{ label: "SHOP", onClick: () => (closePanel(), this.game.events.emit("toggle-shop")) }]) }, 36);
+    const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
+    add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: () => openLandmark("fountain") }, 26);
+    for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
     if (store.buildings.office) {
       const od = this.doorOf("office");
       add({ verb: "ENTER", label: "[E] enter the Office", x: od.x, y: od.y - 40, d: dist(od.x, od.y - 4), act: () => this.enterOffice() }, 30);
@@ -1620,6 +1757,10 @@ export class GameScene extends Phaser.Scene {
           add({ verb: "BUILD", label: "[E] repair the foundation", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showRepair(move) }, 46);
           continue;
         }
+      }
+      if (b === "office" && !officeAllowed(store.progress.town)) {
+        add({ verb: "CHECK", label: "[E] the Office lot", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => openInfo("THE OFFICE", [`Unlocks: ${def.unlocks}.`, "The Office can go up once the Town Hall is repaired (E at the Town Hall for the town's projects)."]) }, 46);
+        continue;
       }
       add(
         {
@@ -1745,7 +1886,7 @@ export class GameScene extends Phaser.Scene {
     if (v !== "jade_rabbit") return GREETINGS[v];
     const n = nextStep(this.moveState());
     if (!n) return GREETINGS.jade_rabbit;
-    const goal = `Next up: getting ${VILLAGER_SHORT[n.def.villager]} to move in. ${n.step.text}.`;
+    const goal = `Mayor's note: ${n.text.replace(/\.$/, "")}.`;
     return store.rabbitTeamwork ? `${GREETINGS.jade_rabbit} ${goal}` : `Welcome, exile! I'm the guide around here. ${goal}`;
   }
 
@@ -2156,7 +2297,9 @@ export class GameScene extends Phaser.Scene {
     // Moondust dims the solar lamps it settles near.
     for (const l of this.lamps) {
       const dusty = [...this.choreViews.values()].some((c) => c.chore.kind === "dust" && Math.hypot(c.x - l.x, c.y - l.y) < 40);
-      l.glow.setAlpha(dusty ? 0.08 : 0.3 + 0.06 * Math.sin(time / 700 + l.x));
+      // (lamps stay dark until the roads are fixed, and shine brighter when they're grand)
+      const bright = [0, 1, 1.4][store.progress.town.stages.roads];
+      l.glow.setAlpha(bright * (dusty ? 0.08 : 0.3 + 0.06 * Math.sin(time / 700 + l.x)));
     }
     for (const a of this.villagers.values()) a.update(time);
     // Only the clod you're standing nearest shows its label — no pile-ups.

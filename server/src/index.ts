@@ -1,8 +1,9 @@
+import { inStock, officeAllowed } from "../../shared/town.js";
 import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
 import { createServer, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
-import { BUILDINGS } from "../../shared/game.js";
+import { BUILDINGS, moveInAt } from "../../shared/game.js";
 import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
 import { agentsState, bridgeBye, bridgeUpdate, newLinkCode, onAgentsChange, pairBridge, reportEvent, startAgentWatch, startReplay, stopReplay, unlink as unlinkBridge, useLinking } from "./agentwatch.js";
@@ -246,17 +247,38 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       }
 
       case "build": {
-        // A neighbor's house goes up once their lot is cleared and repaired.
-        const blocked = BUILDINGS[msg.building] ? services.lotBlocker(msg.building) : null;
-        if (blocked) {
-          send(ws, { type: "notice", text: blocked });
+        if (!BUILDINGS[msg.building]) break;
+        // Neighbors' houses go up when their lot is repaired; the Office needs a repaired Town Hall.
+        if (moveInAt(msg.building)) {
+          send(ws, { type: "notice", text: "Clear and repair the lot, and they'll move right in." });
+          break;
+        }
+        if (msg.building === "office" && !officeAllowed(world.progress.town)) {
+          send(ws, { type: "notice", text: "The Office needs a repaired Town Hall first." });
           break;
         }
         const r = build(msg.building);
         if (r.ok) {
           emit({ type: "building_built", building: msg.building, coins: world.coins });
-          services.checkMoveIn();
         } else send(ws, { type: "notice", text: r.reason });
+        break;
+      }
+
+      case "upgrade": {
+        const problem = services.upgradeLandmark(msg.landmark);
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "harvest": {
+        const problem = services.harvest(String(msg.id));
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "dig": {
+        const problem = services.dig(String(msg.id));
+        if (problem) send(ws, { type: "notice", text: problem });
         break;
       }
 
@@ -278,6 +300,10 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         const before = happinessAll();
         const def = decorById(String(msg.item));
         if (!def || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
+        if (!inStock(world.progress.town.stages.market, def)) {
+          send(ws, { type: "notice", text: "The Market doesn't stock that yet. Upgrade it for more." });
+          break;
+        }
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), def.tiles[0]);
         if (!canOccupy(decorFootprint(def, x, y), occupied())) {
           send(ws, { type: "notice", text: "Something's already on those tiles." });
@@ -288,7 +314,6 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         if (r.ok) {
           emit({ type: "deco_placed", deco, coins: world.coins });
           announceHappiness(before, def.name);
-          services.checkMoveIn();
         }
         else send(ws, { type: "notice", text: r.reason });
         break;
@@ -304,7 +329,6 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
           emit({ type: "deco_moved", id: placed.id, x, y });
           // (a move isn't a new decoration, so it doesn't count toward "decorate" requests)
           announceHappiness(before);
-          services.checkMoveIn();
         } else send(ws, { type: "notice", text: "That spot's taken." });
         break;
       }
@@ -345,7 +369,6 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         if (moveBuilding(b, x, y)) {
           emit({ type: "building_moved", building: b, x, y });
           announceHappiness(before);
-          services.checkMoveIn();
         }
         else send(ws, { type: "notice", text: "The building doesn't fit there." });
         break;
@@ -457,8 +480,8 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         const r = clearChore(String(msg.id));
         if (r.ok) {
           emit({ type: "chore_cleared", id: msg.id, kind: r.kind, reward: r.reward, coins: world.coins });
-          // Sweeping turns up stardust; a fallen meteor is a chunk of moonstone.
-          services.gain(r.kind === "dust" ? { stardust: 1 } : { moonstone: 1 }, { x: r.x, y: r.y });
+          // Sweeping turns up stardust; a fallen meteor is a chunk of moonstone with a vein of glow ore.
+          services.gain(r.kind === "dust" ? { stardust: 1 } : { moonstone: 1, ore: 1 }, { x: r.x, y: r.y });
         }
         break;
       }
@@ -471,6 +494,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         if (process.env.DEV_TOOLS !== "1") break;
         if (msg.action === "move_in") services.devMoveIn();
         if (msg.action === "materials") services.devMaterials();
+        if (msg.action === "town") services.devTown();
         if (msg.action === "meteor" || msg.action === "dust") devSpawn(msg.action);
         break;
 

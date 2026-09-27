@@ -80,7 +80,9 @@ export function befriend(v: VillagerId, via: "text" | "visit") {
     m.day = today;
     m.dayPoints = 0;
   }
-  const gain = Math.min(via === "visit" ? 2 : 1, POINTS_PER_DAY - (m.dayPoints ?? 0));
+  // (the grand fountain: friendships grow faster)
+  const grand = world.progress.town.stages.fountain >= 2 ? 1 : 0;
+  const gain = Math.min((via === "visit" ? 2 : 1) + grand, POINTS_PER_DAY + grand - (m.dayPoints ?? 0));
   if (gain <= 0) return;
   const bonus = happiness(v).score;
   const before = heartsFor(m.points + bonus);

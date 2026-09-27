@@ -2,6 +2,7 @@
 // closed); meteors thunk down every so often and leave a moon-rock that cools.
 // Also the opt-in villager chores: small real checks every CHORE_EVERY_MIN.
 
+import { openAt } from "../../shared/town.js";
 import { CHORE_EVERY_MIN, type Chore, type VillagerId } from "../../shared/game.js";
 import { PLAZA, WORLD_H, WORLD_W, inIslandXY, lampSpots, nearBuilding } from "../../shared/layout.js";
 import { isBusy, startTask } from "./agents.js";
@@ -31,7 +32,7 @@ function spawnDust() {
     const x = Math.round(l.x + rand(-22, 22));
     const y = Math.round(l.y + rand(4, 20));
     const crowded = Object.values(world.chores).some((c) => Math.hypot(c.x - x, c.y - y) < 18);
-    if (inIslandXY(x, y) && !nearBuilding(x, y, 6) && !crowded) return add({ id: newId("dust"), kind: "dust", x, y, reward: DUST_REWARD });
+    if (inIslandXY(x, y) && openAt(world.progress.town, x, y) && !nearBuilding(x, y, 6) && !crowded) return add({ id: newId("dust"), kind: "dust", x, y, reward: DUST_REWARD });
   }
 }
 
@@ -39,7 +40,7 @@ function spawnMeteor(delay = 0) {
   for (let tries = 0; tries < 40; tries++) {
     const x = Math.round(rand(80, WORLD_W - 80));
     const y = Math.round(rand(80, WORLD_H - 80));
-    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 170) continue;
+    if (!inIslandXY(x, y) || !inIslandXY(x, y + 12) || !openAt(world.progress.town, x, y) || nearBuilding(x, y, 20) || Math.hypot(x - PLAZA.x, y - PLAZA.y) < 170) continue;
     const landsAt = Date.now() + delay + WARNING_MS;
     return add({ id: newId("meteor"), kind: "meteor", x, y, reward: METEOR_REWARD, landsAt, expires: landsAt + COOL_MS });
   }
