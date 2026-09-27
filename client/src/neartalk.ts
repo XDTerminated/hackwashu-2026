@@ -40,6 +40,9 @@ export interface NearHost {
   greeting(v: VillagerId): string;
 }
 
+/** Walking off: the chat holds this long, then fades out over FADE_MS. */
+const FADE_HOLD = 350;
+const FADE_MS = 550;
 /** After you leave the chat, their answer still arrives over their head for this long. */
 const STAY_MS = 30_000;
 /** Walk further than this from them and the conversation's over. */
@@ -153,6 +156,8 @@ export class NearTalk {
   /** What's been said, per neighbor (come back within a few minutes and it's still there). */
   private history = new Map<VillagerId, { at: number; lines: { you: boolean; text: string }[] }>();
   private logUntil = 0;
+  /** When you walked off: the bar and the conversation hold a beat, then fade away together. */
+  private fadeAt = 0;
   private chat: {
     W: number;
     H: number;
@@ -283,7 +288,8 @@ export class NearTalk {
     this.clearSpeech();
     releaseInput(this.owner);
     this.hideMine();
-    this.renderChat();
+    // (the chat stays as it was for a beat, then fades out: see update)
+    this.fadeAt = Date.now();
   }
 
   /** Enter sends what you typed, or what you've said so far (without waiting for the pause). */
@@ -521,10 +527,13 @@ export class NearTalk {
     const who = this.with ? VILLAGER_SHORT[this.with] : "";
     const panel = 0x1b1530;
 
-    // the bar
-    c.box.clear();
-    for (const o of [c.box, c.line, c.hint, c.mic, c.micWord]) o.setVisible(this.chatting);
+    // the bar (while it fades out it keeps its last look)
+    const fading = !this.chatting && !!this.fadeAt;
+    if (!fading) c.box.clear();
+    for (const o of [c.box, c.line, c.hint, c.mic, c.micWord]) o.setVisible(this.chatting || fading);
     if (this.chatting) {
+      this.fadeAt = 0;
+      for (const o of [c.box, c.line, c.hint, c.mic, c.micWord, c.logBg]) o.setAlpha(1);
       // (the hints sit on a dark strip that joins the log above)
       c.box.fillStyle(panel, 0.8).fillRect(x0, barY - hintH, barW, hintH);
       woodFrame(c.box, x0, barY, barW, barH, C.paperLight);
@@ -586,7 +595,7 @@ export class NearTalk {
     c.log = [];
     c.logBg.clear();
     const lines = this.with ? (this.history.get(this.with)?.lines ?? []) : [];
-    const showLog = lines.length > 0 && (this.chatting || Date.now() < this.logUntil);
+    const showLog = lines.length > 0 && (this.chatting || fading);
     if (!showLog) return;
     const bottom = this.chatting ? barY - hintH : barY + barH;
     // (it stops short of your feet: the camera lifts you into the top third while the chat is up)
@@ -667,11 +676,20 @@ export class NearTalk {
   update() {
     this.place();
     // Lift the view while the chat is up (the camera eases there on its own).
+    // (and it eases back down as soon as you walk off, while the chat fades)
     const cam = this.host.scene.cameras.main;
-    const chatUp = this.chatting || !!this.chat?.log.length;
-    cam.followOffset.y = chatUp ? -Math.round(cam.height * (0.5 - LIFT_TO)) : 0;
+    cam.followOffset.y = this.chatting ? -Math.round(cam.height * (0.5 - LIFT_TO)) : 0;
     if (this.chatting) this.renderChat(true); // (the cursor blinks, the send bar fills)
-    else if (this.chat?.log.length && Date.now() > this.logUntil) this.renderChat(); // (the log tucks away)
+    else if (this.fadeAt && this.chat) {
+      // walked off: hold a beat, then fade the bar and the conversation out together
+      const a = Math.max(0, 1 - Math.max(0, Date.now() - this.fadeAt - FADE_HOLD) / FADE_MS);
+      const c = this.chat;
+      for (const o of [c.box, c.line, c.hint, c.mic, c.micWord, c.logBg, ...c.log]) o.setAlpha(a);
+      if (a <= 0) {
+        this.fadeAt = 0;
+        this.renderChat();
+      }
+    }
     if (this.with) {
       const a = this.host.actor(this.with);
       const p = this.host.player();
