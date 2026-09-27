@@ -30,6 +30,13 @@ export function toggleSfx() {
   listeners.forEach((fn) => fn(muted));
 }
 
+// (the same across every open tab)
+window.addEventListener("storage", (e) => {
+  if (e.key !== MUTE_KEY || (e.newValue === "1") === muted) return;
+  muted = e.newValue === "1";
+  listeners.forEach((fn) => fn(muted));
+});
+
 export function onSfxToggle(fn: (muted: boolean) => void) {
   listeners.add(fn);
   return () => listeners.delete(fn);

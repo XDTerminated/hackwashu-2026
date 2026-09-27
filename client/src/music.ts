@@ -311,6 +311,22 @@ export function toggleMusic() {
   listeners.forEach((fn) => fn(muted));
 }
 
+// Every open tab of the game plays its own tune: turning it off in one turns it off in all,
+// and a tab you're not looking at stays quiet (so a second account's tab can't keep playing).
+window.addEventListener("storage", (e) => {
+  if (e.key !== MUTE_KEY) return;
+  const now = e.newValue === "1";
+  if (now === muted) return;
+  muted = now;
+  if (ctx && master) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.3);
+  listeners.forEach((fn) => fn(muted));
+});
+document.addEventListener("visibilitychange", () => {
+  if (!ctx) return;
+  if (document.hidden) void ctx.suspend();
+  else void ctx.resume();
+});
+
 export function onMusicToggle(fn: (muted: boolean) => void) {
   listeners.add(fn);
   return () => listeners.delete(fn);
