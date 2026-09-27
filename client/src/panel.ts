@@ -869,9 +869,8 @@ export function initPanel() {
       return;
     }
     // Signed in (in the other tab) while this CONNECT window waits: say so, instead of still asking.
-    // (a moonfolk still on Earth lands instead: villager_arrived, below)
     const svc = callingFor && VILLAGER_SERVICE[callingFor];
-    if (e.type === "connections" && dialog?.visible && callingFor && svc && svc !== "web" && e.connections[svc].connected && store.residents.includes(callingFor)) {
+    if (e.type === "connections" && dialog?.visible && callingFor && svc && svc !== "web" && e.connections[svc].connected) {
       const who = e.connections[svc].account;
       const what: Record<string, string> = {
         google: "Hoot can read and draft your Gmail now, and Cog can check your calendar.",
@@ -879,7 +878,11 @@ export function initPanel() {
         spotify: "Echo can play your music now: ask for a song.",
         github: "Tinker can keep an eye on your repos now.",
       };
+      const v = callingFor;
       callingFor = null;
+      // (a fresh window: no school search or token box left to type into)
+      const NAMES: Record<string, string> = { google: "GOOGLE", canvas: "CANVAS", spotify: "SPOTIFY", github: "GITHUB" };
+      dialog.open(`${NAMES[svc] ?? "ACCOUNT"} CONNECTED`, false, { face: { villager: v, mode: "call" } });
       dialog.add("sys", `Connected${who ? ` as ${who}` : ""}! ${what[svc] ?? ""}`);
       if (fromAccounts) setTimeout(() => dialog?.visible && openAccounts(), 1800);
       else dialog.setButtons([{ label: `GOT IT`, kind: "ok", onClick: () => closePanel() }]);

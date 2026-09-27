@@ -467,7 +467,7 @@ class MoonPadView {
         state: c.spotify.connected ? "ok" : "off",
         line: c.spotify.connected ? `connected${c.spotify.account ? `: ${c.spotify.account}` : ""}${c.spotify.premium === false ? " (needs Premium to play)" : ""}` : !c.spotify.configured && net.HOSTED ? "not turned on for this site yet" : "music in the game (Echo)",
         tests: result("Spotify"),
-        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/spotify`, "_blank") } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
+        btn: c.spotify.connected ? null : c.spotify.configured ? { label: "SIGN IN", act: () => openConnect("dj", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/spotify`, "_blank") },
       },
       {
         title: "Your phone",
