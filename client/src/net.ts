@@ -175,6 +175,14 @@ export function onWorldChange(fn: () => void) {
   return () => worldListeners.delete(fn);
 }
 
+// Leaving the page (flying to another island, closing the tab): say goodbye properly,
+// so nobody's left standing there. (If the browser keeps the page and brings it
+// back, it reconnects.)
+addEventListener("pagehide", () => ws?.close(1000, "left"));
+addEventListener("pageshow", (e) => {
+  if (e.persisted && (!ws || ws.readyState === WebSocket.CLOSED)) connect();
+});
+
 export function connect() {
   try {
     ws = new WebSocket(URL);

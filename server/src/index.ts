@@ -322,7 +322,24 @@ onEvent((event) => {
 /** Messages that use (or change) your connected accounts: only from the game on this computer, or your own copy online. */
 const ACCOUNT_MESSAGES = new Set<string>(["task", "approve", "connect_github", "github_cli", "connect_canvas", "canvas_login", "disconnect", "dev_mode", "phone_link_start", "phone_unlink", "test_connections", "use_sandbox", "spotify_device", "set_chore_optin"]);
 
+// Every 20 seconds, everyone gets a ping; a connection that didn't answer the last one
+// is gone (a closed laptop, a page the browser never properly left): drop it, so it
+// doesn't stay on the island as a frozen player.
+const answered = new WeakMap<WebSocket, boolean>();
+setInterval(() => {
+  for (const c of wss.clients) {
+    if (answered.get(c) === false) {
+      c.terminate();
+      continue;
+    }
+    answered.set(c, false);
+    c.ping();
+  }
+}, 20_000);
+
 wss.on("connection", (ws, req) => {
+  answered.set(ws, true);
+  ws.on("pong", () => answered.set(ws, true));
   const who = identify(req)!;
   console.log(who.role === "visitor" ? `[ws] ${who.name} is visiting` : "[ws] game connected");
   bases.set(ws, `${String(req.headers["x-forwarded-proto"] ?? "http").split(",")[0]}://${req.headers.host}`);

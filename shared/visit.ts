@@ -58,12 +58,9 @@ export interface Session {
 /** Friend codes: easy to read out loud (no 0/O, 1/I/L). */
 export const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-/** Suit colors, picked from the player's id. */
-export const SUIT_TINTS = [0xffffff, 0xffd9a8, 0xc8e6ff, 0xd8f5c8, 0xf7c8e0, 0xe0d0ff, 0xfff2a8, 0xffc8c0];
-export function suitTint(id: string): number {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return SUIT_TINTS[h % SUIT_TINTS.length];
+/** Suit color: everyone's astronaut is the classic white (name tags tell them apart). */
+export function suitTint(_id: string): number {
+  return 0xffffff;
 }
 
 /** Longest chat line between players. */

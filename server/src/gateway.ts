@@ -576,6 +576,12 @@ function socialState(me: Player): SocialState {
   };
 }
 
+/** You're somewhere now: off every other island you were visiting (you're one astronaut, in one place). */
+function leaveOtherIslands(p: Player, here: string) {
+  if (p.guest) return;
+  for (const id of copies.keys()) if (id !== here) tell(id, "/internal/kick", { id: p.id, text: "You flew somewhere else (in another tab or window)." });
+}
+
 /** A note to one island, if it's running (nothing to tell a sleeping one: it asks when it wakes). */
 function tell(id: string, path: string, body: object) {
   const c = copies.get(id);
@@ -780,9 +786,11 @@ server.on("upgrade", async (req, socket, head) => {
         return;
       }
       const who: Who = { id: p.id, name: firstName(p), role: "visitor", tint: suitTint(p.id), host: { id: host.id, name: firstName(host) }, perms: social.permsFor(host.id, p.id) };
+      leaveOtherIslands(p, host.id);
       proxyUpgrade(req, socket, head, await copyFor(host, siteUrl(req)), who);
       return;
     }
+    leaveOtherIslands(p, p.id);
     proxyUpgrade(req, socket, head, await copyFor(p, siteUrl(req)), { id: p.id, name: firstName(p), role: "owner", tint: suitTint(p.id), host: { id: p.id, name: firstName(p) } });
   } catch {
     socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");

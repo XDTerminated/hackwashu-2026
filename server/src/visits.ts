@@ -226,7 +226,8 @@ export function sendHome(visitorId: string, text: string) {
   for (const [ws, h] of here) {
     if (h.who.role !== "visitor" || (visitorId !== "*" && h.who.id !== visitorId)) continue;
     send(ws, { type: "kicked", text });
-    setTimeout(() => ws.close(4001, "sent home"), 200);
+    // (a moment to read it; then gone, even if their end never answers)
+    setTimeout(() => ws.terminate(), 300);
   }
 }
 
