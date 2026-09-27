@@ -1133,7 +1133,7 @@ export class UIScene extends Phaser.Scene {
       "Villagers love decorations near their home, and one of them makes a WISH each day (see Quests, and the gold ★ in the Shop): put that decoration in their yard for a reward. Hover any decoration to see who loves it. Each villager has favorites (the Shop says who loves what): a favorite in their yard is +3 happiness, anything else +1, each kind counted once. Happiness adds to their friendship hearts.",
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Lamps and doorbells follow the building.",
-      "PATHS are yours to lay: Shop → PATHS, pick a style (the Dirt Track is free) and click or drag across the ground; tiles side by side join up. Right-click (or the ERASER) takes a path up and gives its coins back.",
+      "PATHS are yours to lay: Shop → PATHS, pick a style (the Dirt Track is free) and click or drag across the ground. Right-click (or the ERASER) takes a path up and gives its coins back.",
       "THE OFFICE: the big board and Ada show your Claude Code agents at work. The corkboard is the AI TEAM: write a brief, and a team lead hires AI workers who take the desks at the back and hand in one finished deliverable. It thinks with an AI you connect there (CONNECT AI: sign in with OpenRouter, or paste a Groq, Gemini, OpenAI or Anthropic key).",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
       "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
@@ -1340,10 +1340,32 @@ export class UIScene extends Phaser.Scene {
     // As many columns as fit (one row on most screens), at least three.
     const cols = Math.max(3, Math.min(items.length, Math.floor((W - 24 - pad * 2 + gap) / (tw + gap))));
     const rows = Math.ceil(items.length / cols);
-    const pw = pad * 2 + cols * tw + (cols - 1) * gap;
+    const gridW = cols * tw + (cols - 1) * gap;
     const gridH = rows * th + (rows - 1) * gap;
+    // Category tabs (made first: the panel's at least as wide as they are).
+    const tabs = [...DECOR_CATEGORIES, { id: "paths" as const, name: "PATHS" }].map((c) =>
+      new Button(this, 0, 0, c.name, c.id === this.shopTab ? C.greenBtn : C.woodMid, () => {
+        sfx.blip();
+        this.shopTab = c.id;
+        this.shopSel = 0;
+        this.renderShop();
+      }),
+    );
+    const tabsW = tabs.reduce((w, b) => w + b.width_, 0) + (tabs.length - 1) * 4;
+    const pw = Math.min(W - 8, pad * 2 + Math.max(gridW, tabsW));
+    // (a short tab, like PATHS, centres its cards under the tabs)
+    const gx = Math.round((pw - gridW) / 2);
     const top = 46;
-    const ph = top + gridH + 8 + 46 + 8;
+    // The details box grows to fit its last line (it can wrap).
+    const item = items[this.shopSel] ?? items[0];
+    const stocked = "market" in item ? store.progress.town.stages.market >= item.market : inStock(store.progress.town.stages.market, item);
+    const afford = stocked && store.coins >= item.price;
+    const fans = item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ");
+    const wish = store.requests.find((r) => r.kind === "wish" && !r.done && r.item === item.id);
+    const lovesText = pathsTab ? (stocked ? "Click or drag to lay it. Right-click takes it up (refunded)." : `Not in stock yet: ${"market" in item && item.market === 2 ? "make the Market grand" : "repair the Market"}.`) : !stocked ? `Not in stock yet: upgrade the Market (${store.progress.town.stages.market === 0 ? "repaired" : "grand"}) to sell this.` : wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`;
+    const loves = ptext(this, 0, 0, lovesText, wish ? 0xb07a10 : C.coral).setMaxWidth(pw - pad * 2 - 12);
+    const detailH = Math.max(46, 31 + measure(loves).h + 6);
+    const ph = top + gridH + 8 + detailH + 8;
     const x0 = Math.round((W - pw) / 2);
     // centred in the space above the toolbar, and never overlapping it
     const y0 = Math.max(4, Math.min(Math.round((H - TOOLBAR_H + 1 - ph) / 2), H - TOOLBAR_H - 5 - ph));
@@ -1360,21 +1382,15 @@ export class UIScene extends Phaser.Scene {
     close.on("pointerdown", () => this.closeShop());
     this.shop.add([g, title, sub, close]);
 
-    // Category tabs.
-    let tabX = x0 + pad;
-    for (const c of [...DECOR_CATEGORIES, { id: "paths" as const, name: "PATHS" }]) {
-      const b = new Button(this, tabX, y0 + 29, c.name, c.id === this.shopTab ? C.greenBtn : C.woodMid, () => {
-        sfx.blip();
-        this.shopTab = c.id;
-        this.shopSel = 0;
-        this.renderShop();
-      });
+    let tabX = x0 + Math.round((pw - tabsW) / 2);
+    for (const b of tabs) {
+      b.setPosition(tabX, y0 + 29);
       this.shop.add(b);
       tabX += b.width_ + 4;
     }
 
     items.forEach((item, i) => {
-      const tx = x0 + pad + (i % cols) * (tw + gap);
+      const tx = x0 + gx + (i % cols) * (tw + gap);
       const ty = y0 + top + Math.floor(i / cols) * (th + gap);
       const sel = i === this.shopSel;
       const stocked = "market" in item ? store.progress.town.stages.market >= item.market : inStock(store.progress.town.stages.market, item);
@@ -1414,18 +1430,13 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Details of the selected item.
-    const item = items[this.shopSel] ?? items[0];
     const dy = y0 + top + gridH + 8;
     const panel = this.add.graphics();
-    pixBox(panel, x0 + pad, dy, pw - pad * 2, 46, C.paperLight, C.paperDark);
-    const stocked = "market" in item ? store.progress.town.stages.market >= item.market : inStock(store.progress.town.stages.market, item);
-    const afford = stocked && store.coins >= item.price;
+    pixBox(panel, x0 + pad, dy, pw - pad * 2, detailH, C.paperLight, C.paperDark);
     const btnW = 64;
     const name = ptext(this, x0 + pad + 6, dy + 5, item.name, C.ink, "pxb");
     const blurb = ptext(this, x0 + pad + 6, dy + 16, item.blurb, C.inkSoft).setMaxWidth(pw - pad * 2 - btnW - 18);
-    const fans = item.likes.map((v) => VILLAGER_SHORT[v]).join(" & ");
-    const wish = store.requests.find((r) => r.kind === "wish" && !r.done && r.item === item.id);
-    const loves = ptext(this, x0 + pad + 6, dy + 31, pathsTab ? (stocked ? "Click or drag to lay it; tiles side by side join up. Right-click takes it up (refunded)." : `Not in stock yet: ${"market" in item && item.market === 2 ? "make the Market grand" : "repair the Market"}.`) : !stocked ? `Not in stock yet: upgrade the Market (${store.progress.town.stages.market === 0 ? "repaired" : "grand"}) to sell this.` : wish ? `★ ${VILLAGER_SHORT[wish.villager]} wishes for this! Put it in their yard: +${wish.reward}¢` : `♥ ${fans} love${item.likes.length === 1 ? "s" : ""} this by their home`, wish ? 0xb07a10 : C.coral);
+    loves.setPosition(x0 + pad + 6, dy + 31);
     const buy = new Button(this, x0 + pw - pad - btnW - 6, dy + 16, !stocked ? "LOCKED" : pathsTab ? (afford ? "PAINT" : "NEED COINS") : afford ? `BUY ${item.price}¢` : `NEED ${item.price}¢`, afford ? C.greenBtn : 0x8a8199, () => {
       if (!afford) {
         sfx.deny();
