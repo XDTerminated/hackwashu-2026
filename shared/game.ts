@@ -48,7 +48,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   market: { id: "market", name: "Market", price: 0, starter: true, unlocks: "decorations: upgrade it for more stock" },
   office: { id: "office", name: "Office", price: 0, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
   radio_tower: { id: "radio_tower", name: "Radio Tower", price: 0, starter: false, resident: "dj", unlocks: "Echo the DJ: plays your Spotify right here in the game" },
-  workshop: { id: "workshop", name: "Workshop", price: 0, starter: false, unlocks: "an extension of Ada's Office: Tinker the Mechanic moves in and keeps an eye on your GitHub (pull requests, issues, checks)" },
+  workshop: { id: "workshop", name: "Workshop", price: 0, starter: false, resident: "mechanic", unlocks: "an extension of Ada's Office: Tinker the Mechanic moves in and keeps an eye on your GitHub (pull requests, issues, checks)" },
 };
 
 /**

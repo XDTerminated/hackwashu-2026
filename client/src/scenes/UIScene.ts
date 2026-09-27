@@ -29,7 +29,7 @@ import type { GameScene } from "./GameScene";
 // canvas, which the browser upscales by a whole number).
 
 // Roster in unlock order.
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "timekeeper", "scholar"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "dj", "timekeeper", "scholar", "manager", "mechanic"];
 
 const STATUS: Record<VillagerStatus, number> = {
   idle: C.inkSoft,
@@ -455,6 +455,8 @@ export class UIScene extends Phaser.Scene {
     // Villagers: a little head for each, so you can tell who's where.
     for (const icon of this.mmIcons.values()) icon.setVisible(false);
     for (const v of dots.villagers) this.mmIcons.get(v.id)?.setPosition(X(v.x) - 3, Y(v.y) - 5).setVisible(true);
+    // (Ada works inside the Office: her head sits on it)
+    if (store.residents.includes("manager")) this.mmIcons.get("manager")?.setPosition(X(SPOTS.office.x) - 3, Y(SPOTS.office.y) - 9).setVisible(true);
     const blink = Math.floor(time / 400) % 2 === 0;
     top.fillStyle(0x3b2a3a, 1).fillRect(X(dots.player.x) - 2, Y(dots.player.y) - 2, 4, 4);
     top.fillStyle(blink ? 0xffffff : 0xf5c542, 1).fillRect(X(dots.player.x) - 1, Y(dots.player.y) - 1, 2, 2);
