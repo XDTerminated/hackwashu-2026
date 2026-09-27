@@ -868,6 +868,24 @@ export function initPanel() {
       setTimeout(() => dialog?.visible && openAccounts(), 1500);
       return;
     }
+    // Signed in (in the other tab) while this CONNECT window waits: say so, instead of still asking.
+    // (a moonfolk still on Earth lands instead: villager_arrived, below)
+    const svc = callingFor && VILLAGER_SERVICE[callingFor];
+    if (e.type === "connections" && dialog?.visible && callingFor && svc && svc !== "web" && e.connections[svc].connected && store.residents.includes(callingFor)) {
+      const who = e.connections[svc].account;
+      const what: Record<string, string> = {
+        google: "Hoot can read and draft your Gmail now, and Cog can check your calendar.",
+        canvas: "Mabel can see your courses and due dates now.",
+        spotify: "Echo can play your music now: ask for a song.",
+        github: "Tinker can keep an eye on your repos now.",
+      };
+      callingFor = null;
+      dialog.add("sys", `Connected${who ? ` as ${who}` : ""}! ${what[svc] ?? ""}`);
+      if (fromAccounts) setTimeout(() => dialog?.visible && openAccounts(), 1800);
+      else dialog.setButtons([{ label: `GOT IT`, kind: "ok", onClick: () => closePanel() }]);
+      sfx.coin();
+      return;
+    }
     if (e.type === "chore_optin" && dialog?.visible && talkingTo) {
       choreToggle(talkingTo);
       dialog.note("sys", store.choreOptIn[talkingTo] ? "Chores ON - first round in about a minute." : "Chores OFF.");
@@ -1110,7 +1128,7 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
           : "Connect your Google account and Cog reads your real calendar and books events (you approve every booking)."),
     );
     if (googleReady)
-      dialog.add("sys", "Heads up: Google will say it \"hasn't verified this app\" (reading your mail needs Google's own review, which a new app hasn't had yet). Press Advanced, then Go to Fl-AI Me to the Moon, to continue.");
+      dialog.add("sys", "Heads up: Google will show \"Google hasn't verified this app\". That's expected: reading mail needs Google's own review, which a new app hasn't had yet. Click Advanced, then \"Go to Fl-AI Me to the Moon (unsafe)\", then Continue.");
     if (!googleReady && net.HOSTED) {
       // (online, only whoever runs the site can turn Google on)
       dialog.add("sys", "Google sign-in isn't turned on for this site yet, so Gmail and Calendar can't be connected right now. Sample data works the same way (clearly marked).");
@@ -1126,7 +1144,7 @@ export function openConnect(v: VillagerId, opts: { fromAccounts?: boolean } = {}
           kind: "ok",
           onClick: () => {
             window.open(`${net.SERVER_HTTP}/connect/google`, "_blank");
-            dialog?.add("sys", "Finish signing in with Google in the new tab, then come back here.");
+            dialog?.add("sys", "Finish signing in with Google in the new tab (if it warns you: Advanced, then Go to Fl-AI Me to the Moon). This window updates by itself once you're connected.");
           },
         },
         sampleButton,

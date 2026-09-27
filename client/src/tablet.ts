@@ -446,7 +446,7 @@ class MoonPadView {
         state: c.google.connected ? "ok" : sandbox.google ? "sample" : "off",
         line: c.google.connected ? "Gmail + Calendar connected" : sandbox.google ? "on sample data" : !c.google.configured && net.HOSTED ? "not turned on for this site yet" : "Gmail + Calendar (Hoot, Cog)",
         tests: result("Google permissions", "Gmail", "Calendar"),
-        btn: c.google.connected ? null : c.google.configured ? { label: "SIGN IN", act: () => window.open(`${net.SERVER_HTTP}/connect/google`, "_blank") } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
+        btn: c.google.connected ? null : c.google.configured ? { label: "SIGN IN", act: () => openConnect("postmaster", { fromAccounts: true }) } : net.HOSTED ? null : { label: "SET UP", act: () => window.open(`${net.SERVER_HTTP}/setup/google`, "_blank") },
       },
       {
         title: "Canvas",
