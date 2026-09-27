@@ -131,24 +131,44 @@ export class VillagerActor {
   private strolling = false;
   private strollDone: (() => void) | null = null;
 
-  /** A leisurely idle walk. Any real work (enqueue) cancels it on the spot. */
+  /**
+   * Finds a way around buildings, rocks and the rest (set by the island):
+   * the points to walk through to get there, or null if there's no way.
+   */
+  router: ((fx: number, fy: number, tx: number, ty: number) => { x: number; y: number }[] | null) | null = null;
+
+  private route(x: number, y: number) {
+    return this.router ? this.router(this.sprite.x, this.sprite.y, x, y) : [{ x, y }];
+  }
+
+  /** A leisurely idle walk (around things, never through them). Any real work (enqueue) cancels it on the spot. */
   stroll(x: number, y: number): Promise<boolean> {
     x = Math.round(x);
     y = Math.round(y);
-    const d = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y);
-    if (d < 2) return Promise.resolve(true);
+    if (Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < 2) return Promise.resolve(true);
+    const legs = this.route(x, y);
+    if (!legs) return Promise.resolve(false);
     this.strolling = true;
-    this.sprite.setFlipX(x < this.sprite.x);
     this.sprite.anims.timeScale = 2;
-    return new Promise((resolve) => {
-      const finish = (ok: boolean) => {
-        if (!this.strolling) return;
+    return (async () => {
+      let ok = true;
+      for (const p of legs) if (!(ok = this.strolling && (await this.strollLeg(p.x, p.y)))) break;
+      if (this.strolling) {
         this.strolling = false;
-        this.strollDone = null;
         this.sprite.anims.timeScale = 1;
-        resolve(ok);
-      };
-      this.strollDone = () => finish(false);
+      }
+      this.strollDone = null;
+      return ok;
+    })();
+  }
+
+  /** One straight stretch of a stroll: true when it gets there, false if the stroll was called off. */
+  private strollLeg(x: number, y: number): Promise<boolean> {
+    const d = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y);
+    if (d < 1) return Promise.resolve(true);
+    this.sprite.setFlipX(x < this.sprite.x);
+    return new Promise((resolve) => {
+      this.strollDone = () => resolve(false);
       this.walkTween = this.scene.tweens.add({
         targets: this.sprite,
         x,
@@ -157,7 +177,8 @@ export class VillagerActor {
         ease: "linear",
         onComplete: () => {
           this.walkTween = null;
-          finish(true);
+          this.strollDone = null;
+          resolve(true);
         },
       });
     });
@@ -165,9 +186,13 @@ export class VillagerActor {
 
   private cancelStroll() {
     if (!this.strolling) return;
+    this.strolling = false;
     this.walkTween?.stop();
     this.walkTween = null;
-    this.strollDone?.();
+    this.sprite.anims.timeScale = 1;
+    const done = this.strollDone;
+    this.strollDone = null;
+    done?.();
   }
 
   face(x: number) {
@@ -212,12 +237,21 @@ export class VillagerActor {
     return new Promise((r) => this.scene.time.delayedCall(ms / this.speed, () => r()));
   }
 
+  /** Walk somewhere for work: around whatever's in the way (straight there if there's no way round). */
   async walkTo(x: number, y: number): Promise<void> {
     await this.released();
     x = Math.round(x);
     y = Math.round(y);
+    if (Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < 2) return;
+    for (const p of this.route(x, y) ?? [{ x, y }]) {
+      await this.released();
+      await this.walkLeg(Math.round(p.x), Math.round(p.y));
+    }
+  }
+
+  private walkLeg(x: number, y: number): Promise<void> {
     const d = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y);
-    if (d < 2) return Promise.resolve();
+    if (d < 1) return Promise.resolve();
     this.sprite.setFlipX(x < this.sprite.x);
     this.sprite.anims.timeScale = 3;
     return new Promise((resolve) => {

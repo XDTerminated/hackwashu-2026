@@ -59,6 +59,8 @@ interface World {
   memory: Partial<Record<VillagerId, VillagerMemory>>;
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
   clearedRocks: string[];
+  /** When the last cleared rock grew back (they return slowly, one at a time). */
+  rocksGrewAt?: number;
   shards: string[];
   requests: { day: string; list: ColonyRequest[]; v?: number };
   lastChoreAt: Partial<Record<VillagerId, number>>;
@@ -79,7 +81,7 @@ function freshWorld(): World {
   const buildings: Partial<Record<BuildingId, boolean>> = {};
   for (const b of Object.values(BUILDINGS)) if (b.starter) buildings[b.id] = true;
   // Neighbors' homes aren't on the map until you buy their plot at the Town Hall and set it down.
-  const progress: Progress = { town: freshTown(), revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office"], sandbox: {}, movedIn: [], plots: {} };
+  const progress: Progress = { town: freshTown(), revealed: Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), sandbox: {}, movedIn: [], plots: {} };
   // Demo prep / testing: everything built and revealed, everyone home.
   if (process.env.UNLOCK_ALL === "1") {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
@@ -157,6 +159,8 @@ function load(file = DATA_FILE): World {
       delete old.quest;
       delete old.count;
     }
+    // Ada's Office used to be bought outright; now it's her plot, like every neighbor's.
+    if (w.buildings.office && !w.progress.movedIn.includes("manager")) w.progress.movedIn.push("manager");
     // Neighbors' lots used to be fixed ruins to clear and repair; now you buy
     // their plot and set it down. Whoever's home keeps their house where it
     // stands; the rest are off the map, their plots for sale at the Town Hall.
@@ -172,11 +176,12 @@ function load(file = DATA_FILE): World {
       w.progress.revealed = w.progress.revealed.filter((b) => !moveInAt(b) || w.progress.plots[b]);
     }
     delete (w.progress as Progress & { lots?: unknown }).lots;
+    if (w.buildings.office && !w.progress.plots.office) w.progress.plots.office = { placed: true, stage: 1 };
+    // (a home is only on the map once its plot's been bought)
+    w.progress.revealed = w.progress.revealed.filter((b) => !moveInAt(b) || w.progress.plots[b]);
     // The old brief-a-project Office kept its projects in the save; the Office
     // is a live view of your coding agents now, with nothing to save.
     delete (w as { office?: unknown }).office;
-    // The office is open to everyone from the start (a plot to build).
-    if (!w.progress.revealed.includes("office")) w.progress.revealed.push("office");
     w.decos.forEach((d, i) => (d.id ??= `deco_old${i}`));
     w.lastChoreAt ??= {};
     // Anything mid-flight when the server stopped can't resume — its agent loop is gone.
@@ -443,6 +448,30 @@ export function clearRock(x: number, y: number): { ok: true; stone: number; loot
   }
   persist();
   return { ok: true, stone, ...(loot ? { loot } : {}) };
+}
+
+/** How long a cleared rock takes to grow back (one at a time, the longest-gone first where there's room). */
+const REGROW_MS = Number(process.env.ROCK_REGROW_MS) || 4 * 60_000;
+
+/** Grow back the cleared rocks that are due (a few at most, to catch up after a break); returns where. */
+export function regrowRocks(): { x: number; y: number }[] {
+  const now = Date.now();
+  world.rocksGrewAt ??= now;
+  const due = Math.floor((now - world.rocksGrewAt) / REGROW_MS);
+  if (due <= 0) return [];
+  world.rocksGrewAt = due > 3 ? now : world.rocksGrewAt + due * REGROW_MS;
+  const grown: { x: number; y: number }[] = [];
+  for (const key of [...world.clearedRocks]) {
+    if (grown.length >= Math.min(due, 3)) break;
+    // (only where it still fits: not under a decoration, a building or a lantern placed since)
+    const rest = world.clearedRocks.filter((k) => k !== key);
+    const rock = rockSpots(decoRects(), rest).find((r) => rockKey(r) === key);
+    if (!rock || !canOccupy(rockRect(rock), occupied())) continue;
+    world.clearedRocks = rest;
+    grown.push({ x: rock.x, y: rock.y });
+  }
+  persist();
+  return grown;
 }
 
 /** Pick up a Moon Shard (each spot once); finding them all pays a bonus. */

@@ -79,7 +79,7 @@ export class TownPanel {
     const x0 = Math.round((W - pw) / 2);
     const homes = spec.kind === "board" && spec.tab === "homes";
     const cards = homes ? MOVE_INS.length : spec.kind === "board" ? LANDMARK_IDS.length : 1;
-    const cardH = homes ? 40 : 50;
+    const cardH = homes ? 36 : 50;
     const headH = spec.kind === "board" ? 46 : 30;
     const ph = headH + cards * (cardH + 4) + 6;
     const y0 = Math.max(6, Math.round((H - TOOLBAR_H - ph) / 2));
@@ -146,31 +146,35 @@ export class TownPanel {
     this.root.add([name, home]);
     const plot = store.progress.plots[d.home];
     const state = { progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos };
-    const line = (text: string, color: number = C.inkSoft) => this.root.add(ptext(s, x + 8, y + h - 14, text, color, "sm").setMaxWidth(w - 90));
+    // (the button first, so the line of text beside it knows how much room it has)
+    let room = w - 90;
     const button = (label: string, fill: number, act: () => void) => {
       const b = new Button(s, 0, y + h - 22, label, fill, act, 56);
       b.setX(x + w - 6 - b.width);
       this.root.add(b);
+      room = w - b.width - 24;
     };
+    const line = (text: string, color: number = C.inkSoft) => this.root.add(ptext(s, x + 8, y + h - 14, text, color, "sm").setMaxWidth(room));
     if (!plot) {
       const blocked = buyBlocker(d, state);
-      line(blocked ?? `Their plot: ${d.price}¢. Then set it down anywhere you like.`, blocked ? SHORT : C.inkSoft);
-      button(blocked ? "NOT YET" : `BUY ${d.price}¢`, blocked ? 0x9a93a8 : C.greenBtn, () => {
+      const label = !blocked ? `BUY ${d.price}¢` : { owned: "BOUGHT", nova: "NOVA FIRST", room: "NOT ENOUGH ROOM", coins: "NEED COINS" }[blocked.why];
+      button(label, blocked ? 0x9a93a8 : C.greenBtn, () => {
         if (blocked) return sfx.deny();
         net.send({ type: "buy_plot", building: d.home });
         sfx.buy();
         // (the plot comes to hand as soon as it's yours: set it down)
         this.close();
       });
+      line(blocked?.text ?? `Their plot: ${d.price}¢. Then set it down anywhere you like.`, blocked ? SHORT : C.inkSoft);
       return;
     }
     if (!plot.placed) {
-      line("Bought! Set it down anywhere with room.", OK);
       button("PLACE", C.greenBtn, () => {
         sfx.blip();
         this.close();
         s.game.events.emit("place-plot", d.home);
       });
+      line("Bought! Set it down anywhere with room.", OK);
       return;
     }
     const needs = nextBuild(d, plot);
@@ -178,12 +182,20 @@ export class TownPanel {
       line(`Grand: ${d.perk}.`, C.gold);
       return;
     }
+    // build it (or make it grand) right from here
+    const ready = canAfford(needs, store.materials);
+    button(ready ? (plot.stage === 0 ? "BUILD" : "UPGRADE") : "NEED MATERIALS", ready ? C.greenBtn : 0x9a93a8, () => {
+      if (!ready) return sfx.deny();
+      net.send({ type: "build_plot", building: d.home });
+      sfx.hammer();
+      this.close();
+    });
     const label = plot.stage === 0 ? "Build:" : "Grand:";
     const t = ptext(s, x + 8, y + h - 14, label, C.inkSoft, "sm");
     this.root.add(t);
     this.chips(this.materialChips(needs), x + 12 + measure(t).w, y + h - 15);
-    const done = ptext(s, 0, y + 7, plot.stage === 0 ? "PLOT SET DOWN" : "HOME ✓", plot.stage === 0 ? STAGE_COLOR[0] : OK, "sm");
-    done.setX(x + w - 8 - measure(done).w);
+    const done = ptext(s, 0, y + 6, plot.stage === 0 ? "PLOT SET DOWN" : "HOME ✓", plot.stage === 0 ? STAGE_COLOR[0] : OK, "sm");
+    done.setX(Math.max(x + 8 + measure(name).w + measure(home).w + 20, x + w - 8 - measure(done).w - 70));
     this.root.add(done);
   }
 
@@ -262,7 +274,9 @@ export class TownPanel {
     if (id === "market" && stage >= 1) buttons.push({ label: "SHOP", fill: C.woodMid, act: () => (this.close(), s.game.events.emit("toggle-shop")) });
     if (stage < 2) {
       const ready = !upgradeBlocker(town, id, store.materials);
-      buttons.push({ label: ready ? "UPGRADE" : "NOT YET", fill: ready ? C.greenBtn : 0x9a93a8, act: () => (ready ? this.upgrade(id) : sfx.deny()) });
+      const up = def.up[stage as 0 | 1];
+      const missing = !canAfford(up.needs, store.materials) ? "NEED MATERIALS" : up.item && !town.items.includes(up.item) ? `NEED ${ITEM_SHORT[up.item].toUpperCase()}` : "NEED A JOB DONE";
+      buttons.push({ label: ready ? "UPGRADE" : missing, fill: ready ? C.greenBtn : 0x9a93a8, act: () => (ready ? this.upgrade(id) : sfx.deny()) });
     } else {
       const done = ptext(s, 0, y + 7, "GRAND ✓", C.gold, "pxb");
       done.setX(x + w - 8 - measure(done).w);
@@ -303,7 +317,7 @@ export class TownPanel {
     if (!needs) return;
     this.chips(this.materialChips(needs), x + 8, y + h - 15);
     const ready = canAfford(needs, store.materials);
-    const btn = new Button(s, 0, y + h - 22, ready ? (stage === 0 ? "BUILD" : "UPGRADE") : "NOT YET", ready ? C.greenBtn : 0x9a93a8, () => {
+    const btn = new Button(s, 0, y + h - 22, ready ? (stage === 0 ? "BUILD" : "UPGRADE") : "NEED MATERIALS", ready ? C.greenBtn : 0x9a93a8, () => {
       if (!ready) return sfx.deny();
       net.send({ type: "build_plot", building: home });
       sfx.hammer();

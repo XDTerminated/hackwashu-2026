@@ -1,4 +1,4 @@
-import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, officeAllowed, openAt, shopOpen, walkableAt, type LandmarkId } from "../../../shared/town";
+import { ITEMS, LANDMARKS, LANDMARK_IDS, NODES, NODE_MATERIAL, NORTH_Y, SOUTH_Y, STAGE_NAME, neighborCap, openAt, shopOpen, walkableAt, type LandmarkId } from "../../../shared/town";
 import { TownView } from "../townview";
 import Phaser from "phaser";
 import {
@@ -625,7 +625,12 @@ export class GameScene extends Phaser.Scene {
     ];
     this.rocks = rockSpots(avoid, store.clearedRocks);
     this.rockViews.clear();
-    for (const r of this.rocks) {
+    for (const r of this.rocks) this.addRock(r);
+  }
+
+  /** One moon rock on the island (solid; crystal outcrops glow). */
+  private addRock(r: Rock) {
+    {
       const objs: Phaser.GameObjects.GameObject[] = [];
       const w = ROCK_TILES[r.kind] * TILE;
       objs.push(this.add.image(r.x, r.y - 1, shadowKey(this, w)).setDepth(-8));
@@ -1007,6 +1012,7 @@ export class GameScene extends Phaser.Scene {
     const a = new VillagerActor(this, v, start.x, start.y, (actor) =>
       openInfo(`${VILLAGER_NAMES[actor.id].toUpperCase()} IS THINKING...`, [actor.lastThought || "(nothing yet)"]),
     );
+    a.router = (fx, fy, tx, ty) => this.route(fx, fy, tx, ty);
     const st = store.villagers[v];
     if (st?.thought) a.lastThought = st.thought;
     if (st?.status === "error") a.setAlert("smoke");
@@ -1495,6 +1501,21 @@ export class GameScene extends Phaser.Scene {
       case "rock_cleared":
         this.rockGone(e.x, e.y, e.stone, e.loot);
         break;
+      case "rock_grown": {
+        // It pushes up out of the dust (and nudges you aside if you're standing there).
+        const avoid = store.decos.flatMap((d) => {
+          const item = itemById(d.item);
+          return item ? [decorFootprint(item, d.x, d.y)] : [];
+        });
+        const r = rockSpots(avoid, store.clearedRocks).find((x) => x.x === e.x && x.y === e.y);
+        if (!r || this.rockViews.has(rockKey(r))) break;
+        this.rocks.push(r);
+        this.rockSent.delete(rockKey(r));
+        this.addRock(r);
+        for (let i = 0; i < 8; i++) this.time.delayedCall(i * 50, () => puff(this, r.x + Phaser.Math.Between(-10, 10), r.y - Phaser.Math.Between(0, 8)));
+        if (this.blocked(this.player.x, this.player.y)) this.unstick();
+        break;
+      }
       case "shard_found": {
         const key = `${e.x},${e.y}`;
         const s = this.shards.get(key);
@@ -1767,10 +1788,6 @@ export class GameScene extends Phaser.Scene {
         add({ verb: "BUILD", label: `[E] build ${VILLAGER_SHORT[move.villager]}'s ${def.name}`, x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => this.showPlot(move), tut: move.villager === TUTORIAL_VILLAGER }, 46);
         continue;
       }
-      if (b === "office" && !officeAllowed(store.progress.town)) {
-        add({ verb: "CHECK", label: "[E] the Office lot", x: s.x, y: s.y - 36, d: dist(s.x, s.y), act: () => openInfo("THE OFFICE", [`Unlocks: ${def.unlocks}.`, "The Office can go up once the Town Hall is repaired (E at the Town Hall for the town's projects)."]) }, 46);
-        continue;
-      }
       add(
         {
           verb: "BUILD",
@@ -2020,19 +2037,21 @@ export class GameScene extends Phaser.Scene {
     let best: { held: Held; base: { x: number; y: number } } | null = null;
     let bestY = -Infinity;
     const hit = (x: number, y: number, w: number, h: number) => wx >= x - w / 2 && wx < x + w / 2 && wy >= y - h && wy < y + 4;
+    // (the outlined tiles count too: the footprint, and the row in front of a door)
+    const onTiles = (rects: Rect[]) => rects.some((r) => wx >= r.x && wx < r.x + r.w && wy >= r.y && wy < r.y + r.h);
     for (const b of BUILDING_IDS) {
       // (the Mail Rocket is part of the Post Office: move the Post Office and it comes along)
       if (!this.isShown(b) || this.constructing.has(b) || b === "rocket_pad") continue;
       const s = SPOTS[b];
       const tex = this.textures.get(store.buildings[b] ? s.texture : `plot_${b}`).getSourceImage();
       const h = tex.height;
-      if (hit(s.x, s.y, tex.width, h) && s.y > bestY) {
+      if ((hit(s.x, s.y, tex.width, h) || onTiles(buildingRects(b))) && s.y > bestY) {
         bestY = s.y;
         best = { held: { kind: "building", b }, base: { x: s.x, y: s.y } };
       }
     }
     for (const [id, v] of this.decoViews) {
-      if (hit(v.x, v.y, v.item.w, v.item.h) && v.y >= bestY) {
+      if ((hit(v.x, v.y, v.item.w, v.item.h) || onTiles([decorFootprint(v.item, v.x, v.y)])) && v.y >= bestY) {
         bestY = v.y;
         best = { held: { kind: "deco", id, item: v.item }, base: { x: v.x, y: v.y } };
       }
@@ -2191,6 +2210,125 @@ export class GameScene extends Phaser.Scene {
     const label = `${this.heldName(m.held)} - click to move`;
     if (label !== this.promptText) this.prompt.setText((this.promptText = label));
     this.prompt.place(m.base.x, Math.round(r.y) - 2);
+  }
+
+  // ================================================================ getting around
+  // Neighbors walk around buildings, rocks, lamps and the fountain, not through
+  // them: a grid of the tiles their feet can't go on (kept a moment, since the
+  // island rarely changes), a shortest way across it (A*, never cutting a
+  // corner), then straightened into as few stretches as still stay clear.
+
+  private navGrid: { at: number; blocked: Uint8Array } | null = null;
+
+  private navBlocked(): Uint8Array {
+    if (this.navGrid && this.time.now - this.navGrid.at < 1500) return this.navGrid.blocked;
+    const cols = WORLD_W / TILE;
+    const rows = WORLD_H / TILE;
+    const blocked = new Uint8Array(cols * rows);
+    for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) if (!onGround(tx * TILE + TILE / 2, ty * TILE + TILE / 2 + 4)) blocked[ty * cols + tx] = 1;
+    for (const r of this.solids) {
+      for (let ty = Math.max(0, Math.floor(r.y / TILE)); ty <= Math.min(rows - 1, Math.floor((r.y + r.height - 1) / TILE)); ty++)
+        for (let tx = Math.max(0, Math.floor(r.x / TILE)); tx <= Math.min(cols - 1, Math.floor((r.x + r.width - 1) / TILE)); tx++) blocked[ty * cols + tx] = 1;
+    }
+    this.navGrid = { at: this.time.now, blocked };
+    return blocked;
+  }
+
+  /** The points to walk through from one spot to another, or null if there's no way. */
+  private route(fx: number, fy: number, tx: number, ty: number): { x: number; y: number }[] | null {
+    const cols = WORLD_W / TILE;
+    const rows = WORLD_H / TILE;
+    const blocked = this.navBlocked();
+    const tileOf = (x: number, y: number) => Math.max(0, Math.min(rows - 1, Math.floor(y / TILE))) * cols + Math.max(0, Math.min(cols - 1, Math.floor(x / TILE)));
+    const start = tileOf(fx, fy);
+    const goal = tileOf(tx, ty);
+    // (where you're standing and where you're going always count as open, even right by a wall)
+    const open = (i: number) => i === start || i === goal || !blocked[i];
+    const clear = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 4);
+      for (let k = 1; k < n; k++) if (!open(tileOf(a.x + ((b.x - a.x) * k) / n, a.y + ((b.y - a.y) * k) / n))) return false;
+      return true;
+    };
+    const to = { x: tx, y: ty };
+    if (clear({ x: fx, y: fy }, to)) return [to];
+    // A* over the tiles, eight ways, with a little heap
+    const g = new Float32Array(cols * rows).fill(Infinity);
+    const came = new Int32Array(cols * rows).fill(-1);
+    const closed = new Uint8Array(cols * rows);
+    const heap: [number, number][] = [];
+    const push = (f: number, i: number) => {
+      heap.push([f, i]);
+      for (let c = heap.length - 1; c > 0; ) {
+        const p = (c - 1) >> 1;
+        if (heap[p][0] <= heap[c][0]) break;
+        [heap[p], heap[c]] = [heap[c], heap[p]];
+        c = p;
+      }
+    };
+    const pop = () => {
+      const top = heap[0];
+      const last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        for (let c = 0; ; ) {
+          const l = c * 2 + 1;
+          const r = l + 1;
+          let m = c;
+          if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+          if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+          if (m === c) break;
+          [heap[m], heap[c]] = [heap[c], heap[m]];
+          c = m;
+        }
+      }
+      return top[1];
+    };
+    const gx = goal % cols;
+    const gy = Math.floor(goal / cols);
+    const h = (i: number) => {
+      const dx = Math.abs((i % cols) - gx);
+      const dy = Math.abs(Math.floor(i / cols) - gy);
+      return Math.max(dx, dy) + 0.414 * Math.min(dx, dy);
+    };
+    g[start] = 0;
+    push(h(start), start);
+    while (heap.length) {
+      const i = pop();
+      if (i === goal) break;
+      if (closed[i]) continue;
+      closed[i] = 1;
+      const x = i % cols;
+      const y = Math.floor(i / cols);
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const j = ny * cols + nx;
+          if (!open(j) || closed[j]) continue;
+          // (no squeezing diagonally between two blocked tiles)
+          if (dx && dy && (!open(y * cols + nx) || !open(ny * cols + x))) continue;
+          const cost = g[i] + (dx && dy ? 1.414 : 1);
+          if (cost >= g[j]) continue;
+          g[j] = cost;
+          came[j] = i;
+          push(cost + h(j), j);
+        }
+    }
+    if (came[goal] === -1) return null;
+    const tiles: number[] = [];
+    for (let i = goal; i !== start; i = came[i]) tiles.push(i);
+    const pts = [{ x: fx, y: fy }, ...tiles.reverse().slice(0, -1).map((i) => ({ x: (i % cols) * TILE + TILE / 2, y: Math.floor(i / cols) * TILE + TILE / 2 })), to];
+    // straighten: from each point, go as far along as stays clear
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i < pts.length - 1; ) {
+      let j = pts.length - 1;
+      while (j > i + 1 && !clear(pts[i], pts[j])) j--;
+      out.push(pts[j]);
+      i = j;
+    }
+    return out;
   }
 
   // ================================================================ helpers

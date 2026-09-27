@@ -157,7 +157,7 @@ export function buyPlot(b: BuildingId): string | null {
   const d = moveInAt(b);
   if (!d) return "There's no plot like that for sale.";
   const blocked = buyBlocker(d, moveState());
-  if (blocked) return blocked;
+  if (blocked) return blocked.text;
   world.coins -= d.price;
   const plot = (world.progress.plots[b] = { placed: false, stage: 0 as const });
   savePersist();

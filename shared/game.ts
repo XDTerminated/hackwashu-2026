@@ -45,7 +45,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   rocket_pad: { id: "rocket_pad", name: "Mail Rocket", price: 0, starter: false, unlocks: "an upgrade to Hoot's Post Office: he can send your emails to Earth (with your OK)" },
   town_hall: { id: "town_hall", name: "Town Hall", price: 0, starter: true, unlocks: "Yutu's office as mayor: upgrade it to make room for more neighbors" },
   market: { id: "market", name: "Market", price: 0, starter: true, unlocks: "decorations: upgrade it for more stock" },
-  office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
+  office: { id: "office", name: "Office", price: 0, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
   radio_tower: { id: "radio_tower", name: "Radio Tower", price: 0, starter: false, resident: "dj", unlocks: "Echo the DJ: plays your Spotify right here in the game" },
 };
 
@@ -301,6 +301,17 @@ export const MOVE_INS: MoveInDef[] = [
     hello: "Books! Shelves! A reading nook! I'm staying. Connect your Canvas and I'll tell you what's due.",
     gift: 30,
   },
+  {
+    villager: "manager",
+    home: "office",
+    price: 120,
+    build: [{ moonstone: 4, stardust: 3, ore: 1 }, { moonstone: 5, scrap: 2, ore: 2 }],
+    perk: "a corner office: you and Ada become friends faster",
+    loves: 0,
+    teaser: { by: "jade_rabbit", text: "Ada, a team lead down on Earth, wants an Office up here to keep an eye on your coding agents. Her plot's for sale at the Town Hall." },
+    hello: "Ada, Team Lead. The Office is open: step inside to watch your coding agents work.",
+    gift: 20,
+  },
 ];
 
 export const moveInFor = (v: VillagerId) => MOVE_INS.find((m) => m.villager === v);
@@ -483,6 +494,8 @@ export type GameEvent =
   | { type: "deco_toggled"; id: string; off: boolean }
   | { type: "lantern_moved"; id: string; x: number; y: number }
   | { type: "rock_cleared"; x: number; y: number; stone: number; coins: number; loot?: { coins: number; what: string } }
+  /** A cleared rock has slowly grown back. */
+  | { type: "rock_grown"; x: number; y: number }
   | { type: "shard_found"; x: number; y: number; found: number; total: number; reward: number; coins: number; bonus?: number }
   /** The day's colony requests changed (progress, or one was just completed). */
   | { type: "requests"; requests: ColonyRequest[]; completed?: ColonyRequest; coins: number }

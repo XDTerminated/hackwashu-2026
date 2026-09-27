@@ -742,7 +742,7 @@ export class UIScene extends Phaser.Scene {
     const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get Nova moved in first, then it's all yours.", C.coral) : fn());
     const groups: [string, string, string, () => void][][] = [
       [
-        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => openMoonPad()))],
+        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => (isMoonPadOpen() ? closeMoonPad() : openMoonPad())))],
         // (the Shop button only once the Market's repaired: there's no shop before that)
         ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", later(click(() => this.toggleShop()))] as [string, string, string, () => void]] : []),
         ["icon_quests_0", "quests", "Quests", later(click(() => this.showQuests()))],

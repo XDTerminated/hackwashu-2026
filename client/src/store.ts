@@ -156,6 +156,9 @@ export function applyEvent(e: SeqEvent) {
       store.decos.push(e.deco);
       store.coins = e.coins;
       break;
+    case "rock_grown":
+      store.clearedRocks = store.clearedRocks.filter((k) => k !== `${e.x},${e.y}`);
+      break;
     case "rock_cleared":
       store.clearedRocks.push(`${e.x},${e.y}`);
       store.coins = e.coins;

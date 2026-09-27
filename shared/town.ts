@@ -36,7 +36,7 @@ export interface LandmarkDef {
 export const LANDMARKS: Record<LandmarkId, LandmarkDef> = {
   town_hall: {
     name: "Town Hall",
-    perks: ["Room for 1 new neighbor", "Room for 2 new neighbors, and the Office can be built", "Room for every neighbor"],
+    perks: ["Room for 1 new neighbor", "Room for 2 new neighbors", "Room for every neighbor"],
     up: [{ needs: { moonstone: 4, stardust: 3, ore: 1 } }, { needs: { moonstone: 4, ice: 2, scrap: 2 }, item: "charter", task: "real_job" }],
   },
   fountain: {
@@ -85,10 +85,9 @@ export interface Town {
 export const freshTown = (): Town => ({ stages: { town_hall: 0, fountain: 0, roads: 0, market: 0 }, items: [], used: [], tasks: [], dug: [], harvested: [], day: "" });
 
 /** How many new neighbors' plots the Town Hall has room for (Nova, the tutorial, doesn't count). */
-export const neighborCap = (t: Town) => [1, 2, 4][t.stages.town_hall];
+export const neighborCap = (t: Town) => [1, 2, 5][t.stages.town_hall];
 /** New neighbors home so far (not counting Nova). */
 export const newNeighborCount = (movedIn: VillagerId[]) => movedIn.filter((v) => v !== "stargazer").length;
-export const officeAllowed = (t: Town) => t.stages.town_hall >= 1;
 export const hasItem = (t: Town, i: TownItem) => t.items.includes(i) || t.used.includes(i);
 
 /** Why a landmark can't go up a stage right now (or null if it can). */

@@ -39,15 +39,15 @@ export function nextBuild(d: MoveInDef, plot: PlotState | undefined): Partial<Ma
   return d.build[plot.stage as 0 | 1];
 }
 
-/** Why you can't buy this neighbor's plot right now (or null if you can). */
-export function buyBlocker(d: MoveInDef, s: MoveInState): string | null {
-  if (s.progress.plots[d.home]) return `You already have ${VILLAGER_SHORT[d.villager]}'s plot.`;
-  if (d.villager !== TUTORIAL_VILLAGER && !s.progress.movedIn.includes(TUTORIAL_VILLAGER)) return "Get Nova moved in first.";
+/** Why you can't buy this neighbor's plot right now (or null if you can): what's missing, and in words. */
+export function buyBlocker(d: MoveInDef, s: MoveInState): { why: "owned" | "nova" | "room" | "coins"; text: string } | null {
+  if (s.progress.plots[d.home]) return { why: "owned", text: `You already have ${VILLAGER_SHORT[d.villager]}'s plot.` };
+  if (d.villager !== TUTORIAL_VILLAGER && !s.progress.movedIn.includes(TUTORIAL_VILLAGER)) return { why: "nova", text: "Get Nova moved in first." };
   if (d.villager !== TUTORIAL_VILLAGER && !hasRoom(s)) {
     const cap = neighborCap(s.progress.town);
-    return `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"}. Upgrade it to make room.`;
+    return { why: "room", text: `The Town Hall only has room for ${cap} new neighbor${cap === 1 ? "" : "s"}. Upgrade it to make room.` };
   }
-  if (s.coins < d.price) return `It costs ${d.price}¢ (you have ${s.coins}¢).`;
+  if (s.coins < d.price) return { why: "coins", text: `It costs ${d.price}¢ (you have ${s.coins}¢).` };
   return null;
 }
 

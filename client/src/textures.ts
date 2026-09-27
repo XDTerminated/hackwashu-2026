@@ -782,10 +782,10 @@ export function buildTextures(scene: Phaser.Scene) {
     rect(ctx, "#2f4f6f", 1, 1, 5, 1);
   });
 
-  // Moondust drifts: low, wind-rippled mounds of pale dust in three shapes, a
-  // shade lighter than the ground with a shadow along the bottom (so they read
-  // as dust, not snow), and gold glints of stardust that twinkle (two frames)
-  // so you spot them.
+  // Moondust drifts: low, wind-rippled mounds of glittering pale-gold stardust
+  // in three shapes (warm, so they stand out from the cool lavender ground),
+  // with a shadow along the bottom so they read as dust, not snow, and gold
+  // glints that twinkle (two frames) so you spot them.
   for (let v = 0; v < 3; v++)
     for (const f of [0, 1])
       canvasTex(scene, `dust_${v}_${f}`, 28, 13, (ctx) => {
@@ -795,21 +795,21 @@ export function buildTextures(scene: Phaser.Scene) {
           [[11, 8, 9, 3], [20, 8.5, 5, 2.4], [5, 9, 4, 1.8]],
         ][v];
         const inside = (x: number, y: number, pad = 0) => blobs.some(([cx, cy, rx, ry]) => ((x + 0.5 - cx) / (rx - pad)) ** 2 + ((y + 0.5 - cy) / (ry - pad * 0.6)) ** 2 <= 1);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#857e9a", x + 0.5, y + 1, rx + 0.4, ry + 0.4);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#c5bed4", x, y, rx, ry);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#d8d2e3", x - 1, y - 0.8, rx * 0.7, ry * 0.55);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#7a6f86", x + 0.5, y + 1, rx + 0.4, ry + 0.4);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#e3d3a8", x, y, rx, ry);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#f4ead0", x - 1, y - 0.8, rx * 0.7, ry * 0.55);
         // ripples the wind left across it
         for (const row of [6, 8, 10])
           for (let x = 1; x < 27; x++) {
             const y = row + Math.round(Math.sin(x / 2.6 + row + v) * 0.7);
-            if ((x + row) % 7 < 4 && inside(x, y, 1.2)) rect(ctx, "#a8a1bb", x, y, 1, 1);
+            if ((x + row) % 7 < 4 && inside(x, y, 1.2)) rect(ctx, "#c4ae7a", x, y, 1, 1);
           }
         // stardust: gold glints, a cross on one frame and a dot on the other, never in the same place
         const glints = [[[9, 5], [19, 5], [14, 9]], [[13, 5], [7, 7], [20, 8]], [[16, 5], [22, 8], [8, 8]]][v];
         glints.forEach(([gx, gy], i) => {
           if ((i + f) % 2 === 0) {
-            rect(ctx, "#f5d27a", gx - 1, gy, 3, 1);
-            rect(ctx, "#f5d27a", gx, gy - 1, 1, 3);
+            rect(ctx, "#ffc93c", gx - 1, gy, 3, 1);
+            rect(ctx, "#ffc93c", gx, gy - 1, 1, 3);
             rect(ctx, "#fffbe8", gx, gy, 1, 1);
           } else rect(ctx, "#ffe9a8", gx, gy, 1, 1);
         });

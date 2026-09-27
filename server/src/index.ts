@@ -1,4 +1,4 @@
-import { inStock, officeAllowed } from "../../shared/town.js";
+import { inStock } from "../../shared/town.js";
 import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
 import { createServer, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -24,7 +24,7 @@ import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { SHARD_COUNT, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { currentRequests, startRequests } from "./requests.js";
-import { build, clearRock, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
+import { build, clearRock, regrowRocks, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj"];
@@ -317,13 +317,9 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
 
       case "build": {
         if (!BUILDINGS[msg.building]) break;
-        // Neighbors' houses go up on the plots you buy at the Town Hall; the Office needs a repaired Town Hall.
+        // Neighbors' houses (Ada's Office too) go up on the plots you buy at the Town Hall.
         if (moveInAt(msg.building)) {
           send(ws, { type: "notice", text: "Buy their plot at the Town Hall, set it down, and build it there." });
-          break;
-        }
-        if (msg.building === "office" && !officeAllowed(world.progress.town)) {
-          send(ws, { type: "notice", text: "The Office needs a repaired Town Hall first." });
           break;
         }
         const r = build(msg.building);
@@ -582,6 +578,10 @@ services.setWebAvailable(BRAIN !== "mock");
 services.initResidents();
 startChores();
 startRequests();
+// Cleared rocks grow back, slowly.
+setInterval(() => {
+  for (const r of regrowRocks()) emit({ type: "rock_grown", x: r.x, y: r.y });
+}, 30_000);
 
 // ---------------------------------------------------------------- the LINK script (hosted)
 
