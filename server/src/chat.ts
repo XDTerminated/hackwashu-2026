@@ -33,6 +33,12 @@ async function askClaude(system: string, messages: { role: "user" | "assistant";
     .trim();
 }
 
+/** A plain chat turn (no tools), on whichever brain the villagers use. */
+export async function plainChat(v: VillagerId, system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+  if (BRAIN === "mock") return "Oh, a visitor! Welcome to the Moon. (Villagers are on scripted lines right now.)";
+  return clean(BRAIN === "claude" ? await askClaude(system, messages) : await chatGroq(v, system, messages));
+}
+
 export function splitNotes(raw: string): { reply: string; facts: string[] } {
   const facts: string[] = [];
   const kept = raw.split("\n").filter((line) => {

@@ -1,6 +1,7 @@
 // Client mirror of the server's colony. Updated instantly as events arrive —
 // the world scene animates the same events at a watchable pace on its own.
 
+import { VISIT_ID } from "./visitparam";
 import { applyLayout } from "../../shared/layout";
 import { freshTown } from "../../shared/town";
 import { VILLAGER_NAMES, noMaterials, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
@@ -245,4 +246,5 @@ export function pendingApprovalFor(v: VillagerId): Approval | undefined {
 }
 
 /** Still in Yutu's tutorial (nobody's moved in yet)? Everything but the tutorial waits till it's done. */
-export const inTutorial = () => store.connected && !store.progress.movedIn.length;
+// (a friend's island is theirs: its tutorial isn't yours)
+export const inTutorial = () => store.connected && !VISIT_ID && !store.progress.movedIn.length;

@@ -1,6 +1,7 @@
 // Contract shared by the agent server and the game client.
 // The server is the source of truth; the client renders and animates.
 
+import type { Peer, Session } from "./visit.js";
 import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
 
 export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj" | "mechanic";
@@ -559,6 +560,14 @@ export type SeqEvent = GameEvent & { seq: number; at: number };
 
 export type ClientMessage =
   | { type: "hello" }
+  /** Where you're standing (a few times a second while you move), for everyone else on the island. */
+  | { type: "pos"; x: number; y: number; facing: "down" | "up" | "side"; flip: boolean; moving: boolean }
+  /** A chat line to everyone on the island. */
+  | { type: "peer_chat"; text: string }
+  /** A visitor's gift to the island's owner, from their own coins and materials. */
+  | { type: "gift"; coins?: number; materials?: Partial<Materials> }
+  /** The owner sends a visitor home (and maybe blocks them). */
+  | { type: "kick"; id: string; block?: boolean }
   | { type: "landed" }
   | { type: "task"; villager: VillagerId; text: string; via?: "moonpad" }
   | { type: "approve"; approvalId: string; approved: boolean }
@@ -611,6 +620,18 @@ export type ClientMessage =
   | { type: "disconnect"; service: "google" | "canvas" | "spotify" | "github" };
 
 export type ServerMessage =
+  /** Who you are here: the owner, or a visitor (with their permissions and own wallet). */
+  | { type: "session"; session: Session }
+  /** Everyone else on the island right now. */
+  | { type: "peers"; peers: Peer[] }
+  /** Someone arrived or moved. */
+  | { type: "peer"; peer: Peer }
+  | { type: "peer_left"; id: string }
+  | { type: "peer_chat"; id: string; name: string; text: string }
+  /** The owner sent you home (or closed the island, or you're no longer friends). */
+  | { type: "kicked"; text: string }
+  /** Your friends list changed (a request came in, someone accepted). */
+  | { type: "social"; text?: string }
   | { type: "connection_test"; results: { name: string; ok: boolean | null; detail: string }[] }
   | { type: "canvas_schools"; query: string; schools: { name: string; domain: string }[]; error?: string }
   | { type: "snapshot"; snapshot: Snapshot }

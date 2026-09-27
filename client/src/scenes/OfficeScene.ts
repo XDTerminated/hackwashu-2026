@@ -12,6 +12,7 @@ import * as net from "../net";
 import { NearTalk, type Talker } from "../neartalk";
 import { isMoonPadOpen } from "../tablet";
 import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard } from "../panel";
+import { visiting } from "../multiplayer";
 import { sfx } from "../sfx";
 import { agents, focusedSession } from "../store";
 import { shadowKey } from "../textures";
@@ -379,7 +380,7 @@ export class OfficeScene extends Phaser.Scene {
     if (!s) {
       text(bx + 6, 30, "No agents running.", C.coral);
       const l = agents.state.link;
-      text(bx + 6, 46, l && l.status !== "linked" ? "Press E here to LINK yours" : "Press E here for a replay", C.ink);
+      if (!visiting()) text(bx + 6, 46, l && l.status !== "linked" ? "Press E here to LINK yours" : "Press E here for a replay", C.ink);
       return;
     }
     text(cols[0], 23, AGENT_STATUS[s.lead.status], C.ink);
@@ -400,7 +401,7 @@ export class OfficeScene extends Phaser.Scene {
     const s = focusedSession();
     const options: Spot[] = [];
     const add = (sp: Spot, r: number) => sp.d < r && options.push(sp);
-    add({ verb: "BOARD", label: s ? "[E] the board" : agents.state.link ? "[E] link your Claude Code" : "[E] replay a session", x: BOARD.x, y: 80, d: Math.hypot(px - BOARD.x, py - 84), act: () => openAgentBoard() }, 70);
+    add({ verb: "BOARD", label: s ? "[E] the board" : visiting() ? "[E] the board" : agents.state.link ? "[E] link your Claude Code" : "[E] replay a session", x: BOARD.x, y: 80, d: Math.hypot(px - BOARD.x, py - 84), act: () => openAgentBoard() }, 70);
     const lx = this.lead.x;
     // Ada the Team Lead: talk to her like any neighbor (speak, or type; her answers over her head).
     add({ verb: "TALK", label: "[E] talk to Ada", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => this.near.start("manager") }, 26);

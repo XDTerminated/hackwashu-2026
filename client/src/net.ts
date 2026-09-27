@@ -5,6 +5,8 @@ import type { ClientMessage, SeqEvent, ServerMessage } from "../../shared/game";
 
 export type PhoneLinkMsg = Extract<ServerMessage, { type: "phone_link" }>;
 import { applyEvent, applySnapshot, setAgents, setConnected } from "./store";
+import { backHome, gotKicked, gotPeer, gotPeers, gotSession, peerChat, peerLeft, socialChanged } from "./multiplayer";
+import { VISIT_ID } from "./visitparam";
 
 // ?server=8797 points a test copy of the game at a test server.
 const TEST_PORT = new URLSearchParams(location.search).get("server");
@@ -15,7 +17,8 @@ const TEST_PORT = new URLSearchParams(location.search).get("server");
  */
 export const HOSTED = !import.meta.env.DEV && !TEST_PORT;
 const PORT = TEST_PORT ?? "8787";
-const URL = HOSTED ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws` : `ws://${location.hostname || "localhost"}:${PORT}`;
+// (online, ?visit=<id> connects to a friend's island instead of your own)
+const URL = HOSTED ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${VISIT_ID ? `?visit=${encodeURIComponent(VISIT_ID)}` : ""}` : `ws://${location.hostname || "localhost"}:${PORT}`;
 /** The colony server's http address (connect pages, voices). */
 export const SERVER_HTTP = HOSTED ? location.origin : `http://${location.hostname || "localhost"}:${PORT}`;
 const eventListeners = new Set<(e: SeqEvent) => void>();
@@ -23,6 +26,9 @@ const noticeListeners = new Set<(text: string, tone?: "ok") => void>();
 const snapshotListeners = new Set<() => void>();
 const phoneLinkListeners = new Set<(msg: PhoneLinkMsg) => void>();
 let ws: WebSocket | null = null;
+/** Visiting: connections that never got in (not friends any more, the island's closed). */
+let refused = 0;
+let kicked = false;
 
 // ---------------------------------------------------------------- signing in (online)
 
@@ -96,6 +102,7 @@ export function connect() {
     return;
   }
   ws.onopen = () => {
+    refused = 0;
     setConnected(true);
     send({ type: "hello" });
     if (wantGuest && !HOSTED) send({ type: "guest_mode", on: true });
@@ -124,10 +131,22 @@ export function connect() {
       agentListeners.forEach((fn) => fn());
     } else if (msg.type === "phone_link") {
       phoneLinkListeners.forEach((fn) => fn(msg));
+    } else if (msg.type === "session") gotSession(msg.session);
+    else if (msg.type === "peers") gotPeers(msg.peers);
+    else if (msg.type === "peer") gotPeer(msg.peer);
+    else if (msg.type === "peer_left") peerLeft(msg.id);
+    else if (msg.type === "peer_chat") peerChat(msg.id, msg.name, msg.text);
+    else if (msg.type === "social") socialChanged(msg.text);
+    else if (msg.type === "kicked") {
+      kicked = true;
+      gotKicked(msg.text);
     }
   };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     setConnected(false);
+    if (kicked) return;
+    // A friend's island that won't have you (or never answers): back home.
+    if (VISIT_ID && (ev.code !== 1000 || !ev.wasClean) && ++refused >= 3) return backHome("Couldn't land on that island: it's closed to visitors, or you're not friends any more.");
     // Online, a dropped connection might mean you were signed out (it expired, or you signed
     // out in another tab): then it's back to the title's sign-in, not retrying forever.
     if (HOSTED)

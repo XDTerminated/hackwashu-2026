@@ -1,6 +1,6 @@
 import { inStock } from "../../shared/town.js";
 import { ACCOUNT, HOSTED, PUBLIC_URL, USER_ID } from "./env.js";
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
 import { BUILDINGS, EXTENSIONS, moveInAt } from "../../shared/game.js";
@@ -25,6 +25,7 @@ import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { SHARD_COUNT, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { currentRequests, startRequests } from "./requests.js";
+import { arrive, chat as peerChat, depart, gift, greet, identify, internalRoute, isVisitor, moved, seesOffice, sendHome, thankGatherer, visitorSees, visitorSnapshot, visitorTalk, whenPermsChange, whoOf } from "./visits.js";
 import { build, clearRock, isGuest, regrowRocks, resetWorld, setGuest, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -44,6 +45,9 @@ const httpServer = createServer(async (req, res) => {
 
   // A villager line to speak aloud in the talk dialog.
   if (url.pathname === "/voice") return handleVoice(req, res);
+
+  // Online: the gateway's notes (a friend's coins, a question for a neighbor, "send Sam home").
+  if (url.pathname.startsWith("/internal/")) return internalRoute(req, res, url);
 
   // Hosted: the LINK script on the player's own computer reports their Claude Code here.
   if (HOSTED && url.pathname.startsWith("/bridge/")) return bridgeRoute(req, res, url);
@@ -241,21 +245,32 @@ function originAllowed(origin: string | undefined, host: string | undefined) {
   }
 }
 
-const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ origin, req }: { origin: string; req: { headers: { host?: string } } }) => originAllowed(origin, req.headers.host) });
+// (online, only the gateway can say who's connecting: anyone else is turned away)
+const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ origin, req }: { origin: string; req: IncomingMessage }) => originAllowed(origin, req.headers.host) && !!identify(req) });
 
 process.on("unhandledRejection", (err) => console.error("[server] unhandled:", err));
 // Your coding agents' work (code, commands, output) only goes to a game
 // running on this same computer, never to another device on the network.
 const localClients = new WeakSet<WebSocket>();
 onAgentsChange((state) => {
-  for (const c of wss.clients) if (localClients.has(c)) send(c, { type: "agents", state });
+  // (a visiting friend sees the Office only if the owner said so)
+  for (const c of wss.clients) if (localClients.has(c) || (isVisitor(c) && seesOffice(c))) send(c, { type: "agents", state });
 });
+whenPermsChange((ws) => send(ws, { type: "agents", state: seesOffice(ws) ? agentsState() : { watching: null, link: null, sessions: [] } }));
 // On your computer the Office watches your Claude Code directly; hosted, you link it (bridgeRoute).
 if (HOSTED) useLinking();
 else startAgentWatch();
 
 function send(ws: WebSocket, msg: ServerMessage) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+/** The island, as this connection may see it (a visitor never sees the owner's letters, agents' work or accounts). */
+function snapshotFor(ws: WebSocket) {
+  return isVisitor(ws) ? visitorSnapshot(fullSnapshot()) : fullSnapshot();
+}
+function snapshotAll() {
+  for (const c of wss.clients) send(c, { type: "snapshot", snapshot: snapshotFor(c) });
 }
 
 function fullSnapshot() {
@@ -271,14 +286,16 @@ function fullSnapshot() {
 }
 
 onEvent((event) => {
-  for (const c of wss.clients) send(c, { type: "event", event });
+  for (const c of wss.clients) if (!isVisitor(c) || visitorSees(event)) send(c, { type: "event", event });
 });
 
 wss.on("connection", (ws, req) => {
-  console.log("[ws] game connected");
+  const who = identify(req)!;
+  console.log(who.role === "visitor" ? `[ws] ${who.name} is visiting` : "[ws] game connected");
   bases.set(ws, `${String(req.headers["x-forwarded-proto"] ?? "http").split(",")[0]}://${req.headers.host}`);
-  // Hosted, the gateway only lets this copy's own player through, so they're all "at home".
-  if (HOSTED || isLocal(req.socket.remoteAddress)) localClients.add(ws);
+  arrive(ws, who);
+  // Hosted, the gateway says who's the owner (friends visiting aren't); on your computer, it's whoever's on it.
+  if (who.role === "owner" && (HOSTED || isLocal(req.socket.remoteAddress))) localClients.add(ws);
 
   ws.on("message", async (raw) => {
     let msg: ClientMessage;
@@ -296,14 +313,82 @@ wss.on("connection", (ws, req) => {
     }
   });
 
-  ws.on("close", () => console.log("[ws] game disconnected"));
+  ws.on("close", () => {
+    depart(ws);
+    console.log(who.role === "visitor" ? `[ws] ${who.name} left` : "[ws] game disconnected");
+  });
 });
 
+/** What a friend visiting may do here: walk, chat, talk to the neighbors, help gather, leave gifts. Nothing else. */
+async function visitorHandle(ws: WebSocket, msg: ClientMessage) {
+  switch (msg.type) {
+    case "hello":
+      send(ws, { type: "snapshot", snapshot: snapshotFor(ws) });
+      if (seesOffice(ws)) send(ws, { type: "agents", state: agentsState() });
+      greet(ws);
+      break;
+    case "pos":
+      moved(ws, msg);
+      break;
+    case "peer_chat":
+      peerChat(ws, msg.text);
+      break;
+    case "task":
+      if (VILLAGERS.includes(msg.villager) && typeof msg.text === "string" && msg.text.trim()) void visitorTalk(ws, msg.villager, msg.text);
+      break;
+    case "gift": {
+      const problem = await gift(ws, msg);
+      if (problem) send(ws, { type: "notice", text: problem });
+      break;
+    }
+    case "clear_rock": {
+      // Moonstone stays on this island; what they found (and a thank-you coin) goes home with them.
+      const [x, y] = [Math.round(Number(msg.x)), Math.round(Number(msg.y))];
+      const r = clearRock(x, y);
+      if (!r.ok) return send(ws, { type: "notice", text: r.reason });
+      const found = r.loot?.coins ?? 0;
+      world.coins -= found;
+      savePersist();
+      emit({ type: "rock_cleared", x, y, stone: r.stone, coins: world.coins, ...(r.loot ? { loot: r.loot } : {}) });
+      services.announceProgress();
+      void thankGatherer(ws, 1 + found);
+      break;
+    }
+    case "clear_chore": {
+      const r = clearChore(String(msg.id));
+      if (!r.ok) break;
+      world.coins -= r.reward;
+      savePersist();
+      emit({ type: "chore_cleared", id: msg.id, kind: r.kind, reward: r.reward, coins: world.coins });
+      services.gain(r.kind === "dust" ? { stardust: 2 } : { moonstone: 1, ore: 1 }, { x: r.x, y: r.y });
+      void thankGatherer(ws, r.reward);
+      break;
+    }
+    default:
+      // (the owner's to do: building, letters, connections, ...)
+      break;
+  }
+}
+
 async function handle(ws: WebSocket, msg: ClientMessage) {
+    if (isVisitor(ws)) return visitorHandle(ws, msg);
     switch (msg.type) {
       case "hello":
         send(ws, { type: "snapshot", snapshot: fullSnapshot() });
         if (localClients.has(ws)) send(ws, { type: "agents", state: agentsState() });
+        greet(ws);
+        break;
+
+      case "pos":
+        moved(ws, msg);
+        break;
+
+      case "peer_chat":
+        peerChat(ws, msg.text);
+        break;
+
+      case "kick":
+        if (HOSTED && localClients.has(ws)) sendHome(String(msg.id), `${whoOf(ws)?.name ?? "The owner"} sent you home.`);
         break;
 
       case "landed":
@@ -500,7 +585,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         denyAllPending();
         if (!switchWorld(!!msg.on)) break;
         services.initResidents();
-        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        snapshotAll();
         break;
       }
 
@@ -510,7 +595,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         denyAllPending();
         if (!setGuest(!!msg.on)) break;
         services.initResidents();
-        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        snapshotAll();
         break;
       }
 
@@ -531,7 +616,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
         denyAllPending();
         resetWorld();
         services.initResidents();
-        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        snapshotAll();
         break;
       }
 
@@ -707,7 +792,8 @@ async function bridgeRoute(req: import("node:http").IncomingMessage, res: Server
   return json(404, { error: "no such thing" });
 }
 
-httpServer.listen(PORT, () => {
+// (online, only the gateway on this machine talks to an island)
+httpServer.listen(PORT, HOSTED ? "127.0.0.1" : undefined, () => {
   console.log(`[server] Fl-AI Me to the Moon agents on http://localhost:${PORT}`);
   const brains = { claude: "Claude (claude-opus-5)", groq: `Groq (${process.env.GROQ_MODEL ?? "openai/gpt-oss-120b"})`, mock: "⚠ MOCK — scripted villagers, real tools & approvals, no model" };
   console.log(`[server] villager brains: ${brains[BRAIN]}`);

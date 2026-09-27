@@ -24,6 +24,10 @@ import { closeMoonPad, isMoonPadOpen } from "../tablet";
 
 type ArrangeState = { edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
 import type { GameScene } from "./GameScene";
+import { FriendsPanel, type FriendsSpec } from "../friendspanel";
+import { flyTo, hostName, loadSocial, mp, onKicked, onPeers, onSession, onSocial, takeNote, visiting } from "../multiplayer";
+import { CHAT_MAX } from "../../../shared/visit";
+import { claimInput, input as typeInput, releaseInput } from "../textinput";
 
 // Screen-space UI, laid out in art pixels (this scene renders 1:1 with the
 // canvas, which the browser upscales by a whole number).
@@ -100,6 +104,11 @@ export class UIScene extends Phaser.Scene {
     this.reqOpen = -1;
     this.devBadge = null;
     this.guestBadge = null;
+    this.visitBadge = null;
+    this.chatBar = null;
+    this.registry.set("friendsOpen", false);
+    this.registry.set("chatTyping", false);
+    this.registry.set("keysFree", false);
     this.banner = null;
     this.shopOpen = false;
     this.registry.set("shopOpen", false);
@@ -215,9 +224,44 @@ export class UIScene extends Phaser.Scene {
     this.unsubs.push(onStoreChange(() => {
       if (shopOpen(store.progress.town) !== hadShop) this.time.delayedCall(0, () => this.scene.restart());
     }));
-    this.input.keyboard!.on("keydown-ESC", () => {
+    // Friends (online): the list, the rocket, a gift; and flying off to a friend's island.
+    this.friendsPanel = new FriendsPanel(this);
+    const openFriends = (spec: FriendsSpec) => {
       if (this.shopOpen) this.closeShop();
       this.townPanel.close();
+      this.friendsPanel.open(spec);
+    };
+    this.game.events.on("friends-panel", openFriends);
+    this.unsubs.push(() => this.game.events.off("friends-panel", openFriends));
+    const fly = (id: string | null) => {
+      const game = this.scene.get("Game") as GameScene;
+      if (this.scene.isActive("Game")) game.liftOff(() => flyTo(id));
+      else flyTo(id);
+    };
+    this.game.events.on("fly", fly);
+    this.unsubs.push(() => this.game.events.off("fly", fly));
+    this.unsubs.push(onSocial((text) => (text && this.toast("Friends", text, C.green), this.friendsPanel.refresh(true))));
+    this.unsubs.push(onSession(() => (this.refresh(), this.friendsPanel.refresh())));
+    this.unsubs.push(onPeers((c) => c.kind !== "chat" && this.friendsPanel.refresh()));
+    this.unsubs.push(onKicked((text) => this.toast("Sent home", text, C.coral)));
+    if (net.auth.state === "in" && !net.auth.guest && !visiting())
+      void loadSocial()
+        .then((st) => st.incoming.length && this.toast("Friends", `${st.incoming.length} friend request${st.incoming.length === 1 ? "" : "s"} waiting (the FRIENDS button).`, C.green))
+        .catch(() => null);
+    const note = takeNote();
+    if (note) this.time.delayedCall(800, () => this.toast("Back home", note, C.coral));
+    if (visiting()) this.time.delayedCall(900, () => this.toast(`${hostName()}'s island`, `Welcome! Walk around, talk to the neighbors, help gather (you keep the coins) or leave ${hostName()} a gift at their door. T to chat, the rocket flies you home.`, C.green));
+    // T: say something to everyone on the island (online).
+    this.input.keyboard!.on("keydown-T", (e: KeyboardEvent) => {
+      if (!net.HOSTED || this.chatBar || document.activeElement === typeInput || isPanelOpen() || isMoonPadOpen() || this.friendsPanel.isOpen || this.shopOpen) return;
+      e.preventDefault?.();
+      this.openChat();
+    });
+    this.input.keyboard!.on("keydown-ESC", () => {
+      if (this.chatBar) return this.closeChat();
+      if (this.shopOpen) this.closeShop();
+      this.townPanel.close();
+      this.friendsPanel.close();
     });
     // First time only: how to walk, then where to go.
     const MOVED = "moon-hint-moved";
@@ -247,7 +291,7 @@ export class UIScene extends Phaser.Scene {
     const afterTutorial = () => !setupShownNow() && this.time.delayedCall(400, openSetup);
     this.game.events.on("tutorial-done", afterTutorial);
     this.unsubs.push(() => this.game.events.off("tutorial-done", afterTutorial));
-    if (!setupShown && !inTutorial())
+    if (!setupShown && !inTutorial() && !visiting())
       this.time.delayedCall(700, () => {
         if (!this.scene.isActive("Game")) return;
         try {
@@ -266,9 +310,9 @@ export class UIScene extends Phaser.Scene {
         return true;
       }
     };
-    if (!seen) this.time.delayedCall(1500, walkHint);
+    if (!seen && !visiting()) this.time.delayedCall(1500, walkHint);
     const onMoved = () => {
-      if (seen) return;
+      if (seen || visiting()) return;
       seen = true;
       try {
         localStorage.setItem(MOVED, "1");
@@ -299,16 +343,19 @@ export class UIScene extends Phaser.Scene {
   private refresh() {
     this.renderDevBadge();
     this.renderGuestBadge();
+    this.renderVisitBadge();
     for (const b of this.tutorialLocked) b.setAlpha(inTutorial() ? 0.45 : 1);
     this.renderRequestBadge();
-    this.coins.setText(String(store.coins));
+    // (on a friend's island, your own coins and materials: the island's are theirs)
+    const wallet = visiting() ? (mp.session?.wallet ?? { coins: 0, materials: store.materials }) : { coins: store.coins, materials: store.materials };
+    this.coins.setText(String(wallet.coins));
     // moonstone · stardust · shards
     let mx = 22 + measure(this.coins).w + 8;
     MATERIALS.forEach((m, i) => {
       // (seven won't fit: the basics, plus whatever else you're carrying)
-      this.matCounts[i].setText(String(store.materials[m]));
+      this.matCounts[i].setText(String(wallet.materials[m]));
       // (and only as many as fit: the Quests window lists them all)
-      const show = (m === "moonstone" || m === "stardust" || store.materials[m] > 0) && mx + 9 + measure(this.matCounts[i]).w <= HUD_W - 2;
+      const show = (m === "moonstone" || m === "stardust" || wallet.materials[m] > 0) && mx + 9 + measure(this.matCounts[i]).w <= HUD_W - 2;
       this.matIcons[i].setVisible(show);
       this.matCounts[i].setVisible(show);
       if (!show) return;
@@ -350,7 +397,7 @@ export class UIScene extends Phaser.Scene {
 
     // The next goal (wraps onto a second line rather than getting cut off).
     const n = nextStep({ progress: store.progress, materials: store.materials, buildings: store.buildings, coins: store.coins, decos: store.decos });
-    this.quest.setText(n ? `★ ${n.text}` : "★ Everyone's home and the town is grand!");
+    this.quest.setText(visiting() ? `★ Visiting ${hostName()}: help gather (you keep the coins), chat, or leave a gift at their door.` : n ? `★ ${n.text}` : "★ Everyone's home and the town is grand!");
     this.quest.setY(y + 4);
     const bottom = y + 4 + measure(this.quest).h + 6;
     this.hud.clear();
@@ -371,6 +418,8 @@ export class UIScene extends Phaser.Scene {
 
   /** Play a waiting story beat once you're outside with nothing open. */
   private storyBeats() {
+    // (a friend's island's story is theirs)
+    if (visiting()) return;
     const now = Date.now();
     const calm = this.scene.isActive("Game") && !isPanelOpen() && !isMoonPadOpen() && !this.shopOpen;
     if (!calm) return;
@@ -423,6 +472,7 @@ export class UIScene extends Phaser.Scene {
     this.colony.setVisible(!inOffice);
     this.devBadge?.setVisible(!inOffice);
     this.guestBadge?.setVisible(!inOffice);
+    this.visitBadge?.setVisible(!inOffice);
     this.officePanel.setVisible(inOffice);
     if (inOffice) {
       const t = this.officeStatus();
@@ -454,6 +504,11 @@ export class UIScene extends Phaser.Scene {
       if (m.incoming && !fast) continue;
       g.fillStyle(0x3b2a3a, 1).fillRect(X(m.x) - 2, Y(m.y) - 2, 4, 4);
       g.fillStyle(m.incoming ? 0xff4a3a : 0xffa060, 1).fillRect(X(m.x) - 1, Y(m.y) - 1, 2, 2);
+    }
+    // Other players: a dot in their suit's color.
+    for (const p of dots.peers) {
+      g.fillStyle(0x3b2a3a, 1).fillRect(X(p.x) - 2, Y(p.y) - 2, 4, 4);
+      g.fillStyle(p.tint, 1).fillRect(X(p.x) - 1, Y(p.y) - 1, 2, 2);
     }
     // Villagers: a little head for each, so you can tell who's where.
     for (const icon of this.mmIcons.values()) icon.setVisible(false);
@@ -602,7 +657,7 @@ export class UIScene extends Phaser.Scene {
     this.hint?.destroy();
     // Top centre: clear of the toolbar, the goal arrow and speech bubbles.
     // (below the guest or dev-mode badge, when there is one)
-    const top = this.guestBadge || this.devBadge ? 30 : 6;
+    const top = this.guestBadge || this.devBadge || this.visitBadge ? 30 : 6;
     this.hint = new Label(this, this.scale.width / 2, top, text, { bg: C.outline, border: null, color: C.cream, font: "pxb", padX: 5, originY: 0, maxWidth: Math.max(120, this.scale.width - HUD_W - MINIMAP_W - 44) }).setDepth(2400);
     this.hint.setX(Math.round(HUD_W + 8 + (this.scale.width - HUD_W - MINIMAP_W - 20) / 2));
     // In the Office the top of the screen is the whiteboard: sit above the toolbar instead.
@@ -728,7 +783,7 @@ export class UIScene extends Phaser.Scene {
 
   private action!: IconButton;
   private actionHold = false;
-  private editBtn!: IconButton;
+  private editBtn: IconButton | null = null;
   private badge!: Phaser.GameObjects.Container;
   private reqBadge!: Phaser.GameObjects.Container;
   private reqOpen = -1;
@@ -747,17 +802,23 @@ export class UIScene extends Phaser.Scene {
     };
     // (during Yutu's tutorial, the MoonPad, Quests, edit mode and the mic wait till it's done)
     const later = (fn: () => void) => () => (inTutorial() ? this.toast(VILLAGER_NAMES.jade_rabbit, "One thing at a time! Let's get your first neighbor moved in, then it's all yours.", C.coral) : fn());
-    const groups: [string, string, string, () => void][][] = [
+    type Spec = [string, string, string, () => void];
+    // (online, with a Google account: friends; on a friend's island, only what's yours to use there)
+    const social = net.auth.state === "in" && !net.auth.guest;
+    const guest = visiting();
+    const friends: Spec[] = social ? [["icon_friends_0", "friends", "Friends - visit, requests, who can do what (T to chat)", later(click(() => this.friendsPanel.isOpen ? this.friendsPanel.close() : this.friendsPanel.open(guest ? { kind: "travel" } : { kind: "board" })))]] : [];
+    const groups: Spec[][] = [
       [
-        ["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => (isMoonPadOpen() ? closeMoonPad() : openMoonPad())))],
+        ...(guest ? [] : ([["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => (isMoonPadOpen() ? closeMoonPad() : openMoonPad())))]] as Spec[])),
         // (the Shop button only once the Market's repaired: there's no shop before that)
-        ...(shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", later(click(() => this.toggleShop()))] as [string, string, string, () => void]] : []),
-        ["icon_quests_0", "quests", "Quests", later(click(() => this.showQuests()))],
+        ...(!guest && shopOpen(store.progress.town) ? [["icon_shop_0", "shop", "Shop - decorations (B)", later(click(() => this.toggleShop()))] as Spec] : []),
+        ...(guest ? [] : ([["icon_quests_0", "quests", "Quests", later(click(() => this.showQuests()))]] as Spec[])),
+        ...friends,
         ["icon_help_0", "help", "How to play", click(() => this.showHelp())],
       ],
       [
         [isMicOn() ? "icon_mic_on_0" : "icon_mic_0", "mic", MIC_TIP(isMicOn()), later(click(() => toggleMic()))],
-        ["icon_edit_0", "edit", "Edit layout", later(() => this.game.events.emit("edit-toggle"))],
+        ...(guest ? [] : ([["icon_edit_0", "edit", "Edit layout", later(() => this.game.events.emit("edit-toggle"))]] as Spec[])),
         [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", "music", isMusicMuted() ? "Music: off (M)" : "Music: on (M)", () => toggleMusic()],
         [isSfxMuted() ? "icon_sfx_off_0" : "icon_sfx_0", "sound", isSfxMuted() ? "Sound effects and voices: off" : "Sound effects and voices: on", () => toggleSfx()],
       ],
@@ -779,16 +840,19 @@ export class UIScene extends Phaser.Scene {
       x += sep - gap;
       g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, bh - 4);
     }
-    const byWord = (w: string) => made[groups.flat().findIndex((g) => g[1] === w)];
-    const [moonpad, quests, mic, edit, music, sound] = ["phone", "quests", "mic", "edit", "music", "sound"].map(byWord);
+    const byWord = (w: string): IconButton | undefined => made[groups.flat().findIndex((g) => g[1] === w)];
+    const [moonpad, quests, edit] = ["phone", "quests", "edit"].map(byWord);
+    // (always on the toolbar)
+    const [mic, music, sound] = ["mic", "music", "sound"].map((w) => byWord(w)!);
     const shop = byWord("shop");
-    this.tutorialLocked = [moonpad, quests, mic, edit, ...(shop ? [shop] : [])];
+    this.tutorialLocked = [moonpad, quests, mic, edit, shop].filter((b): b is IconButton => !!b);
     const showMic = (on: boolean) => mic.setIcon(on ? "icon_mic_on_0" : "icon_mic_0").setTooltip(MIC_TIP(on)).setLabel("mic", on ? 0x9dff8a : undefined);
     showMic(isMicOn());
     this.unsubs.push(onMicToggle(showMic));
     this.unsubs.push(onSfxToggle((m) => sound.setIcon(m ? "icon_sfx_off_0" : "icon_sfx_0").setTooltip(m ? "Sound effects and voices: off" : "Sound effects and voices: on")));
-    this.reqBadge = this.add.container(quests.x + bw - 5, quests.y - 4).setDepth(2002);
-    this.editBtn = edit;
+    // (a friend's island has no Quests or MoonPad of yours: their badges just stay hidden)
+    this.reqBadge = this.add.container((quests?.x ?? -99) + bw - 5, (quests?.y ?? -99) - 4).setDepth(2002).setVisible(!!quests);
+    this.editBtn = edit ?? null;
     this.unsubs.push(onMusicToggle((m) => music.setIcon(m ? "icon_music_off_0" : "icon_music_0").setTooltip(m ? "Music: off (M)" : "Music: on (M)")));
 
     this.action = new IconButton(this, x, y0 + 3, "icon_idle_0", 0x8a8199, "Nothing to do here", () => {}, actionW, bh).setLabel("-", 0xd8d2e0).setDepth(2001);
@@ -801,7 +865,7 @@ export class UIScene extends Phaser.Scene {
     this.action.on("pointerout", release);
 
     // Unread badge on the MoonPad button.
-    this.badge = this.add.container(moonpad.x + bw - 5, moonpad.y - 4).setDepth(2002);
+    this.badge = this.add.container((moonpad?.x ?? -99) + bw - 5, (moonpad?.y ?? -99) - 4).setDepth(2002).setVisible(!!moonpad);
     this.renderBadge();
     this.unsubs.push(onUnreadChange(() => this.renderBadge()));
 
@@ -817,7 +881,7 @@ export class UIScene extends Phaser.Scene {
         .setTooltip(a ? (a.hold ? `Hold to ${name.toLowerCase()} (hold E)` : `${name} (E)`) : "Nothing to do here");
     };
     const onArrange = (a: ArrangeState) => {
-      this.editBtn.setPressed(a.edit).setTooltip(a.edit ? "Done editing" : "Edit layout");
+      this.editBtn?.setPressed(a.edit).setTooltip(a.edit ? "Done editing" : "Edit layout");
       this.renderBanner(a);
     };
     this.game.events.on("action", onAction);
@@ -981,6 +1045,9 @@ export class UIScene extends Phaser.Scene {
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Paths, lamps and doorbells follow the building.",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
       "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
+      ...(net.auth.state === "in" && !net.auth.guest
+        ? ["FRIENDS: the FRIENDS button shows your friend code; add friends by their code or email. Fly to a friend's island from the rocket by the landing pad (they needn't be online). Visitors can walk around, chat (T), help gather (the materials stay, the coins go home with them) and leave gifts. You choose, per friend, which neighbors they may ask for help: with their OWN accounts, and only to look things up. FRIENDS → VISITORS shows who's here (SEND HOME, BLOCK) and who came by; CLOSE IT keeps everyone out."]
+        : []),
       "Every day the neighbors post three COLONY REQUESTS (the gold badge on Quests) that pay coins. 12 MOON SHARDS (pieces of the old colony's beacon) glint out in the wilds: walk over one to pick it up (15¢), and find all 12 to relight the beacon (+200¢). Clearing a rock sometimes turns up treasure.",
       this.accountSummary(),
       "Villager not home? Walk up to their door and press CALL (the green button, the button at the door, or E) - they'll walk back.",
@@ -1050,6 +1117,71 @@ export class UIScene extends Phaser.Scene {
   }
 
   private guestBadge: Phaser.GameObjects.Container | null = null;
+  private visitBadge: Phaser.GameObjects.Container | null = null;
+  private friendsPanel!: FriendsPanel;
+  private chatBar: { root: Phaser.GameObjects.Container; text: Phaser.GameObjects.BitmapText; owner: { render(): void; submit(): void; active(): boolean } } | null = null;
+
+  /** On a friend's island: whose it is, and the way home. */
+  private renderVisitBadge() {
+    const on = visiting();
+    if (!!this.visitBadge === on) return;
+    this.visitBadge?.destroy();
+    this.visitBadge = null;
+    if (!on) return;
+    const c = this.add.container(0, 0).setDepth(2600);
+    const t = ptext(this, 0, 0, `${hostName().toUpperCase()}'S ISLAND · T to chat`, C.paperLight, "pxb");
+    const home = new Button(this, 0, 0, "FLY HOME", C.greenBtn, () => (sfx.blip(), this.game.events.emit("fly", null)));
+    const w = measure(t).w + home.width_ + 18;
+    const x = Math.round((this.scale.width - w) / 2);
+    const g = this.add.graphics();
+    pixBox(g, x, 4, w, 21, 0x2f5f4a, C.outline);
+    t.setPosition(x + 6, 11);
+    home.setPosition(x + w - home.width_ - 3, 7);
+    c.add([g, t, home]);
+    this.visitBadge = c;
+  }
+
+  /** T: a line to everyone on the island, typed just above the toolbar. */
+  private openChat() {
+    if (this.chatBar) return;
+    const W = this.scale.width;
+    const bw = Math.min(W - 40, 320);
+    const x = Math.round((W - bw) / 2);
+    const y = this.scale.height - TOOLBAR_H - 26;
+    const g = this.add.graphics();
+    pixBox(g, x, y, bw, 18, C.paperLight, C.coral);
+    const label = ptext(this, x + 5, y + 5, "SAY:", C.coral, "pxb");
+    const text = ptext(this, x + 10 + measure(label).w, y + 6, "_", C.ink, "sm");
+    const hint = ptext(this, x + bw - 4, y + 21, "ENTER to send · ESC to cancel", C.paperLight, "sm");
+    hint.setX(x + bw - measure(hint).w);
+    const root = this.add.container(0, 0, [g, label, text, hint]).setDepth(4300);
+    const owner = {
+      render: () => {
+        if (typeInput.value.length > CHAT_MAX) typeInput.value = typeInput.value.slice(0, CHAT_MAX);
+        text.setText(`${typeInput.value}_`);
+      },
+      submit: () => {
+        const said = typeInput.value.trim();
+        if (said) net.send({ type: "peer_chat", text: said });
+        this.closeChat();
+      },
+      active: () => this.chatBar?.owner === owner,
+    };
+    this.chatBar = { root, text, owner };
+    this.registry.set("chatTyping", true);
+    this.registry.set("keysFree", true);
+    claimInput(owner);
+  }
+
+  private closeChat() {
+    const c = this.chatBar;
+    if (!c) return;
+    this.chatBar = null;
+    releaseInput(c.owner);
+    c.root.destroy();
+    this.registry.set("chatTyping", false);
+    this.registry.set("keysFree", false);
+  }
 
   /** Playing as a guest: a reminder at the top that nothing is saved, and a way to sign in. */
   private renderGuestBadge() {

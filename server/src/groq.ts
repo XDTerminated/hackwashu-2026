@@ -157,6 +157,40 @@ export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: s
   return finalText;
 }
 
+/**
+ * A friend's question on someone else's island: the same kind of loop, but it only
+ * ever looks (the tools given are read-only) and nothing shows up on this island.
+ */
+export async function runLookOnlyGroq(v: VillagerId, system: string, text: string, tools: Anthropic.Beta.BetaTool[], web: boolean, run: (name: string, input: Record<string, unknown>) => Promise<string>): Promise<string> {
+  const defs: GroqTool[] = web
+    ? [{ type: "browser_search" } as unknown as GroqTool]
+    : tools.map((def) => ({ type: "function", function: { name: def.name, description: def.description ?? "", parameters: def.input_schema as Record<string, unknown> } }));
+  const messages: Msg[] = [
+    { role: "system", content: system },
+    { role: "user", content: text },
+  ];
+  let finalText = "";
+  for (let turn = 0; turn < 6; turn++) {
+    const res = await withPatience(v, () => groq().chat.completions.create({ model: web ? searchModel : MODEL, messages, ...(defs.length ? { tools: defs } : {}), temperature: 0.3 }));
+    const msg = res.choices[0].message;
+    if (msg.content?.trim()) finalText = clean(msg.content);
+    const calls = msg.tool_calls ?? [];
+    if (calls.length === 0) break;
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+    for (const c of calls) {
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(c.function.arguments || "{}");
+      } catch {
+        messages.push({ role: "tool", tool_call_id: c.id, content: "ERROR: arguments were not valid JSON." });
+        continue;
+      }
+      messages.push({ role: "tool", tool_call_id: c.id, content: await run(c.function.name, input).catch((err) => `ERROR: ${err instanceof Error ? err.message : err}`) });
+    }
+  }
+  return finalText;
+}
+
 /** A plain chat turn (no tools) — texting a villager. */
 export async function chatGroq(v: VillagerId, system: string, history: { role: "user" | "assistant"; content: string }[]): Promise<string> {
   const res = await withPatience(v, () =>

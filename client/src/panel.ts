@@ -18,6 +18,7 @@ import { BLIP, sfx } from "./sfx";
 import { agents, focusNextSession, focusedSession, store } from "./store";
 import { closeMoonPad, openMoonPad } from "./tablet";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
+import { hostName, visiting } from "./multiplayer";
 import * as voice from "./voice";
 import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, woodFrame, type Font } from "./widgets";
 
@@ -1398,6 +1399,16 @@ function renderAgentBoard() {
   const lines = new Map<string, Label>();
   agentView = { kind: "board", session: s?.id ?? null, sig: boardSig(s), lines };
   const link = agents.state.link;
+  // A friend visiting only looks: no linking, no replays (those are the owner's).
+  if (visiting()) {
+    dialog.open(`${hostName().toUpperCase()}'S OFFICE`, false);
+    if (!s) {
+      dialog.add("title", "Nobody's at work right now");
+      dialog.add("sys", `When ${hostName()}'s Claude Code is working, its agents show up here at their desks.`);
+      dialog.setButtons([]);
+      return;
+    }
+  }
   if (!s) {
     dialog.open("THE OFFICE", false);
     dialog.add("title", "Nobody's at work right now");
@@ -1420,8 +1431,10 @@ function renderAgentBoard() {
   if (s.workers.length) buttons.push({ label: "INSPECT", kind: "ok", onClick: () => openAgent(s.id, s.workers.find(active)?.id ?? s.workers[0].id) });
   buttons.push({ label: "LEAD", onClick: () => openAgent(s.id, "lead") });
   if (agents.state.sessions.length > 1) buttons.push({ label: "SWITCH", onClick: () => (focusNextSession(), sfx.blip(), renderAgentBoard()) });
-  buttons.push(s.source === "replay" ? { label: "STOP REPLAY", onClick: () => (net.send({ type: "agents_replay", on: false }), sfx.blip()) } : { label: "REPLAY", onClick: startReplay });
-  if (link && link.status !== "linked" && buttons.length < 5) buttons.push({ label: "LINK", onClick: () => openLinkClaude() });
+  if (!visiting()) {
+    buttons.push(s.source === "replay" ? { label: "STOP REPLAY", onClick: () => (net.send({ type: "agents_replay", on: false }), sfx.blip()) } : { label: "REPLAY", onClick: startReplay });
+    if (link && link.status !== "linked" && buttons.length < 5) buttons.push({ label: "LINK", onClick: () => openLinkClaude() });
+  }
   dialog.setButtons(buttons);
 }
 

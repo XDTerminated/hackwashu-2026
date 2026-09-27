@@ -19,6 +19,8 @@ import { connect as tcp } from "node:net";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OAuth2Client } from "google-auth-library";
+import { suitTint, type SocialState, type VisitPerms } from "../../shared/visit.js";
+import { Social } from "./social.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = join(here, "..");
@@ -33,13 +35,25 @@ const DEV_LOGIN = process.env.MOON_DEV_LOGIN === "1";
 
 mkdirSync(join(ROOT, "players"), { recursive: true });
 
+/** Friends: who may visit whom, and what they may do there (see social.ts). */
+const social = new Social(join(ROOT, "social.json"));
+
+/**
+ * Islands talk to each other (a visitor's coins, gifts, a friend's question for
+ * a neighbor) only through the gateway, with this key; so do the gateway's own
+ * notes to an island ("send Sam home"). New every start, never sent to a browser.
+ */
+const INTERNAL_KEY = randomBytes(24).toString("hex");
+
 // ---------------------------------------------------------------- the site's address
 
 let publicUrl = (process.env.MOON_PUBLIC_URL ?? "").replace(/\/$/, "");
+/** The address the site was last reached at (for islands started by another island, not a browser). */
+let lastSite = `http://localhost:${PORT}`;
 function siteUrl(req: IncomingMessage) {
   if (publicUrl) return publicUrl;
   const proto = String(req.headers["x-forwarded-proto"] ?? "http").split(",")[0];
-  return `${proto}://${req.headers.host}`;
+  return (lastSite = `${proto}://${req.headers.host}`);
 }
 
 // ---------------------------------------------------------------- accounts
@@ -144,6 +158,8 @@ interface Copy {
   ready: Promise<void>;
   lastUsed: number;
   sockets: number;
+  /** The owner's own connections (they're "online" while this is above 0). */
+  ownerSockets: number;
 }
 
 const copies = new Map<string, Copy>();
@@ -162,7 +178,7 @@ function freePort() {
 }
 
 /** This player's game server, started if it isn't running. */
-async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
+async function copyFor(p: Player, site: string): Promise<Copy> {
   if (deleting.has(p.id)) throw new Error("That village is being deleted.");
   let c = copies.get(p.id);
   if (!c) {
@@ -173,7 +189,6 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
       void stopCopy(idle[0]);
     }
     const port = freePort();
-    const site = siteUrl(req);
     // (a guest's copy lives in a scratch folder, deleted when it stops)
     const dir = p.guest ? join(tmpdir(), "moon-guests", p.id) : join(ROOT, "players", p.id);
     mkdirSync(dir, { recursive: true });
@@ -197,6 +212,8 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
         SPECTRUM_PROJECT_SECRET: "",
         PLAYER_PHONE: "",
         SESSION_SECRET: "",
+        MOON_INTERNAL_KEY: INTERNAL_KEY,
+        MOON_GATEWAY: `http://127.0.0.1:${PORT}`,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -216,7 +233,7 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
       }
       throw new Error("your village took too long to start");
     })();
-    c = { port, proc, ready, lastUsed: Date.now(), sockets: 0 };
+    c = { port, proc, ready, lastUsed: Date.now(), sockets: 0, ownerSockets: 0 };
     copies.set(p.id, c);
     proc.on("exit", () => {
       if (copies.get(p.id)?.proc === proc) copies.delete(p.id);
@@ -267,9 +284,13 @@ setInterval(() => {
 
 // ---------------------------------------------------------------- passing things through
 
+/** Headers only the gateway may set (a browser's own copies are dropped). */
+const OURS = /^x-moon-/i;
+
 function proxy(req: IncomingMessage, res: ServerResponse, c: Copy, site: string) {
   c.lastUsed = Date.now();
-  const headers = { ...req.headers, "x-forwarded-proto": site.startsWith("https") ? "https" : "http", "x-forwarded-host": String(req.headers.host ?? "") };
+  const mine = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !OURS.test(k)));
+  const headers = { ...mine, "x-forwarded-proto": site.startsWith("https") ? "https" : "http", "x-forwarded-host": String(req.headers.host ?? "") };
   const up = request({ host: "127.0.0.1", port: c.port, method: req.method, path: req.url, headers }, (r) => {
     res.writeHead(r.statusCode ?? 502, r.headers);
     r.pipe(res);
@@ -281,22 +302,35 @@ function proxy(req: IncomingMessage, res: ServerResponse, c: Copy, site: string)
   req.pipe(up);
 }
 
-/** The game's live connection (WebSocket): straight through to the player's copy. */
-function proxyUpgrade(req: IncomingMessage, socket: import("node:stream").Duplex, head: Buffer, c: Copy) {
+/** Who's connecting, as the island hears it from the gateway (it trusts only the gateway's key). */
+interface Who {
+  id: string;
+  name: string;
+  role: "owner" | "visitor";
+  tint: number;
+  host: { id: string; name: string };
+  perms?: VisitPerms;
+}
+
+/** The game's live connection (WebSocket): through to the island being played (your own, or a friend's). */
+function proxyUpgrade(req: IncomingMessage, socket: import("node:stream").Duplex, head: Buffer, c: Copy, who: Who) {
   const up = tcp(c.port, "127.0.0.1", () => {
     const lines = [`${req.method} ${req.url} HTTP/1.1`];
-    for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+    for (let i = 0; i < req.rawHeaders.length; i += 2) if (!OURS.test(req.rawHeaders[i])) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+    lines.push(`x-moon-key: ${INTERNAL_KEY}`, `x-moon-who: ${Buffer.from(JSON.stringify(who)).toString("base64url")}`);
     up.write(`${lines.join("\r\n")}\r\n\r\n`);
     if (head.length) up.write(head);
     up.pipe(socket);
     socket.pipe(up);
   });
   c.sockets++;
+  if (who.role === "owner") c.ownerSockets++;
   let closed = false;
   const done = () => {
     if (closed) return;
     closed = true;
     c.sockets = Math.max(0, c.sockets - 1);
+    if (who.role === "owner") c.ownerSockets = Math.max(0, c.ownerSockets - 1);
     c.lastUsed = Date.now();
     up.destroy();
     socket.destroy();
@@ -364,6 +398,7 @@ function privacyPage(res: ServerResponse) {
   <li><b>If you connect Gmail, Calendar or Canvas</b> in the game, the access Google or Canvas grants is stored on the game's server, only for your village, and used only when you ask a villager to do something. Sending an email or creating an event always waits for your OK.</li>
   <li><b>If you link Claude Code</b>, a script on your computer sends what your agents are doing to your village while it runs. It isn't saved.</li>
   <li>Villagers think using an AI service (Groq), which receives the text of what you ask them.</li>
+  <li><b>Friends</b>: your friends see your first name, and can visit your island while it's open (even when you're away) and chat with whoever's there. They never see your letters, texts, connected accounts or what your neighbors do for you. A neighbor you let a friend ask uses <i>their</i> accounts, never yours. Your Office is only shown to friends you allow.</li>
   <li><b>Delete everything</b> any time: in the game, Help → DELETE MY DATA. That removes your village, your connections and your account.</li>
 </ul>
 <p><a href="/">Back to the game</a></p>`,
@@ -426,6 +461,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       p.epoch = (p.epoch ?? 0) + 1;
       savePlayers();
       void stopCopy(p.id); // open game tabs lose their connection and go back to sign-in
+      tellAll("/internal/kick", { id: p.id, text: "You signed out." });
       // (a guest's village is thrown away: the copy's exit deletes it)
       if (p.guest && !copies.has(p.id)) delete players[p.id];
     }
@@ -449,6 +485,8 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       rmSync(join(ROOT, "players", p.id), { recursive: true, force: true });
       delete players[p.id];
       savePlayers();
+      social.forget(p.id);
+      tellAll("/internal/kick", { id: p.id, text: "That player's account is gone." });
     } finally {
       deleting.delete(p.id);
     }
@@ -457,6 +495,159 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
   res.writeHead(404);
   res.end();
+}
+
+// ---------------------------------------------------------------- friends (the phone's FRIENDS tab)
+
+const firstName = (p: Player) => (p.name || p.email.split("@")[0] || "Friend").split(" ")[0].slice(0, 24);
+const card = (id: string) => ({ id, name: firstName(players[id]), email: players[id].email });
+/** Real, signed-up players only (never a guest, never a made-up id). */
+const real = (id: unknown): id is string => typeof id === "string" && Object.hasOwn(players, id) && !players[id].guest;
+
+function socialState(me: Player): SocialState {
+  const t = social.of(me.id);
+  return {
+    code: t.code,
+    closed: t.closed,
+    friends: t.friends.filter(real).map((id) => ({ ...card(id), online: (copies.get(id)?.ownerSockets ?? 0) > 0, perms: social.permsFor(me.id, id), theirs: social.permsFor(id, me.id) })),
+    incoming: t.incoming.filter(real).map(card),
+    outgoing: social.outgoing(me.id).filter(real).map(card),
+    blocked: t.blocked.filter(real).map(card),
+  };
+}
+
+/** A note to one island, if it's running (nothing to tell a sleeping one: it asks when it wakes). */
+function tell(id: string, path: string, body: object) {
+  const c = copies.get(id);
+  if (!c) return;
+  void fetch(`http://127.0.0.1:${c.port}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY }, body: JSON.stringify(body) }).catch(() => null);
+}
+function tellAll(path: string, body: object) {
+  for (const id of copies.keys()) tell(id, path, body);
+}
+
+async function readJson(req: IncomingMessage, limit = 16_384): Promise<Record<string, unknown>> {
+  let raw = "";
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > limit) throw new Error("too big");
+  }
+  const v = JSON.parse(raw || "{}");
+  return v && typeof v === "object" ? v : {};
+}
+
+async function socialRoute(req: IncomingMessage, res: ServerResponse, url: URL) {
+  const json = (status: number, body: object) => {
+    res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify(body));
+  };
+  const me = whoIs(req);
+  if (!me || me.guest) return json(401, { error: "Sign in with Google to make friends." });
+  if (req.method === "GET" && url.pathname === "/social") return json(200, socialState(me));
+  if (req.method !== "POST") return json(405, { error: "POST" });
+  // (from the game's own page only: a JSON post, same site)
+  const origin = req.headers.origin;
+  if ((origin && origin !== siteUrl(req)) || !String(req.headers["content-type"] ?? "").includes("application/json")) return json(403, { error: "That has to come from the game." });
+  let body: Record<string, unknown>;
+  try {
+    body = await readJson(req);
+  } catch {
+    return json(400, { error: "That didn't make sense." });
+  }
+  const them = body.id;
+  const done = (text?: string) => json(200, { ...socialState(me), ...(text ? { text } : {}) });
+  switch (url.pathname) {
+    case "/social/add": {
+      // By friend code, or by the Google email they signed in with.
+      const raw = String(body.code ?? body.email ?? "").trim().slice(0, 120);
+      const byEmail = raw.includes("@");
+      const id = byEmail ? Object.values(players).find((x) => !x.guest && x.email.toLowerCase() === raw.toLowerCase())?.id : social.byCode(raw);
+      if (!id) return json(404, { error: byEmail ? "Nobody's signed up with that email yet. Send them your friend code instead!" : "No island has that friend code." });
+      if (id === me.id) return json(400, { error: "That's you!" });
+      const r = social.request(me.id, id);
+      if (r === "already") return done(`You and ${firstName(players[id])} are already friends.`);
+      if (r === "friends") {
+        tell(id, "/internal/social", { text: `${firstName(me)} accepted your friend request!` });
+        return done(`You and ${firstName(players[id])} are friends now!`);
+      }
+      tell(id, "/internal/social", { text: `${firstName(me)} sent you a friend request (phone → FRIENDS).` });
+      return done(`Friend request sent to ${firstName(players[id])}.`);
+    }
+    case "/social/answer": {
+      if (!real(them)) return json(404, { error: "No such player." });
+      const yes = social.answer(me.id, them, body.accept === true);
+      if (yes) tell(them, "/internal/social", { text: `${firstName(me)} accepted your friend request!` });
+      return done(yes ? `You and ${firstName(players[them])} are friends now!` : undefined);
+    }
+    case "/social/remove":
+    case "/social/block": {
+      if (!real(them)) return json(404, { error: "No such player." });
+      if (url.pathname === "/social/block") social.block(me.id, them);
+      else social.remove(me.id, them);
+      // Neither of you is on the other's island any more.
+      tell(me.id, "/internal/kick", { id: them, text: `You're no longer friends with ${firstName(me)}.` });
+      tell(them, "/internal/kick", { id: me.id, text: "You're no longer friends." });
+      tell(them, "/internal/social", {});
+      return done();
+    }
+    case "/social/unblock":
+      if (!real(them)) return json(404, { error: "No such player." });
+      social.unblock(me.id, them);
+      return done();
+    case "/social/perms": {
+      if (!real(them)) return json(404, { error: "No such player." });
+      const perms = social.setPerms(me.id, them, body as { agents?: unknown; office?: unknown });
+      if (!perms) return json(400, { error: "You can only give friends permissions." });
+      // (if they're here right now, it takes effect right away)
+      tell(me.id, "/internal/perms", { id: them, perms });
+      tell(them, "/internal/social", {});
+      return done();
+    }
+    case "/social/closed":
+      social.setClosed(me.id, body.closed === true);
+      if (body.closed === true) tell(me.id, "/internal/kick", { all: true, text: `${firstName(me)} closed their island for now.` });
+      return done();
+  }
+  return json(404, { error: "no such thing" });
+}
+
+// ---------------------------------------------------------------- islands talking to each other
+
+/** What one island may ask of another (always through here). */
+const RELAY_PATHS = new Set(["/internal/wallet", "/internal/credit", "/internal/debit", "/internal/ask"]);
+
+async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL) {
+  const json = (status: number, body: object) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
+  // Only islands (started by this gateway, with its key) ever call these.
+  const key = Buffer.from(String(req.headers["x-moon-key"] ?? ""));
+  const want = Buffer.from(INTERNAL_KEY);
+  if (key.length !== want.length || !timingSafeEqual(key, want)) return json(404, { error: "no such thing" });
+  if (url.pathname !== "/internal/relay" || req.method !== "POST") return json(404, { error: "no such thing" });
+  let body: Record<string, unknown>;
+  try {
+    body = await readJson(req, 64_000);
+  } catch {
+    return json(400, { error: "bad relay" });
+  }
+  const { to, path } = body;
+  if (!real(to) || typeof path !== "string" || !RELAY_PATHS.has(path)) return json(400, { error: "bad relay" });
+  try {
+    // (the other island wakes up if it's asleep: a visitor's coins go home even while they're away)
+    const c = await copyFor(players[to], publicUrl || lastSite);
+    c.lastUsed = Date.now();
+    const r = await fetch(`http://127.0.0.1:${c.port}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
+      body: JSON.stringify(body.body ?? {}),
+      signal: AbortSignal.timeout(path === "/internal/ask" ? 120_000 : 15_000),
+    });
+    return json(r.status, (await r.json().catch(() => ({}))) as object);
+  } catch (err) {
+    return json(503, { error: err instanceof Error ? err.message : "that island didn't answer" });
+  }
 }
 
 // ---------------------------------------------------------------- the server
@@ -468,6 +659,8 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   try {
     if (url.pathname.startsWith("/auth/")) return await auth(req, res, url);
+    if (url.pathname === "/social" || url.pathname.startsWith("/social/")) return await socialRoute(req, res, url);
+    if (url.pathname.startsWith("/internal/")) return await internalRoute(req, res, url);
     if (url.pathname === "/privacy") return privacyPage(res);
     if (url.pathname === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -481,7 +674,7 @@ const server = createServer(async (req, res) => {
         res.writeHead(404, { "content-type": "application/json" });
         return res.end(JSON.stringify({ error: "No village with that link. Press LINK in the game for a fresh command." }));
       }
-      return proxy(req, res, await copyFor(p, req), siteUrl(req));
+      return proxy(req, res, await copyFor(p, siteUrl(req)), siteUrl(req));
     }
     const p = whoIs(req);
     // Your village's own pages (connect Google, voices, ...) need you signed in; the title screen signs you in.
@@ -490,12 +683,12 @@ const server = createServer(async (req, res) => {
         res.writeHead(302, { location: "/", "cache-control": "no-store" });
         return res.end();
       }
-      return proxy(req, res, await copyFor(p, req), siteUrl(req));
+      return proxy(req, res, await copyFor(p, siteUrl(req)), siteUrl(req));
     }
     // The game itself, for everyone (signed out, its title screen shows SIGN IN WITH GOOGLE).
     if (serveStatic(res, url.pathname)) {
       // Signed in: warm up their village while the game loads.
-      if (p && url.pathname === "/") void copyFor(p, req).catch(() => null);
+      if (p && url.pathname === "/") void copyFor(p, siteUrl(req)).catch(() => null);
       return;
     }
     res.writeHead(404, { "content-type": "text/plain" });
@@ -515,7 +708,20 @@ server.on("upgrade", async (req, socket, head) => {
       socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n");
       return;
     }
-    proxyUpgrade(req, socket, head, await copyFor(p, req));
+    // ?visit=<id>: a friend's island (they needn't be online), if they'll have you.
+    const visit = new URL(req.url ?? "/", "http://x").searchParams.get("visit");
+    if (visit && visit !== p.id) {
+      const host = Object.hasOwn(players, visit) ? players[visit] : null;
+      const problem = !host || host.guest || p.guest ? "You can only visit friends' islands." : social.visitProblem(p.id, host.id);
+      if (problem || !host) {
+        socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\n${problem}`);
+        return;
+      }
+      const who: Who = { id: p.id, name: firstName(p), role: "visitor", tint: suitTint(p.id), host: { id: host.id, name: firstName(host) }, perms: social.permsFor(host.id, p.id) };
+      proxyUpgrade(req, socket, head, await copyFor(host, siteUrl(req)), who);
+      return;
+    }
+    proxyUpgrade(req, socket, head, await copyFor(p, siteUrl(req)), { id: p.id, name: firstName(p), role: "owner", tint: suitTint(p.id), host: { id: p.id, name: firstName(p) } });
   } catch {
     socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
   }

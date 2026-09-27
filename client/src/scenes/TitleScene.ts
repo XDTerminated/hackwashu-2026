@@ -4,6 +4,7 @@ import { startMusic } from "../music";
 import { Button, C, measure, ptext, woodFrame } from "../widgets";
 import { introSeen } from "./IntroScene";
 import { onStoreChange, store } from "../store";
+import { LANDING_HOME, VISIT_ID } from "../visitparam";
 
 // One line: the intro cutscene tells the story; the title just sets the mood.
 const STORY = ["Every home you build brings back a line to Earth."];
@@ -122,7 +123,7 @@ export class TitleScene extends Phaser.Scene {
     // Signed in (online), or on your own computer: play. (Wait for the colony first: it knows
     // whether this player has seen the intro, which only plays their first time.)
     if (!store.connected) {
-      inside(Math.round(panelH / 2) - 5, "Reaching the Moon...", C.inkSoft, "pxb");
+      inside(Math.round(panelH / 2) - 5, VISIT_ID ? "Flying to your friend's island..." : "Reaching the Moon...", C.inkSoft, "pxb");
       const off = onStoreChange(() => store.connected && this.scene.restart());
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
       return;
@@ -153,6 +154,12 @@ export class TitleScene extends Phaser.Scene {
       });
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
     };
+    // Off to a friend's island (the rocket), or back home: straight there, no title.
+    if ((VISIT_ID || LANDING_HOME) && auth.state === "in") {
+      inside(Math.round(panelH / 2) - 5, "Landing...", C.inkSoft, "pxb");
+      this.time.delayedCall(200, play);
+      return;
+    }
     if (auth.state === "in" && auth.guest) {
       // Online, as a guest: a village of your own until you leave, never saved.
       inside(9, "PLAYING AS A GUEST", C.coral, "pxb");

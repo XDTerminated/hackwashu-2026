@@ -17,7 +17,7 @@ import { waitForApproval } from "./approvals.js";
 import * as github from "./connectors/github.js";
 import * as spotify from "./connectors/spotify.js";
 import { MOCK, mockVillager } from "./mock.js";
-import { Groq, runVillagerGroq } from "./groq.js";
+import { Groq, runLookOnlyGroq, runVillagerGroq } from "./groq.js";
 import * as services from "./services.js";
 import { addFacts, befriend, memoryNote, remember } from "./memory.js";
 import { retell, splitNotes, tooLongToSay } from "./chat.js";
@@ -734,6 +734,97 @@ export const BRAIN: "claude" | "groq" | "mock" = MOCK
 
 function runVillager(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
   return BRAIN === "groq" ? runVillagerGroq(v, taskText, taskId, audience) : runVillagerClaude(v, taskText, taskId, audience);
+}
+
+// ------------------------------------------------------------------ a friend visiting
+
+/**
+ * What a neighbor may do for a friend visiting someone else's island: look things
+ * up in the friend's OWN accounts, never send, book, change or play anything.
+ */
+const LOOK_ONLY = new Set([
+  "check_office",
+  "list_inbox",
+  "read_email",
+  "list_events",
+  "list_courses",
+  "upcoming_assignments",
+  "course_announcements",
+  "github_my_prs",
+  "github_issues",
+  "github_pr_status",
+  "github_commits",
+  "claude_code_branch",
+  "now_playing",
+]);
+
+/**
+ * A friend asked villager `v` something while visiting `host`'s island. This runs on
+ * the FRIEND's own island (their accounts, their connections): look-only tools, no
+ * buildings needed (that's the point of asking a friend's neighbor), and nothing
+ * shows up here. Resolves with what the villager says back.
+ */
+export async function askLookOnly(v: VillagerId, text: string, host: string, asker: string): Promise<string> {
+  const system =
+    personaFor(v) +
+    audienceNote("talk") +
+    `\n\nRIGHT NOW YOU'RE ON ${host.toUpperCase()}'S ISLAND, talking with ${asker}, a friend who's visiting. ${asker} is who you're helping: anything you look up is ${asker}'s own (their inbox, their calendar, their repos), never ${host}'s. You can only look things up for a visitor: never send, draft, book, change, file, queue or play anything. If ${asker} asks for that, say you can only do it for them on their own island.`;
+  if (BRAIN === "mock") return `(Visiting mode: I'd look that up in ${asker}'s own accounts, but villagers are on scripted lines right now.)`;
+  const tools = Object.entries(LEAF_TOOLS)
+    .filter(([name, t]) => t.owner === v && LOOK_ONLY.has(name))
+    .map(([, t]) => t.def);
+  const run = async (name: string, input: Record<string, unknown>) => {
+    const tool = LEAF_TOOLS[name];
+    if (!tool || tool.owner !== v || !LOOK_ONLY.has(name)) throw new Error(`can't use ${name} here`);
+    return (await tool.run(input)).text;
+  };
+  const web = v === "stargazer";
+  let answer = "";
+  if (BRAIN === "groq") answer = await runLookOnlyGroq(v, system, text, tools, web, run);
+  else {
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: text }];
+    const defs: Tool[] = web ? [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }] : tools;
+    for (let turn = 0; turn < 6; turn++) {
+      const res = await client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 8000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        thinking: { type: "adaptive" },
+        output_config: { effort: "low" },
+        system,
+        ...(defs.length ? { tools: defs } : {}),
+        messages,
+      });
+      const said = res.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      if (said) answer = said;
+      if (res.stop_reason === "refusal") return "Hmm, moondust in my ears - I can't help with that one.";
+      if (res.stop_reason === "pause_turn") {
+        messages.push({ role: "assistant", content: res.content });
+        continue;
+      }
+      const uses = res.content.filter((b): b is ToolUse => b.type === "tool_use");
+      if (!uses.length || res.stop_reason === "max_tokens") break;
+      messages.push({ role: "assistant", content: res.content });
+      const results: ToolResult[] = await Promise.all(
+        uses.map(async (u) => {
+          try {
+            return { type: "tool_result" as const, tool_use_id: u.id, content: await run(u.name, (u.input ?? {}) as Record<string, unknown>) };
+          } catch (err) {
+            return { type: "tool_result" as const, tool_use_id: u.id, is_error: true, content: err instanceof Error ? err.message : String(err) };
+          }
+        }),
+      );
+      messages.push({ role: "user", content: results });
+    }
+  }
+  let reply = trimFiller(answer || "Hmm, I came up empty.");
+  if (tooLongToSay(reply)) reply = trimFiller((await retell(v, text, reply).catch(() => "")) || reply);
+  return reply;
 }
 
 // ------------------------------------------------------------------ entry

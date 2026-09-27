@@ -41,6 +41,9 @@ import { closeMoonPad, isMoonPadOpen } from "../tablet";
 import { clearListener, setListener, sfx, sfxAt } from "../sfx";
 import { OUTER, PLAZA, bakeOuter, bakeTerrain, drawBuildingPath, drawStreet, lampSpots } from "../terrain";
 import { inTutorial, pendingApprovalFor, store } from "../store";
+import { hostName, mayAsk, mp, onPeers, onSession, perms, visiting } from "../multiplayer";
+import { PeerActor } from "../peerview";
+import type { Peer } from "../../../shared/visit";
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
@@ -89,6 +92,9 @@ const GREETINGS: Record<VillagerId, string> = {
 };
 
 /** Something you can do where you're standing. Drives the world prompt and the action button. */
+/** What E can do on a friend's island (the rest is theirs: building, letters, stars, the Town Hall...). */
+const VISITOR_VERBS = new Set(["TALK", "CALL", "CLEAR", "GRAB", "SWEEP", "GIFT", "ROCKET", "ENTER"]);
+
 interface Interactable {
   /** Short word for the on-screen action button: TALK, BUILD, POP... */
   verb: string;
@@ -162,6 +168,9 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.signs = [];
+    this.peerViews.clear();
+    this.selfBubble = null;
+    this.flying = false;
     this.villagers.clear();
     // (a restart kills the timers that would have finished these)
     this.constructing.clear();
@@ -187,7 +196,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => this.tutorialLine());
 
     this.add.image(LANDING.x, LANDING.y - 1, shadowKey(this, 34)).setDepth(-8);
-    this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
+    this.ship = this.add.image(LANDING.x, LANDING.y, "ship").setOrigin(0.5, 1).setDepth(LANDING.y);
     this.solids.push(new Phaser.Geom.Rectangle(LANDING.x - 14, LANDING.y - 10, 28, 10));
 
     for (const b of BUILDING_IDS) this.placeBuilding(b, false);
@@ -216,10 +225,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     // A restart (moved building, reconnect) keeps you where you were standing.
-    const start = this.resumeAt ?? { x: LANDING.x + 34, y: LANDING.y + 26 };
+    // (a visitor steps off the rocket on the other side, so nobody lands on top of the owner)
+    const start = this.resumeAt ?? (visiting() ? { x: LANDING.x - 34, y: LANDING.y + 26 } : { x: LANDING.x + 34, y: LANDING.y + 26 });
     this.resumeAt = null;
     this.player = this.add.sprite(start.x, start.y, "astro_0").setOrigin(0.5, 1);
     this.playerShadow = this.add.image(this.player.x, this.player.y, shadowKey(this, 16)).setDepth(-8);
+    this.watchPeers();
 
     this.prompt = new Label(this, 0, 0, "", { bg: C.wood, border: C.woodDark, color: C.paperLight, font: "pxb" }).setDepth(99999).setVisible(false);
     this.callBtn = new Button(this, 0, 0, "CALL", C.greenBtn, () => this.doorCall?.act(), 36).setDepth(99998).setVisible(false);
@@ -309,8 +320,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     const rabbit = this.villagers.get("jade_rabbit");
-    // (in the tutorial Yutu's own window says hello, and that counts)
-    if (store.connected && inTutorial()) welcomed = true;
+    // (in the tutorial Yutu's own window says hello, and that counts; a friend's island has its own welcome)
+    if (store.connected && (inTutorial() || visiting())) welcomed = true;
     if (rabbit && store.connected && !welcomed) {
       welcomed = true;
       const ready = store.clods.filter((c) => c.status === "ready").length;
@@ -342,6 +353,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startPos: { x: number; y: number } | null = null;
+  /** Everyone else on the island right now (online). */
+  private peerViews = new Map<string, PeerActor>();
+  private posSent = { x: 0, y: 0, f: "", moving: false, at: 0 };
+  private ship!: Phaser.GameObjects.Image;
+  /** Lifting off for another island: nothing more to do here. */
+  private flying = false;
+  private selfBubble: Label | null = null;
 
   /** Building and plot signs, shown only when you're nearby (or arranging). */
   private signs: { label: Label; x: number; y: number; r: number }[] = [];
@@ -402,6 +420,7 @@ export class GameScene extends Phaser.Scene {
    * landmark to upgrade, or the nearest place to get a missing material.
    */
   questTarget(): { x: number; y: number; label: string } | null {
+    if (visiting()) return null;
     const n = nextStep(this.moveState());
     if (!n) return null;
     if (n.kind === "dig") return { x: n.spot.x, y: n.spot.y - 14, label: "Dig here" };
@@ -430,6 +449,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Moved in, but their account isn't connected (and no sample data chosen) yet. */
   private needsConnect(v: VillagerId) {
+    if (visiting()) return false;
     const service = VILLAGER_SERVICE[v];
     if (!service || service === "web") return false;
     return !store.connections[service].connected && !store.progress.sandbox[service];
@@ -559,6 +579,8 @@ export class GameScene extends Phaser.Scene {
 
   /** The tutorial: Yutu says a word as each step comes up (and once it's all done). */
   private tutorialLine() {
+    // (a friend's island: its tutorial is theirs)
+    if (visiting()) return;
     const n = nextStep(this.moveState());
     const step = n?.tutorial ?? null;
     const was = this.tutorialStep;
@@ -1612,7 +1634,7 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen && !this.near.typing && shopOpen(store.progress.town)) this.game.events.emit("toggle-shop");
+      if (!this.panelOpen && !this.near.typing && !visiting() && shopOpen(store.progress.town)) this.game.events.emit("toggle-shop");
     });
 
     // Talking happens right where you stand: E next to a neighbor opens the chat,
@@ -1757,7 +1779,8 @@ export class GameScene extends Phaser.Scene {
     const dist = (x: number, y: number) => this.distTo(x, y);
     const options: Interactable[] = [];
     // (in the tutorial, only the tutorial's own things: Nova's lot, boulders, meteors, moondust)
-    const add = (o: Interactable, r: number) => o.d < r && (!inTutorial() || o.tut) && options.push(o);
+    const guest = visiting();
+    const add = (o: Interactable, r: number) => o.d < r && (!inTutorial() || o.tut) && (!guest || VISITOR_VERBS.has(o.verb)) && options.push(o);
 
     for (const [v, a] of this.villagers) {
       const letter = pendingApprovalFor(v);
@@ -1797,7 +1820,17 @@ export class GameScene extends Phaser.Scene {
     const fd = Math.max(0, dist(PLAZA.x, PLAZA.y) - 66);
     add({ verb: "CHECK", label: "[E] the Fountain", x: PLAZA.x, y: PLAZA.y - 66, d: fd + 6, act: town({ kind: "landmark", id: "fountain" }), tut: true }, 26);
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
-    if (store.buildings.office) {
+    // The rocket: off to a friend's island (online), or home again.
+    if (net.auth.state === "in" && !net.auth.guest) {
+      add({ verb: "ROCKET", label: guest ? "[E] the rocket: fly home" : "[E] the rocket: visit a friend", x: LANDING.x, y: LANDING.y - 46, d: dist(LANDING.x, LANDING.y - 10), act: () => this.game.events.emit("friends-panel", { kind: "travel" }) }, 34);
+    }
+    // Visiting: leave your friend something on their doorstep.
+    if (guest) {
+      const hd = this.doorOf("player_house");
+      add({ verb: "GIFT", label: `[E] leave ${hostName()} a gift`, x: hd.x, y: hd.y - 50, d: dist(hd.x, hd.y), act: () => this.game.events.emit("friends-panel", { kind: "gift" }) }, 40);
+    }
+    // (a friend may look inside the Office only if its owner said so)
+    if (store.buildings.office && (!guest || perms().office)) {
       const od = this.doorOf("office");
       add({ verb: "ENTER", label: "[E] enter the Office", x: od.x, y: od.y - 40, d: dist(od.x, od.y - 4), act: () => this.enterOffice() }, 30);
     }
@@ -1949,6 +1982,11 @@ export class GameScene extends Phaser.Scene {
 
   /** The Rabbit doubles as the guide: she knows what the next neighbor's lot needs. */
   private greeting(v: VillagerId): string {
+    // On a friend's island: a welcome, and whether they can help you (with your own accounts).
+    if (visiting()) {
+      const hi = v === "jade_rabbit" ? `Welcome to ${hostName()}'s island! I'm Yutu, the mayor around here.` : GREETINGS[v];
+      return mayAsk(v) ? `${hi} ${hostName()} says I can help you too: with your own accounts, just looking things up.` : hi;
+    }
     if (v !== "jade_rabbit") return GREETINGS[v];
     const n = nextStep(this.moveState());
     if (!n) return GREETINGS.jade_rabbit;
@@ -1995,7 +2033,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setEditMode(on: boolean) {
-    if (on === this.editMode) return;
+    if (on === this.editMode || (on && visiting())) return;
     this.editMode = on;
     if (on) {
       closePanel();
@@ -2113,6 +2151,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pickUp(h: Held, grab = { x: 0, y: 8 }) {
+    if (visiting()) return;
     this.cancelHeld();
     this.held = h;
     this.grabOffset = grab;
@@ -2411,6 +2450,8 @@ export class GameScene extends Phaser.Scene {
       player: { x: this.player.x, y: this.player.y },
       villagers: [...this.villagers.values()].map((a) => ({ id: a.id, x: a.x, y: a.y })),
       clods: [...this.clods.values()].map((c) => ({ x: c.x, y: c.y, status: c.status })),
+      // (other players on the island, online)
+      peers: [...this.peerViews.values()].map((p) => ({ x: p.x, y: p.y, tint: p.sprite.tintTopLeft })),
     };
   }
 
@@ -2509,10 +2550,13 @@ export class GameScene extends Phaser.Scene {
     }
     nearest?.showLabel(true);
     this.player.setDepth(this.player.y);
+    for (const p of this.peerViews.values()) p.update(dt);
+    this.selfBubble?.place(Math.round(this.player.x), Math.round(this.player.y) - 42);
+    this.sendPos(time);
     setListener(this.player.x, this.player.y); // (sounds in the colony are heard from where you stand)
     this.playerShadow.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 1);
 
-    this.target = this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();
+    this.target = this.flying || this.panelOpen || this.arranging || this.near.typing ? null : this.findTarget();
     if (this.panelOpen || this.arranging) this.doorCall = null;
     this.callBtn.setVisible(!!this.doorCall);
     if (this.doorCall) this.callBtn.setPosition(Math.round(this.doorCall.x - 18), Math.round(this.doorCall.y));
@@ -2531,9 +2575,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.near.update();
-    // While you type, keys go to your words (not to walking or the toolbar).
-    if (this.near.typing !== this.typingCapture) {
-      this.typingCapture = this.near.typing;
+    // While you type (to a neighbor, a chat line, a friend code), keys go to your words (not to walking or the toolbar).
+    const typing = this.near.typing || !!this.registry.get("keysFree");
+    if (typing !== this.typingCapture) {
+      this.typingCapture = typing;
       if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
       else if (!this.panelOpen) this.input.keyboard!.enableGlobalCapture();
     }
@@ -2563,9 +2608,88 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // ================================================================ other players (online)
+
+  /** Everyone else on this island: draw them, keep them moving, and show what they say. */
+  private watchPeers() {
+    const tintSelf = () => {
+      const t = mp.session?.you.tint ?? 0xffffff;
+      if (t === 0xffffff) this.player.clearTint();
+      else this.player.setTint(t);
+    };
+    tintSelf();
+    const mine = () => mp.session?.you.id;
+    const put = (p: Peer) => {
+      if (p.id === mine()) return;
+      const v = this.peerViews.get(p.id);
+      if (v) v.apply(p);
+      else this.peerViews.set(p.id, new PeerActor(this, p));
+    };
+    for (const p of mp.peers.values()) put(p);
+    this.unsubs.push(onSession(tintSelf));
+    this.unsubs.push(
+      onPeers((c) => {
+        if (c.kind === "all") {
+          for (const [id, v] of this.peerViews) if (!mp.peers.has(id)) (v.destroy(), this.peerViews.delete(id));
+          for (const p of mp.peers.values()) put(p);
+        } else if (c.kind === "move") put(c.peer);
+        else if (c.kind === "left") {
+          this.peerViews.get(c.id)?.destroy();
+          this.peerViews.delete(c.id);
+        } else if (c.kind === "chat") {
+          sfx.blip();
+          if (c.id === mine()) this.sayOverMe(c.text);
+          else this.peerViews.get(c.id)?.say(c.text);
+        }
+      }),
+    );
+    // Say where we are right away (and again after a restart).
+    this.posSent = { x: 0, y: 0, f: "", moving: false, at: 0 };
+  }
+
+  /** Your own chat line, over your head (everyone else sees it over you too). */
+  private sayOverMe(text: string) {
+    this.selfBubble?.destroy();
+    const b = new Label(this, this.player.x, this.player.y - 42, text, { maxWidth: 130, tail: true }).setDepth(99990);
+    this.selfBubble = b;
+    this.time.delayedCall(Math.max(3500, text.length * 60), () => {
+      b.destroy();
+      if (this.selfBubble === b) this.selfBubble = null;
+    });
+  }
+
+  /** Where you are, for everyone else on the island (a few times a second while you move). */
+  private sendPos(time: number) {
+    if (!net.HOSTED || !mp.session) return;
+    const last = this.posSent;
+    const moving = this.player.anims.isPlaying;
+    const f = `${this.facing}${this.player.flipX ? 1 : 0}`;
+    const x = Math.round(this.player.x);
+    const y = Math.round(this.player.y);
+    const changed = Math.abs(x - last.x) + Math.abs(y - last.y) > 1 || f !== last.f || moving !== last.moving;
+    if (!changed || time - last.at < 100) return;
+    if (net.send({ type: "pos", x, y, facing: this.facing, flip: this.player.flipX, moving })) this.posSent = { x, y, f, moving, at: time };
+  }
+
+  /** The rocket lifts off (then the page flies you to the other island). */
+  liftOff(go: () => void) {
+    if (this.flying) return;
+    this.flying = true;
+    this.near.hush();
+    this.prompt.setVisible(false);
+    this.game.events.emit("action", null);
+    sfx.whoosh();
+    this.tweens.add({ targets: this.ship, y: this.ship.y - 260, duration: 1400, ease: "quad.in" });
+    for (let i = 0; i < 10; i++) this.time.delayedCall(i * 90, () => puff(this, this.ship.x + Phaser.Math.Between(-6, 6), LANDING.y - 2));
+    this.player.setVisible(false);
+    this.playerShadow.setVisible(false);
+    this.time.delayedCall(700, () => this.cameras.main.fadeOut(700, 11, 10, 26));
+    this.time.delayedCall(1450, go);
+  }
+
   /** A dialog, the MoonPad or the shop is up: keys belong to it. */
   private windowOpen() {
-    return this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.registry.get("townOpen") || !!this.near?.typing;
+    return this.flying || this.panelOpen || isPanelOpen() || !!this.registry.get("shopOpen") || !!this.registry.get("townOpen") || !!this.registry.get("friendsOpen") || !!this.registry.get("chatTyping") || !!this.near?.typing;
   }
 
   private updatePlayer(dt: number) {

@@ -1,6 +1,7 @@
 // Authoritative colony state + event bus. Persisted to server/data/world.json
 // so agents keep working (and their results keep waiting) while the game is closed.
 
+import type { VisitEntry } from "../../shared/visit.js";
 import { DATA_DIR, HOSTED } from "./env.js";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -63,6 +64,8 @@ interface World {
   introSeen?: boolean;
   /** When the last cleared rock grew back (they return slowly, one at a time). */
   rocksGrewAt?: number;
+  /** Friends who've visited (online; newest first), for the owner's visitor log. */
+  visits?: VisitEntry[];
   shards: string[];
   requests: { day: string; list: ColonyRequest[]; v?: number };
   lastChoreAt: Partial<Record<VillagerId, number>>;
