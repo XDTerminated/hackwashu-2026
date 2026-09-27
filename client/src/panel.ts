@@ -19,6 +19,8 @@ import { agents, focusNextSession, focusedSession, store } from "./store";
 import { closeMoonPad, openMoonPad } from "./tablet";
 import { claimInput, input, releaseInput, type InputOwner } from "./textinput";
 import { hostName, visiting } from "./multiplayer";
+import type { TeamProvider, TeamWorker } from "../../shared/team";
+import { team } from "./store";
 import * as voice from "./voice";
 import { Button, C, IconButton, Label, TOOLBAR_H, fit, measure, pixBox, woodFrame, type Font } from "./widgets";
 
@@ -1284,6 +1286,7 @@ export function closePanel() {
   const left = talkingTo && talks.get(talkingTo);
   if (left) left.at = Date.now();
   agentView = null;
+  teamView = null;
   dialog.close();
   talkingTo = null;
   callingFor = null;
@@ -1569,4 +1572,220 @@ export function openAgent(sessionId: string, id: string) {
   buttons.push({ label: "BOARD", onClick: () => (sfx.blip(), renderAgentBoard()) });
   dialog.setButtons(buttons);
   toggleCb(true);
+}
+
+// ---------------------------------------------------------------- the AI team (the Office's project board)
+// You're the project manager: write a brief, and the team lead (whichever AI you
+// connected) hires workers for each piece. They sit at desks in the Office; walk
+// up to one to check in. The finished deliverable opens in a browser tab.
+
+let teamView: { kind: "board"; status: string; keys: string } | { kind: "worker"; id: string; now: Label | null } | { kind: "connect"; keys: string } | null = null;
+let teamProvider: TeamProvider | null = null;
+let teamWired = false;
+
+const reportUrl = (id: string) => `${net.SERVER_HTTP}/team/report/${id}`;
+/** A fingerprint of which AIs are connected (and OpenRouter's model), to know when to redraw. */
+const keysSig = () => team.state.providers.map((p) => `${p.id}:${p.available}:${p.masked}:${p.model}`).join("|");
+
+/** Where to get each key, shown on the connect screen. */
+const HOW_TO_CONNECT: Record<TeamProvider, string> = {
+  openrouter: "One click: sign in and it works with Claude, GPT, Gemini and some free models.",
+  groq: "Free key: console.groq.com/keys",
+  gemini: "Free key: aistudio.google.com/apikey",
+  openai: "Paid key: platform.openai.com/api-keys",
+  claude: "Paid key: console.anthropic.com (API keys)",
+};
+
+function wireTeam() {
+  if (teamWired) return;
+  teamWired = true;
+  net.onTeam(() => {
+    const v = teamView;
+    if (!v || !dialog?.visible) return;
+    const p = team.state.project;
+    if (v.kind === "board") {
+      // The brief form stays put while you type; the live view re-renders.
+      const status = p?.status ?? "none";
+      const running = !!p && !["done", "failed"].includes(p.status);
+      if (running || status !== v.status || keysSig() !== v.keys) renderTeamBoard();
+    } else if (v.kind === "connect") {
+      if (keysSig() !== v.keys) openConnectAI();
+    } else {
+      const w = p?.workers.find((x) => x.id === v.id);
+      if (w && v.now) v.now.setText(workerNow(w));
+    }
+  });
+  net.onTeamAnswer((workerId, text) => {
+    const v = teamView;
+    if (v?.kind !== "worker" || v.id !== workerId || !dialog?.visible) return;
+    dialog.hideTyping();
+    dialog.add("them", text);
+    sfx.message();
+  });
+}
+
+function workerNow(w: TeamWorker) {
+  const state = w.status === "working" ? "working" : w.status === "done" ? "done" : "stuck";
+  return excerpt(`Now (${state}): ${w.step}`, 70);
+}
+
+/** The project board: brief the team (you're the PM), watch them work, read the result. */
+export function openTeamBoard() {
+  if (!dialog) return;
+  wireTeam();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  agentView = null;
+  renderTeamBoard();
+  toggleCb(true);
+}
+
+function renderTeamBoard() {
+  if (!dialog) return;
+  const o = team.state;
+  const p = o.project;
+  const running = !!p && !["done", "failed"].includes(p.status);
+  teamView = { kind: "board", status: p?.status ?? "none", keys: keysSig() };
+  const available = o.providers.filter((x) => x.available);
+  if (!teamProvider || !available.some((x) => x.id === teamProvider)) teamProvider = available[0]?.id ?? null;
+
+  if (running && p) {
+    dialog.open("PROJECT BOARD", false);
+    dialog.add("title", excerpt(p.brief, 160));
+    const name = o.providers.find((x) => x.id === p.provider)?.name ?? p.provider;
+    dialog.add("sys", `Team lead (${name}, ${p.model}): ${p.lead}`);
+    if (!p.workers.length) dialog.add("sys", "Planning who to hire...");
+    for (const w of p.workers) dialog.add("them", `${w.name} - ${w.role} ${w.status === "done" ? "[done]" : w.status === "failed" ? "[stuck]" : ""}\n${excerpt(w.step, 90)}`);
+    dialog.setButtons([]);
+    return;
+  }
+
+  dialog.open("PROJECT BOARD", true, {
+    placeholder: available.length ? "Brief the team: what should they build or research?" : "Connect an AI first (CONNECT AI)",
+    onSubmit: (text) => {
+      if (!teamProvider) return sfx.deny();
+      net.send({ type: "team_start", brief: text, provider: teamProvider });
+      sfx.blip();
+    },
+  });
+  if (p?.status === "done") {
+    dialog.add("title", `Delivered: ${excerpt(p.brief, 80)}`);
+    dialog.add("letter", excerpt(p.result ?? "", 900));
+  } else if (p?.status === "failed") {
+    dialog.add("sys", `The last project stopped: ${p.error ?? "something went wrong"}.`);
+  }
+  dialog.add(
+    "sys",
+    available.length
+      ? "You're the project manager. Write a brief below: the team lead splits it up and hires a worker (an AI sub-agent) for each piece. They sit at the desks at the back; walk up to one to check in."
+      : "Your team needs an AI to think with. Press CONNECT AI to sign in with OpenRouter or paste a key (Groq and Gemini keys are free).",
+  );
+  const buttons: ButtonSpec[] = available.map((x) => ({
+    label: x.id === teamProvider ? `[x] ${x.name.toUpperCase()}` : `[ ] ${x.name.toUpperCase()}`,
+    kind: x.id === teamProvider ? "ok" : "",
+    onClick: () => {
+      teamProvider = x.id;
+      sfx.blip();
+      renderTeamBoard();
+    },
+  }));
+  const chosen = available.find((x) => x.id === teamProvider);
+  if (chosen?.id === "openrouter" && chosen.models?.length) {
+    const models = chosen.models;
+    const short = chosen.model.split("/").pop()!.replace(/:free$/, " (free)");
+    buttons.push({
+      label: `MODEL: ${short.length > 22 ? `${short.slice(0, 20)}..` : short}`,
+      onClick: () => {
+        const next = models[(models.indexOf(chosen.model) + 1) % models.length];
+        net.send({ type: "team_model", provider: "openrouter", model: next });
+        sfx.blip();
+      },
+    });
+  }
+  buttons.push({ label: "CONNECT AI", onClick: () => openConnectAI() });
+  if (p?.status === "done") buttons.push({ label: "OPEN REPORT", kind: "ok", onClick: () => window.open(reportUrl(p.id), "_blank", "noopener") });
+  if (p) buttons.push({ label: "CLEAR BOARD", onClick: () => net.send({ type: "team_clear" }) });
+  dialog.setButtons(buttons);
+}
+
+/** Check in on a team worker: what they're on, what they've done, and ask them about it. */
+export function openTeamWorker(id: string) {
+  if (!dialog) return;
+  wireTeam();
+  const w = team.state.project?.workers.find((x) => x.id === id);
+  if (!w) return;
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  agentView = null;
+  dialog.open(`${w.name.toUpperCase()} - ${w.role.toUpperCase()}`, true, {
+    placeholder: `Ask ${w.name} how it's going...`,
+    onSubmit: (q) => {
+      dialog?.add("you", q);
+      dialog?.showTyping();
+      net.send({ type: "team_ask", workerId: id, question: q });
+    },
+  });
+  dialog.add("title", "Their task");
+  dialog.add("letter", excerpt(w.task, 420));
+  const now = dialog.add("sys", workerNow(w));
+  const recent = w.steps.slice(-6, -1).map((s) => `- ${excerpt(s.text, 70)}`);
+  if (recent.length) dialog.add("sys", `Earlier:\n${recent.join("\n")}`);
+  if (w.result) dialog.add("them", excerpt(w.result, 500));
+  teamView = { kind: "worker", id, now };
+  dialog.setButtons([]);
+  toggleCb(true);
+}
+
+/** Plug your own AI into the team: OpenRouter sign-in, or paste a key. Keys stay on the server. */
+export function openConnectAI() {
+  if (!dialog) return;
+  wireTeam();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  agentView = null;
+  dialog.open("CONNECT YOUR AI", false);
+  teamView = { kind: "connect", keys: keysSig() };
+  dialog.add("sys", net.HOSTED ? "Bring your own model for your team. Keys are checked, kept privately with your village, and never shown again." : "Bring your own model for your team. Keys are checked, stored privately on this computer, and never shown again.");
+  for (const p of team.state.providers) {
+    const status = !p.available ? "not connected" : p.source === "you" ? `connected by you (${p.masked})` : `connected on the server (${p.masked})`;
+    dialog.add("them", `${p.name}: ${status}\n${HOW_TO_CONNECT[p.id]}`);
+  }
+  dialog.setButtons([
+    { label: "OPENROUTER SIGN-IN", kind: "ok", onClick: () => window.open(`${net.SERVER_HTTP}/connect/openrouter`, "_blank") },
+    { label: "PASTE A KEY", onClick: () => openPasteKey() },
+    ...team.state.providers.filter((p) => p.source === "you").map((p) => ({ label: `DISCONNECT ${p.name.toUpperCase()}`, onClick: () => net.send({ type: "team_disconnect", provider: p.id }) })),
+    { label: "BACK", onClick: () => openTeamBoard() },
+  ]);
+  toggleCb(true);
+}
+
+function openPasteKey(provider?: TeamProvider) {
+  if (!dialog) return;
+  if (!provider) {
+    dialog.open("PASTE A KEY", false);
+    teamView = null;
+    dialog.add("sys", "Which AI is the key for?");
+    const ids: TeamProvider[] = ["groq", "gemini", "openai", "claude", "openrouter"];
+    dialog.setButtons([
+      ...ids.map((id) => ({ label: team.state.providers.find((p) => p.id === id)?.name.toUpperCase() ?? id.toUpperCase(), onClick: () => openPasteKey(id) })),
+      { label: "BACK", onClick: () => openConnectAI() },
+    ]);
+    return;
+  }
+  const name = team.state.providers.find((p) => p.id === provider)?.name ?? provider;
+  dialog.open(`${name.toUpperCase()} KEY`, true, {
+    secret: true,
+    placeholder: `Paste your ${name} API key`,
+    onSubmit: (key) => {
+      net.send({ type: "team_key", provider, key });
+      dialog?.add("sys", "Checking the key...");
+      setTimeout(() => openConnectAI(), 1800);
+    },
+  });
+  teamView = null;
+  dialog.add("sys", HOW_TO_CONNECT[provider]);
+  dialog.setButtons([{ label: "BACK", onClick: () => openConnectAI() }]);
 }

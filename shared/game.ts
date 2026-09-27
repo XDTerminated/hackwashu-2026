@@ -3,6 +3,7 @@
 
 import type { Peer, Session } from "./visit.js";
 import type { PathStyle } from "./paths.js";
+import type { TeamProvider, TeamState } from "./team.js";
 import type { LandmarkId, Stage, Town, TownItem } from "./town.js";
 
 export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager" | "dj" | "mechanic";
@@ -576,6 +577,14 @@ export type ClientMessage =
   | { type: "peer_chat"; text: string }
   /** A visitor's gift to the island's owner, from their own coins and materials. */
   | { type: "gift"; coins?: number; materials?: Partial<Materials> }
+  /** The AI team (the Office's project board): brief it, check in on a worker, clear the board. */
+  | { type: "team_start"; brief: string; provider: TeamProvider }
+  | { type: "team_ask"; workerId: string; question: string }
+  | { type: "team_clear" }
+  /** Connect your own AI for the team (a key, checked and kept on the server), or forget it. */
+  | { type: "team_key"; provider: TeamProvider; key: string }
+  | { type: "team_disconnect"; provider: TeamProvider }
+  | { type: "team_model"; provider: TeamProvider; model: string }
   /** Pave tiles with a path from the Shop (or take paths up, with style null). */
   | { type: "paint_paths"; style: PathStyle | null; tiles: [number, number][] }
   /** The owner sends a visitor home (and maybe blocks them). */
@@ -632,6 +641,9 @@ export type ClientMessage =
   | { type: "disconnect"; service: "google" | "canvas" | "spotify" | "github" };
 
 export type ServerMessage =
+  /** The AI team changed (live: a worker's step, a new worker, the result). Only for the island's owner. */
+  | { type: "team"; state: TeamState }
+  | { type: "team_answer"; workerId: string; text: string }
   /** Who you are here: the owner, or a visitor (with their permissions and own wallet). */
   | { type: "session"; session: Session }
   /** Everyone else on the island right now. */

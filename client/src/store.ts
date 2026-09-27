@@ -1,6 +1,7 @@
 // Client mirror of the server's colony. Updated instantly as events arrive —
 // the world scene animates the same events at a watchable pace on its own.
 
+import { noTeam, type TeamState } from "../../shared/team";
 import { VISIT_ID } from "./visitparam";
 import { applyLayout } from "../../shared/layout";
 import { freshTown } from "../../shared/town";
@@ -35,6 +36,9 @@ export const store: Snapshot & { connected: boolean } = {
   serverNow: 0,
   connected: false,
 };
+
+/** The Office's AI team (the project board): its AIs, the project and history (see net.onTeam). */
+export const team: { state: TeamState } = { state: noTeam() };
 
 /** Your coding agents, for the Office (their own updates: see net.onAgents). */
 export const agents: { state: AgentsState; focus: string | null } = { state: { watching: null, link: null, sessions: [] }, focus: null };

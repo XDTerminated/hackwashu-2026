@@ -13,6 +13,8 @@ export const ROOM_H = 322;
  */
 export const DESKS: { x: number; y: number }[] = [140, 204, 268].flatMap((y) => [72, 160, 288, 376].map((x) => ({ x, y })));
 export const BOARD = { x: 224, y: 60, w: 176, h: 50 };
+/** The AI team's project board: a corkboard where the left window was (x is its center). */
+export const PROJECT_BOARD = { x: 56, w: 88, h: 44 };
 export const ELEVATOR = { x: 224, y: ROOM_H - 2 };
 export const WORKER_LOOKS = 6;
 
@@ -42,8 +44,22 @@ export function drawRoom(ctx: Ctx) {
   for (let x = 0; x < ROOM_W; x += 32) rect(ctx, "#ddd6e6", x, 0, 1, 60);
   rect(ctx, "#8a8298", 0, 58, ROOM_W, 6);
   rect(ctx, "#b8b0c4", 0, 58, ROOM_W, 1);
-  // windows onto space (Earth in the right one)
-  for (const wx of [12, 348]) {
+  // the project board (the AI team's briefs and who's on them, drawn live over it)
+  {
+    const pb = PROJECT_BOARD;
+    const px = pb.x - pb.w / 2;
+    rect(ctx, O, px, 8, pb.w, pb.h);
+    rect(ctx, "#8a5a2e", px + 1, 9, pb.w - 2, pb.h - 2);
+    rect(ctx, "#c99a5e", px + 3, 11, pb.w - 6, pb.h - 6);
+    for (let i = 0; i < 90; i++) rect(ctx, hash(i, 7, 9) > 0.5 ? "#b8864c" : "#d6ab70", px + 4 + Math.floor(hash(i, 3, 1) * (pb.w - 8)), 12 + Math.floor(hash(i, 5, 2) * (pb.h - 8)), 1, 1);
+    // pinned notes (the text goes over the middle)
+    rect(ctx, "#fff6a8", px + pb.w - 18, 13, 10, 8);
+    rect(ctx, "#f07a9a", px + pb.w - 14, 12, 2, 2);
+    rect(ctx, "#bfe8ff", px + pb.w - 16, 30, 10, 9);
+    rect(ctx, "#7cd08a", px + pb.w - 12, 29, 2, 2);
+  }
+  // a window onto space (Earth in it)
+  for (const wx of [348]) {
     rect(ctx, O, wx, 8, 88, 44);
     rect(ctx, "#8f93a3", wx + 1, 9, 86, 42);
     rect(ctx, "#0f0d22", wx + 3, 11, 82, 38);

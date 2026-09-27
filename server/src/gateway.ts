@@ -719,7 +719,7 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
 // ---------------------------------------------------------------- the server
 
 /** The game server's own pages and endpoints (everything else is the built game). */
-const GAME_PATHS = /^\/(voice|connect\/|oauth\/|setup\/|agents\/)/;
+const GAME_PATHS = /^\/(voice|connect\/|oauth\/|setup\/|agents\/|team\/)/;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");

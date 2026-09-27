@@ -1,6 +1,7 @@
 // Authoritative colony state + event bus. Persisted to server/data/world.json
 // so agents keep working (and their results keep waiting) while the game is closed.
 
+import type { TeamProject, TeamState } from "../../shared/team.js";
 import { oldPathTiles, type PathStyle } from "../../shared/paths.js";
 import type { VisitEntry } from "../../shared/visit.js";
 import { DATA_DIR, HOSTED } from "./env.js";
@@ -68,6 +69,8 @@ interface World {
   rocksGrewAt?: number;
   /** Friends who've visited (online; newest first), for the owner's visitor log. */
   visits?: VisitEntry[];
+  /** The AI team on the Office's project board (see team.ts). */
+  team?: { project: TeamProject | null; history: TeamState["history"] };
   /** Paths the player laid, by tile ("tx,ty"). */
   paths: Record<string, PathStyle>;
   /** 1: the old automatic paths became tiles the player owns. */

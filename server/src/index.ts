@@ -12,6 +12,9 @@ import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
 import { agentsState, bridgeBye, bridgeUpdate, newLinkCode, onAgentsChange, pairBridge, reportEvent, startAgentWatch, startReplay, stopReplay, unlink as unlinkBridge, useLinking } from "./agentwatch.js";
 import { existsSync, readFileSync } from "node:fs";
+import { askWorker, clearProject, initTeam, onTeamChange, providersChanged, reportPath, startProject, teamState } from "./team.js";
+import { chooseModel, connectKey, disconnectKey, finishOpenRouter, openRouterAuthUrl, openRouterModels } from "./aikeys.js";
+import { TEAM_PROVIDERS } from "../../shared/team.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { announceHappiness, happinessAll } from "./memory.js";
@@ -59,6 +62,32 @@ const httpServer = createServer(async (req, res) => {
 
   // A villager line to speak aloud in the talk dialog.
   if (url.pathname === "/voice") return handleVoice(req, res);
+
+  // The Office's AI team, "Connect your AI": one-click OpenRouter sign-in (comes back here with a code).
+  if (url.pathname === "/connect/openrouter") {
+    const base = PUBLIC_URL || `http://${req.headers.host}`;
+    res.writeHead(302, { location: openRouterAuthUrl(`${base}/oauth/openrouter/callback`) });
+    return res.end();
+  }
+  if (url.pathname === "/oauth/openrouter/callback") {
+    const code = url.searchParams.get("code");
+    if (!code) return page(res, 400, "Sign-in cancelled", "<p>No code from OpenRouter. You can close this tab.</p>");
+    try {
+      await finishOpenRouter(code);
+      await providersChanged();
+      return page(res, 200, "Your AI is connected! 🚀", "<p>The Office's team can use your OpenRouter account now. Close this tab, pick a model on the project board, and brief your team.</p>");
+    } catch (err) {
+      console.error("[openrouter] sign-in failed:", err);
+      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message.replace(/[<>&"]/g, "") : "Unknown error"}</p>`);
+    }
+  }
+  // A finished project's deliverable, to read in a browser tab.
+  if (url.pathname.startsWith("/team/report/")) {
+    const file = reportPath(url.pathname.slice("/team/report/".length));
+    if (!file || !existsSync(file)) return page(res, 404, "No such report", "<p>That project's report isn't here.</p>");
+    const text = readFileSync(file, "utf8").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    return page(res, 200, "Project report", `<pre style="white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;color:#f2e6cc">${text}</pre>`);
+  }
 
   // Online: the gateway's notes (a friend's coins, a question for a neighbor, "send Sam home").
   if (url.pathname.startsWith("/internal/")) return internalRoute(req, res, url);
@@ -281,6 +310,10 @@ onAgentsChange((state) => {
   // (a visiting friend sees the Office only if the owner said so)
   for (const c of wss.clients) if (localClients.has(c) || (isVisitor(c) && seesOffice(c))) send(c, { type: "agents", state });
 });
+// The AI team is the owner's (their keys, their projects): never sent to visitors.
+onTeamChange((state) => {
+  for (const c of wss.clients) if (localClients.has(c)) send(c, { type: "team", state });
+});
 whenPermsChange((ws) => send(ws, { type: "agents", state: seesOffice(ws) ? agentsState() : { watching: null, link: null, sessions: [] } }));
 // On your computer the Office watches your Claude Code directly; hosted, you link it (bridgeRoute).
 if (HOSTED) useLinking();
@@ -320,7 +353,7 @@ onEvent((event) => {
 });
 
 /** Messages that use (or change) your connected accounts: only from the game on this computer, or your own copy online. */
-const ACCOUNT_MESSAGES = new Set<string>(["task", "approve", "connect_github", "github_cli", "connect_canvas", "canvas_login", "disconnect", "dev_mode", "phone_link_start", "phone_unlink", "test_connections", "use_sandbox", "spotify_device", "set_chore_optin"]);
+const ACCOUNT_MESSAGES = new Set<string>(["team_start", "team_ask", "team_clear", "team_key", "team_disconnect", "team_model", "task", "approve", "connect_github", "github_cli", "connect_canvas", "canvas_login", "disconnect", "dev_mode", "phone_link_start", "phone_unlink", "test_connections", "use_sandbox", "spotify_device", "set_chore_optin"]);
 
 // Every 20 seconds, everyone gets a ping; a connection that didn't answer the last one
 // is gone (a closed laptop, a page the browser never properly left): drop it, so it
@@ -431,9 +464,56 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
     switch (msg.type) {
       case "hello":
         send(ws, { type: "snapshot", snapshot: fullSnapshot() });
-        if (localClients.has(ws)) send(ws, { type: "agents", state: agentsState() });
+        if (localClients.has(ws)) {
+          send(ws, { type: "agents", state: agentsState() });
+          send(ws, { type: "team", state: teamState() });
+        }
         greet(ws);
         break;
+
+      case "team_start": {
+        const problem = startProject(String(msg.brief ?? ""), msg.provider);
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "team_ask": {
+        const text = await askWorker(String(msg.workerId), String(msg.question ?? ""));
+        send(ws, { type: "team_answer", workerId: String(msg.workerId), text });
+        break;
+      }
+
+      case "team_clear": {
+        const problem = clearProject();
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "team_key": {
+        if (!TEAM_PROVIDERS.includes(msg.provider)) break;
+        try {
+          const masked = await connectKey(msg.provider, String(msg.key ?? ""));
+          await providersChanged();
+          send(ws, { type: "notice", text: `Connected (${masked}). Your team can use it now.`, tone: "ok" });
+        } catch (err) {
+          send(ws, { type: "notice", text: `Couldn't connect: ${err instanceof Error ? err.message : err}.` });
+        }
+        break;
+      }
+
+      case "team_disconnect":
+        if (!TEAM_PROVIDERS.includes(msg.provider)) break;
+        disconnectKey(msg.provider);
+        await providersChanged();
+        break;
+
+      case "team_model": {
+        if (msg.provider !== "openrouter" || typeof msg.model !== "string") break;
+        if (!(await openRouterModels()).includes(msg.model)) break;
+        chooseModel("openrouter", msg.model);
+        await providersChanged();
+        break;
+      }
 
       case "pos":
         moved(ws, msg);
@@ -822,6 +902,8 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
 }
 
 await Promise.all([initGoogle(), initCanvas(), initGithub()]);
+initTeam();
+void providersChanged().catch(() => null);
 initSpotify();
 services.setWebAvailable(BRAIN !== "mock");
 services.initResidents();

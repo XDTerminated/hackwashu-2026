@@ -4,17 +4,21 @@
 // its monitor (code scrolling while it uses tools, "..." while it thinks). When
 // it finishes it heads home. Walk up to anyone to read their live feed.
 // Everything here mirrors the server's view of your sessions (store.agents).
+//
+// The corkboard on the left wall is the AI team's project board: brief a team
+// of AI workers (your own AI key), and they take the desks at the back.
 
 import Phaser from "phaser";
 import type { AgentInfo, AgentSession } from "../../../shared/game";
-import { BOARD, DESKS, ELEVATOR, ROOM_H, ROOM_W, WORKER_LOOKS } from "../officeart";
+import type { TeamWorker } from "../../../shared/team";
+import { BOARD, DESKS, ELEVATOR, PROJECT_BOARD, ROOM_H, ROOM_W, WORKER_LOOKS } from "../officeart";
 import * as net from "../net";
 import { NearTalk, type Talker } from "../neartalk";
 import { isMoonPadOpen } from "../tablet";
-import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard } from "../panel";
+import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard, openTeamBoard, openTeamWorker } from "../panel";
 import { visiting } from "../multiplayer";
 import { sfx } from "../sfx";
-import { agents, focusedSession } from "../store";
+import { agents, focusedSession, team } from "../store";
 import { shadowKey } from "../textures";
 import { C, Label, ptext } from "../widgets";
 
@@ -38,6 +42,8 @@ interface WorkerView {
   leaving: boolean;
   /** When we first saw it finished (it heads home a little later). */
   doneSeen: number;
+  /** Your Claude Code's agents, or the AI team's workers. */
+  home: Map<string, WorkerView>;
 }
 
 const SEAT_DY = 16;
@@ -47,6 +53,9 @@ const LINGER_MS = 40_000;
 const NEAR = 64;
 
 const isActive = (a: AgentInfo) => a.status !== "done" && a.status !== "failed";
+/** A team worker, as someone at a desk (the same desk, bubble and animations as your agents). */
+const teamInfo = (w: TeamWorker) =>
+  ({ id: w.id, name: `${w.name}, ${w.role}`, status: w.status === "working" ? "working" : w.status, now: w.step, task: w.task }) as unknown as AgentInfo;
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 2)}..` : s);
 /** Everyone keeps the same look for the whole job. */
 const lookFor = (id: string) => {
@@ -63,6 +72,10 @@ export class OfficeScene extends Phaser.Scene {
   private solids: Phaser.Geom.Rectangle[] = [];
   private desks: Phaser.GameObjects.Sprite[] = [];
   private workers = new Map<string, WorkerView>();
+  /** The AI team's workers, at the desks from the back. */
+  private team = new Map<string, WorkerView>();
+  private projectTexts: Phaser.GameObjects.BitmapText[] = [];
+  private projectSig = "";
   private lead!: Phaser.GameObjects.Image;
   private leadBubble!: Label;
   private leadStar!: Phaser.GameObjects.Image;
@@ -92,8 +105,11 @@ export class OfficeScene extends Phaser.Scene {
     this.solids = [];
     this.desks = [];
     this.workers.clear();
+    this.team.clear();
     this.boardTexts = [];
     this.boardSig = "";
+    this.projectTexts = [];
+    this.projectSig = "";
     this.sessionId = null;
     this.settled = false;
     this.lastAction = "";
@@ -191,6 +207,7 @@ export class OfficeScene extends Phaser.Scene {
     };
     this.game.events.on("action-press", press);
     this.unsubs.push(net.onAgents(() => this.sync()));
+    this.unsubs.push(net.onTeam(() => this.sync()));
     // Elapsed times and "heading home" move on even when no update comes in.
     const tick = this.time.addEvent({ delay: 1000, loop: true, callback: () => this.sync() });
     const onWake = () => {
@@ -255,18 +272,42 @@ export class OfficeScene extends Phaser.Scene {
     }
     // Agents that dropped off the list head home too.
     for (const v of this.workers.values()) if (!s?.workers.some((a) => a.id === v.a.id)) this.leave(v);
+    this.syncTeam();
     // Desks nobody sits at go dark.
     DESKS.forEach((_, i) => {
-      const sitting = [...this.workers.values()].some((v) => !v.leaving && v.seated && v.desk === i);
+      const sitting = [...this.workers.values(), ...this.team.values()].some((v) => !v.leaving && v.seated && v.desk === i);
       if (!sitting && this.desks[i].texture.key !== "desk_off") this.desks[i].stop().setTexture("desk_off");
     });
     this.renderLead(s);
     this.renderBoard(s);
   }
 
-  private freeDesk() {
-    const taken = new Set([...this.workers.values()].filter((v) => !v.leaving).map((v) => v.desk));
-    for (let i = 0; i < DESKS.length; i++) if (!taken.has(i)) return i;
+  /** The AI team's workers: hired ones walk in and sit at the back; they stay until the board's cleared. */
+  private syncTeam() {
+    const p = visiting() ? null : team.state.project;
+    const list = p?.workers ?? [];
+    for (const w of list) {
+      const a = teamInfo(w);
+      const v = this.team.get(w.id);
+      if (v) {
+        v.a = a;
+        this.renderWorker(v);
+        continue;
+      }
+      const desk = this.freeDesk(true);
+      if (desk >= 0) this.arrive(a, desk, !this.settled, this.team);
+    }
+    for (const v of this.team.values()) if (!list.some((w) => w.id === v.a.id)) this.leave(v);
+    this.renderProject();
+  }
+
+  /** A free desk: your agents fill them from the front, the AI team from the back. */
+  private freeDesk(fromBack = false) {
+    const taken = new Set([...this.workers.values(), ...this.team.values()].filter((v) => !v.leaving).map((v) => v.desk));
+    for (let k = 0; k < DESKS.length; k++) {
+      const i = fromBack ? DESKS.length - 1 - k : k;
+      if (!taken.has(i)) return i;
+    }
     return -1;
   }
 
@@ -276,14 +317,14 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   /** A new subagent walks in from the elevator and sits at its desk (or is already there, if you just walked in). */
-  private arrive(a: AgentInfo, desk: number, instantly: boolean) {
+  private arrive(a: AgentInfo, desk: number, instantly: boolean, home = this.workers) {
     const s = this.seat(desk);
     const look = lookFor(a.id);
     const sprite = this.add.sprite(instantly ? s.x : ELEVATOR.x, instantly ? s.y : ELEVATOR.y - 4, instantly ? `worker_back_${look}_0` : `worker_front_${look}`).setOrigin(0.5, 1);
     const shadow = this.add.image(sprite.x, sprite.y - 1, shadowKey(this, 12)).setDepth(-8);
     const bubble = new Label(this, s.x, s.y - 46, "", { maxWidth: 100, tail: true, font: "px" }).setDepth(99990).setVisible(false);
-    const v: WorkerView = { a, desk, look, sprite, shadow, bubble, seated: instantly, leaving: false, doneSeen: 0 };
-    this.workers.set(a.id, v);
+    const v: WorkerView = { a, desk, look, sprite, shadow, bubble, seated: instantly, leaving: false, doneSeen: 0, home };
+    home.set(a.id, v);
     if (instantly) return this.renderWorker(v);
     sfx.blip();
     // Up the aisle, across to the desk, and sit.
@@ -318,7 +359,7 @@ export class OfficeScene extends Phaser.Scene {
       onComplete: () => {
         v.sprite.destroy();
         v.shadow.destroy();
-        if (this.workers.get(v.a.id) === v) this.workers.delete(v.a.id);
+        if (v.home.get(v.a.id) === v) v.home.delete(v.a.id);
       },
     });
   }
@@ -393,6 +434,30 @@ export class OfficeScene extends Phaser.Scene {
     text(bx + 6, 46, clip(`${tag}${s.title}`, 34), C.ink);
   }
 
+  /** The corkboard: the AI team's project, in a few words. */
+  private renderProject() {
+    const p = visiting() ? null : team.state.project;
+    const connected = team.state.providers.some((x) => x.available);
+    const sig = p ? `${p.id}|${p.status}|${p.workers.length}|${p.workers.filter((w) => w.status !== "working").length}` : `none|${connected}|${visiting()}`;
+    if (sig === this.projectSig) return;
+    this.projectSig = sig;
+    this.projectTexts.forEach((t) => t.destroy());
+    this.projectTexts = [];
+    const px = PROJECT_BOARD.x - PROJECT_BOARD.w / 2 + 6;
+    const text = (y: number, str: string, color: number) => this.projectTexts.push(ptext(this, px, y, str, color, "sm").setDepth(-5));
+    text(13, "AI TEAM", C.ink);
+    if (visiting()) return void text(26, "(the owner's)", C.inkSoft);
+    if (!p) {
+      text(24, connected ? "No project." : "No AI yet.", C.coral);
+      text(33, connected ? "E: brief a team" : "E: connect one", C.ink);
+      return;
+    }
+    const done = p.workers.filter((w) => w.status !== "working").length;
+    const state = p.status === "done" ? "Delivered!" : p.status === "failed" ? "Stopped." : p.status === "planning" ? "Planning..." : "Working...";
+    text(24, state, p.status === "failed" ? C.red : p.status === "done" ? C.green : C.coral);
+    text(33, p.workers.length ? `${done}/${p.workers.length} done` : clip(p.brief, 14), C.ink);
+  }
+
   // ---------------------------------------------------------------- you
 
   private findTarget(): Spot | null {
@@ -405,6 +470,13 @@ export class OfficeScene extends Phaser.Scene {
     const lx = this.lead.x;
     // Ada the Team Lead: talk to her like any neighbor (speak, or type; her answers over her head).
     add({ verb: "TALK", label: "[E] talk to Ada", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => this.near.start("manager") }, 26);
+    if (!visiting()) {
+      add({ verb: "BOARD", label: "[E] the project board (AI team)", x: PROJECT_BOARD.x, y: 66, d: Math.hypot(px - PROJECT_BOARD.x, py - 80), act: () => openTeamBoard() }, 52);
+      for (const v of this.team.values()) {
+        if (v.leaving) continue;
+        add({ verb: "WATCH", label: `[E] check in on ${clip(v.a.name.split(",")[0], 20)}`, x: v.sprite.x, y: v.sprite.y + 4, d: Math.hypot(px - v.sprite.x, py - v.sprite.y - 6), act: () => openTeamWorker(v.a.id) }, 30);
+      }
+    }
     for (const v of this.workers.values()) {
       if (v.leaving || !s) continue;
       add({ verb: "WATCH", label: `[E] watch ${clip(v.a.name, 24)}`, x: v.sprite.x, y: v.sprite.y + 4, d: Math.hypot(px - v.sprite.x, py - v.sprite.y - 6), act: () => openAgent(s.id, v.a.id) }, 30);
@@ -460,7 +532,7 @@ export class OfficeScene extends Phaser.Scene {
     if (!frozen) this.move(dt);
     else this.player.anims.stop();
     this.player.setDepth(this.player.y);
-    for (const v of this.workers.values()) {
+    for (const v of [...this.workers.values(), ...this.team.values()]) {
       v.sprite.setDepth(v.sprite.y);
       v.shadow.setPosition(Math.round(v.sprite.x), Math.round(v.sprite.y) - 1);
       if (v.leaving || !v.seated) continue;

@@ -4,7 +4,7 @@
 import type { ClientMessage, SeqEvent, ServerMessage } from "../../shared/game";
 
 export type PhoneLinkMsg = Extract<ServerMessage, { type: "phone_link" }>;
-import { applyEvent, applySnapshot, setAgents, setConnected, store } from "./store";
+import { applyEvent, applySnapshot, setAgents, setConnected, store, team } from "./store";
 import { backHome, gotKicked, gotPeer, gotPeers, gotSession, peerChat, peerLeft, socialChanged } from "./multiplayer";
 import { VISIT_ID } from "./visitparam";
 
@@ -224,6 +224,11 @@ export function connect() {
     } else if (msg.type === "agents") {
       setAgents(msg.state);
       agentListeners.forEach((fn) => fn());
+    } else if (msg.type === "team") {
+      team.state = msg.state;
+      teamListeners.forEach((fn) => fn());
+    } else if (msg.type === "team_answer") {
+      teamAnswerListeners.forEach((fn) => fn(msg.workerId, msg.text));
     } else if (msg.type === "phone_link") {
       phoneLinkListeners.forEach((fn) => fn(msg));
     } else if (msg.type === "session") gotSession(msg.session);
@@ -304,4 +309,18 @@ export function onAgents(fn: () => void) {
 export function onPhoneLink(fn: (msg: PhoneLinkMsg) => void) {
   phoneLinkListeners.add(fn);
   return () => phoneLinkListeners.delete(fn);
+}
+
+const teamListeners = new Set<() => void>();
+/** The Office's AI team changed (a worker's step, a new worker, the result, your AIs). */
+export function onTeam(fn: () => void) {
+  teamListeners.add(fn);
+  return () => teamListeners.delete(fn);
+}
+
+const teamAnswerListeners = new Set<(workerId: string, text: string) => void>();
+/** A team worker answered your check-in. */
+export function onTeamAnswer(fn: (workerId: string, text: string) => void) {
+  teamAnswerListeners.add(fn);
+  return () => teamAnswerListeners.delete(fn);
 }

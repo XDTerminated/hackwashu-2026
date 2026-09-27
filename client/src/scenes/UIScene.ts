@@ -172,7 +172,8 @@ export class UIScene extends Phaser.Scene {
       ...[...this.roster.values()].flatMap((r) => [r.icon, r.dot]),
       ...this.busy, this.quest, mg, ...(mmImg ? [mmImg] : []), this.mm, ...this.mmIcons.values(), this.mmTop,
     ]);
-    this.officePanel = new Label(this, 4, 4, "", { originX: 0, originY: 0, align: "left", maxWidth: 190, padX: 5 }).setVisible(false);
+    // (top right: the top left is over the Office's project board)
+    this.officePanel = new Label(this, W - 4, 4, "", { originX: 1, originY: 0, align: "left", maxWidth: 190, padX: 5 }).setVisible(false);
     this.officeText = "";
     this.meteorG = this.add.graphics().setDepth(1500);
     this.meteorIcons = [];
@@ -1066,6 +1067,7 @@ export class UIScene extends Phaser.Scene {
       "Meteors! When one is falling off-screen, a red marker on the edge of the screen points to it; once it lands, a gold one points to the moon-rock. They show on the minimap too.",
       "The pencil is edit mode: click any building, plot or decoration to pick it up, then click where the tiles turn green to set it down. Lamps and doorbells follow the building.",
       "PATHS are yours to lay: Shop → PATHS, pick a style (the Dirt Track is free) and click or drag across the ground; tiles side by side join up. Right-click (or the ERASER) takes a path up and gives its coins back.",
+      "THE OFFICE: the big board and Ada show your Claude Code agents at work. The corkboard is the AI TEAM: write a brief, and a team lead hires AI workers who take the desks at the back and hand in one finished deliverable. It thinks with an AI you connect there (CONNECT AI: sign in with OpenRouter, or paste a Groq, Gemini, OpenAI or Anthropic key).",
       "Villagers are real AI agents. Visit their house and ask in person to get real work done. Anything that leaves your real accounts (sending email, booking events) waits for your OK - they'll bring a letter to your door.",
       "Finished work leaves glowing stars - pop them for coins. Sweep moondust and grab fallen moon-rocks for more.",
       ...(net.auth.state === "in" && !net.auth.guest
