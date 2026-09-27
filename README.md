@@ -51,55 +51,44 @@ cookies), starts each player's copy of `server/src/index.ts` on demand (`MOON_HO
 stops copies after 5 minutes idle (`MOON_IDLE_MIN`; saves stay on disk). Built (`npm run build`), each
 copy runs precompiled from `server/dist` at about 60-100 MB of memory.
 
-### Deploying (Railway)
+### Deploying (Render)
 
-1. Push the repo to GitHub and create a Railway service from it. `railway.json` sets the build
-   (`npm run build`: the game, the server bundle in `server/dist` and the link script) and start
-   (`npm start`: the gateway) commands. `npm start` runs the built files, so the build must run first.
-2. Add a **volume** (for example mounted at `/data`) and point `MOON_DATA_ROOT` at it, or villages,
-   accounts and sign-ins are lost on every redeploy. Memory: a 0.5 GB box fits about 4 villages
-   running at once (`MOON_MAX_RUNNING=4`; the longest-idle one is stopped to make room); 2 GB fits
-   roughly 15-25.
-3. Generate a domain (Settings → Networking), then set these variables:
+`render.yaml` describes the whole site as one Render web service: the gateway serves the built game and
+runs each player's village. The free plan works for a demo, with two catches: it sleeps after 15 minutes
+without visitors, and it has no disk, so villages and accounts are wiped whenever the service restarts or
+redeploys (every push to `master` redeploys; set `autoDeploy: false` in `render.yaml` to stop that).
 
-   | Variable | Value |
-   |---|---|
-   | `MOON_PUBLIC_URL` | `https://<your-app>.up.railway.app` (required: the gateway won't start without it) |
-   | `MOON_DATA_ROOT` | `/data` (the volume) |
-   | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
-   | `GROQ_API` | the villagers' brain |
-   | `SESSION_SECRET` | any long random string (optional with the volume: otherwise one is made and kept there; without either, every restart signs everyone out) |
-   | `MOON_MAX_RUNNING` | villages running at once (default 30; use `4` on a 0.5 GB box) |
-   | `MOON_IDLE_MIN` | minutes before an unused village stops (default 5) |
-   | `MOON_HEAP_MB`, `MOON_SEMI_SPACE_MB` | each village's Node heap caps in MB (defaults 128 and 1) |
-
-4. In Google Cloud → your OAuth client → **Authorized redirect URIs**, add both:
-   `https://<your-app>.up.railway.app/auth/google/callback` (signing in) and
-   `https://<your-app>.up.railway.app/oauth/google/callback` (connecting Gmail + Calendar).
-   On the consent screen, add the domain under Authorized domains and the privacy page
-   (`https://<your-app>.up.railway.app/privacy`). Until Google verifies the app, up to 100 people
-   can grant Gmail access, after a "Google hasn't verified this app" screen.
-
-### Deploying (Render, free)
-
-The free plan works for a demo, with two catches: it sleeps after 15 minutes without visitors, and it
-has no disk, so villages and accounts are wiped whenever the service restarts or redeploys.
-
-1. In Render: **New → Blueprint**, pick this repo. `render.yaml` sets up one free web service
-   (build `npm ci --include=dev && npm run build`, start `npm start`, health check `/healthz`) and
-   generates `SESSION_SECRET`.
+1. In Render: **New → Blueprint**, pick this repo. It creates the service (build
+   `npm ci --include=dev && npm run build`, start `npm start`, health check `/healthz`) and generates
+   `SESSION_SECRET`. `npm start` runs the built files, so the build must run first.
 2. When it asks, fill in `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GROQ_API`, and set
    `MOON_PUBLIC_URL` to the service's address (`https://<name>.onrender.com`; the gateway won't
    start without it, so set it and redeploy if the first deploy fails on it).
-3. Google Cloud → your OAuth client → **Authorized redirect URIs**: add
-   `https://<name>.onrender.com/auth/google/callback` and `https://<name>.onrender.com/oauth/google/callback`
-   (and the domain + `/privacy` page on the consent screen, as in the Railway steps above).
+3. In Google Cloud → your OAuth client → **Authorized redirect URIs**, add both:
+   `https://<name>.onrender.com/auth/google/callback` (signing in) and
+   `https://<name>.onrender.com/oauth/google/callback` (connecting Gmail + Calendar).
+   On the consent screen, add the domain under Authorized domains and the privacy page
+   (`https://<name>.onrender.com/privacy`). Until Google verifies the app, up to 100 people
+   can grant Gmail access, after a "Google hasn't verified this app" screen.
 4. **Keep it awake** with a free uptime monitor, e.g. [UptimeRobot](https://uptimerobot.com): New monitor →
    HTTP(s) → URL `https://<name>.onrender.com/healthz` → every 5 minutes. The free plan's monthly
    hours cover one service running all month.
 
-`MOON_MAX_RUNNING=4` keeps a 512 MB instance safe; raise it carefully (each running village is ~50 MB
-idle and more while its agents work).
+All the settings:
+
+| Variable | Value |
+|---|---|
+| `MOON_PUBLIC_URL` | the site's address (required: the gateway won't start without it) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
+| `GROQ_API` | the villagers' brain |
+| `SESSION_SECRET` | any long random string (the blueprint makes one; without it, every restart signs everyone out) |
+| `MOON_MAX_RUNNING` | villages running at once (default 30; the blueprint sets `4` for the free plan's 512 MB; 2 GB fits roughly 15-25) |
+| `MOON_IDLE_MIN` | minutes before an unused village stops (default 5) |
+| `MOON_HEAP_MB`, `MOON_SEMI_SPACE_MB` | each village's Node heap caps in MB (defaults 128 and 1) |
+| `MOON_DATA_ROOT` | only on a paid plan with a disk: point it at the disk so villages and accounts survive redeploys |
+
+Each running village uses about 50 MB idle and more while its agents work, so raise `MOON_MAX_RUNNING`
+carefully; when it's reached, the longest-idle village is stopped to make room.
 
 Test the online setup on your own computer: `npm run build`, then
 `MOON_DEV_LOGIN=1 PORT=8090 npm start` and open http://localhost:8090. The title
