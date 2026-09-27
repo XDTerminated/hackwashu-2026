@@ -17,6 +17,7 @@ import {
   type MoveInDef,
   type SeqEvent,
   type VillagerId,
+  IN_OFFICE,
 } from "../../../shared/game";
 import { checklist, lovedCount, nextStep, type MoveInState } from "../../../shared/movein";
 import { ClodActor, VillagerActor, puff } from "../actors";
@@ -56,6 +57,7 @@ const HELLOS: Record<VillagerId, string[]> = {
   postmaster: ["Hoo! Any letters for me?", "Stamp of approval! Hoo.", "Mind the mailbox, dear."],
   timekeeper: ["Right on time. *tick*", "Hello! Tock.", "You're three minutes early. Good!"],
   scholar: ["Oh! Hello! *adjusts glasses*", "Did you know the Moon has quakes?", "Reading anything good?"],
+  manager: ["Hey! Busy day at the Office.", "Your agents are hard at work."],
 };
 
 /**
@@ -73,6 +75,7 @@ const GREETINGS: Record<VillagerId, string> = {
   timekeeper: "Tick, tock. The Clock Tower keeps your days. Need a slot found or something booked?",
   scholar: "Ahem! The Library has your courses on file. Deadlines, announcements, grades — ask away.",
   stargazer: "The Observatory's dish is pointed at Earth's web. What should I look up?",
+  manager: "Ada, Team Lead. I keep an eye on your coding agents. Want the status report?",
 };
 
 /** Something you can do where you're standing. Drives the world prompt and the action button. */
@@ -1239,6 +1242,11 @@ export class GameScene extends Phaser.Scene {
 
       case "villager_arrived": {
         if (this.villagers.has(e.villager)) break;
+        // Ada works in the Office, not out on the island: just a hello.
+        if (IN_OFFICE(e.villager)) {
+          this.game.events.emit("npc-toast", { who: VILLAGER_NAMES[e.villager], text: "Hi! I'm Ada, the Team Lead. I've set up in the Office to keep an eye on your coding agents. Find me there, or text me on your MoonPad." });
+          break;
+        }
         // Nobody moves into a house that's still under scaffolding.
         const pending = this.constructing.get(VILLAGER_HOME[e.villager]);
         if (pending) {

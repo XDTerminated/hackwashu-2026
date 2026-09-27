@@ -25,7 +25,7 @@ import { currentRequests, startRequests } from "./requests.js";
 import { build, clearRock, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager"];
 const SERVICES: Service[] = ["google", "canvas"];
 
 function page(res: ServerResponse, status: number, title: string, body: string) {

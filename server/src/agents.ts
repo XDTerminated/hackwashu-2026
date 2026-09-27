@@ -21,6 +21,7 @@ import { addFacts, befriend, memoryNote, remember } from "./memory.js";
 import { retell, splitNotes, tooLongToSay } from "./chat.js";
 import { audienceNote, personaFor, nameOf, type Audience } from "./villagers.js";
 import { addLantern, emit, newId, owns, putApproval, putClod, setVillager, world } from "./world.js";
+import { agentsState } from "./agentwatch.js";
 
 const client = new Anthropic();
 const MODEL = "claude-opus-5";
@@ -40,6 +41,8 @@ interface LeafTool {
   label: (input: Record<string, unknown>) => string;
   /** Anything that leaves the player's account waits for their OK (letter at the door / text reply). */
   needsApproval?: (input: Record<string, unknown>) => Promise<{ title: string; body: string } | undefined>;
+  /** Just a look around (no little star runs off to do it, and nothing to pop). */
+  quiet?: boolean;
   run: (input: Record<string, unknown>) => Promise<{ text: string; summary: string }>;
 }
 
@@ -48,7 +51,41 @@ const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const whenLocal = (iso: string) => new Date(iso).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+const ago = (ms: number) => (ms < 90_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : ms < 90 * 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
+
 const LEAF_TOOLS: Record<string, LeafTool> = {
+  check_office: {
+    owner: "manager",
+    building: "office",
+    reward: 0,
+    quiet: true,
+    def: {
+      name: "check_office",
+      description: "Look around the Office: the player's coding-agent sessions right now, the lead agent and every sub-agent (what each is doing, its status, how long it's been going), and what finished recently.",
+      input_schema: { type: "object", properties: {} },
+    },
+    label: () => "looking around the Office",
+    run: async () => {
+      const s = agentsState();
+      const now = Date.now();
+      const view = (a: (typeof s.sessions)[number]["lead"]) => ({ name: a.name, kind: a.kind, status: a.status, doing: a.now, for: ago(now - a.startedAt), last_activity: `${ago(now - a.lastAt)} ago` });
+      const sessions = s.sessions.slice(0, 3).map((x) => ({
+        title: x.title,
+        project: x.project,
+        branch: x.branch,
+        replay: x.source === "replay" ? "this is a replay of a past session, not live work" : undefined,
+        lead: view(x.lead),
+        agents: x.workers.map(view),
+      }));
+      const linked = s.link ? (s.link.status === "linked" ? "their computer is linked" : "no computer linked yet") : undefined;
+      const working = s.sessions.reduce((n, x) => n + x.workers.filter((w) => w.status === "working" || w.status === "thinking").length, 0);
+      return {
+        text: JSON.stringify({ sessions, link: linked, note: sessions.length ? undefined : "Nobody's in the Office right now: no coding agents running." }),
+        summary: sessions.length ? `${plural(working, "agent")} at work` : "the Office is quiet",
+      };
+    },
+  },
+
   list_inbox: {
     owner: "postmaster",
     building: "mailbox",
@@ -285,6 +322,14 @@ export async function runLeafTool(v: VillagerId, taskId: string, block: ToolUse)
   const input = (block.input ?? {}) as Record<string, unknown>;
   if (!tool || tool.owner !== v) {
     return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `unknown tool ${block.name}` };
+  }
+  if (tool.quiet) {
+    setVillager(v, { status: "working", activity: tool.label(input) });
+    try {
+      return { type: "tool_result", tool_use_id: block.id, content: (await tool.run(input)).text };
+    } catch (err) {
+      return { type: "tool_result", tool_use_id: block.id, is_error: true, content: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   const clod: Clod = {

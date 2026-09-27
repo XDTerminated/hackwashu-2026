@@ -395,6 +395,10 @@ export const VILLAGER_ICONS: Record<string, PixelSprite> = {
     palette: { K: "#3b2a3a", V: "#9a7ff0", W: "#fff6e6", Y: "#f5c542" },
     frames: [["Y.....Y", ".K...K.", ".KKKKK.", "KVVVVVK", "KVWVWVK", "KVVVVVK", ".KKKKK."]],
   },
+  manager: {
+    palette: { K: "#3b2a3a", H: "#3b2a2a", S: "#f0c09a", B: "#3f4f8a" },
+    frames: [[".KKKKK.", "KHHHHHK", "KHSSSHK", "KHKSKHK", "KHSSSHK", ".KBBBK.", ".KKKKK."]],
+  },
 };
 
 /** Tiny 7x7 materials for the HUD and pickups (texture `mat_<material>_0`). */

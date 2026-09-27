@@ -42,6 +42,7 @@ const REAL: Record<VillagerId, ((f: string) => string)[]> = {
   scholar: [(f) => `Ahem. ${f}.`, (f) => `Heads up for the traveler: ${f}.`],
   stargazer: [(f) => `Guess what I found: ${f}`, (f) => `The telescope says: ${f}`],
   jade_rabbit: [(f) => `I heard: ${f}`],
+  manager: [(f) => `Status update: ${f}.`],
 };
 
 const REACT: Record<VillagerId, string[]> = {
@@ -50,6 +51,7 @@ const REACT: Record<VillagerId, string[]> = {
   timekeeper: ["Tick-tock, noted.", "I'll make room for it.", "Timing is everything."],
   scholar: ["Fascinating. Citation?", "I'll add it to the archive.", "Hm! Very studious."],
   stargazer: ["Ooh, stellar.", "The stars agree.", "I'll look into it tonight."],
+  manager: ["Noted. Adding it to the board.", "Love that. Ship it.", "Let's circle back on that."],
 };
 
 // ---------------------------------------------------------------- scripted
@@ -75,6 +77,7 @@ const SOLO: Record<VillagerId, string[]> = {
   timekeeper: ["Tick. Tock. Tick.", "Right on schedule."],
   scholar: ["Footnotes are the best part.", "*adjusts spectacles*"],
   stargazer: ["So many stars.", "Is that a comet? No. A smudge."],
+  manager: ["Standup in five!", "Who touched the build?"],
 };
 
 /** A short exchange between two villagers: [speaker, line][]. */

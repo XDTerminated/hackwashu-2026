@@ -9,7 +9,7 @@ import Phaser from "phaser";
 import type { AgentInfo, AgentSession } from "../../../shared/game";
 import { BOARD, DESKS, ELEVATOR, ROOM_H, ROOM_W, WORKER_LOOKS } from "../officeart";
 import * as net from "../net";
-import { isMoonPadOpen } from "../tablet";
+import { isMoonPadOpen, openMoonPad } from "../tablet";
 import { AGENT_STATUS, isPanelOpen, openAgent, openAgentBoard } from "../panel";
 import { sfx } from "../sfx";
 import { agents, focusedSession } from "../store";
@@ -117,7 +117,7 @@ export class OfficeScene extends Phaser.Scene {
     // A gold ★ over the lead when nobody's working (press E for a replay).
     this.leadStar = this.add.image(lx, 60, "icon_quests_0").setDepth(99991).setVisible(false);
     // (its name plate sits beside it, clear of the first row's bubbles)
-    new Label(this, lx + 9, 84, "Team Lead", { bg: C.paper, border: C.paperDark, originX: 0, originY: 0, padX: 2 }).setDepth(96);
+    new Label(this, lx + 9, 84, "Ada", { bg: C.paper, border: C.paperDark, originX: 0, originY: 0, padX: 2 }).setDepth(96);
 
     this.player = this.add.sprite(ELEVATOR.x, ELEVATOR.y - 18, "astro_3").setOrigin(0.5, 1);
     this.prompt = new Label(this, 0, 0, "", { bg: C.wood, border: C.woodDark, color: C.paperLight, font: "pxb" }).setDepth(99999).setVisible(false);
@@ -348,7 +348,8 @@ export class OfficeScene extends Phaser.Scene {
     const add = (sp: Spot, r: number) => sp.d < r && options.push(sp);
     add({ verb: "BOARD", label: s ? "[E] the board" : agents.state.link ? "[E] link your Claude Code" : "[E] replay a session", x: BOARD.x, y: 80, d: Math.hypot(px - BOARD.x, py - 84), act: () => openAgentBoard() }, 70);
     const lx = this.lead.x;
-    add({ verb: "WATCH", label: s ? "[E] watch the team lead" : "[E] replay a session", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => (s ? openAgent(s.id, "lead") : openAgentBoard()) }, 26);
+    // Ada the Team Lead: talk to her like any neighbor (her chat opens on your MoonPad).
+    add({ verb: "TALK", label: "[E] talk to Ada", x: lx, y: 64, d: Math.hypot(px - lx, py - 96), act: () => openMoonPad("manager") }, 26);
     for (const v of this.workers.values()) {
       if (v.leaving || !s) continue;
       add({ verb: "WATCH", label: `[E] watch ${clip(v.a.name, 24)}`, x: v.sprite.x, y: v.sprite.y + 4, d: Math.hypot(px - v.sprite.x, py - v.sprite.y - 6), act: () => openAgent(s.id, v.a.id) }, 30);
@@ -383,7 +384,7 @@ export class OfficeScene extends Phaser.Scene {
     }
     const live = agents.state.sessions.some((s) => s.source === "claude-code");
     const text = live
-      ? "Your Office: your Claude Code session is the Team Lead, and every subagent it sends out takes a desk. Walk up to anyone to watch their work live."
+      ? "Your Office: every subagent your Claude Code session sends out takes a desk. Walk up to anyone to watch their work live, or ask Ada the Team Lead how it's going."
       : agents.state.link
         ? "Your Office shows your Claude Code agents live. Press E at the board and LINK the Claude Code on your computer (one command), or REPLAY a recorded session."
         : "Your Office shows your coding agents live: run Claude Code and each subagent takes a desk here. Nothing running? Press E at the board for a replay.";

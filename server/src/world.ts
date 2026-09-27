@@ -99,7 +99,7 @@ function freshWorld(): World {
     lastChoreAt: {},
     progress,
     buildings,
-    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle() },
+    villagers: { jade_rabbit: idle(), postmaster: idle(), timekeeper: idle(), scholar: idle(), stargazer: idle(), manager: idle() },
     clods: {},
     approvals: {},
     lanterns: [],
@@ -118,6 +118,7 @@ function load(file = DATA_FILE): World {
       return freshWorld();
     }
     w.villagers.scholar ??= idle();
+    w.villagers.manager ??= idle();
     w.chores ??= {};
     w.phones ??= {};
     w.choreOptIn ??= {};

@@ -652,7 +652,7 @@ export function buildTextures(scene: Phaser.Scene) {
   registerSprite(scene, "scholar", scholar);
   registerSprite(scene, "rocket", rocket);
   // Talk-dialog portraits: portrait_<villager>_<0 rest | 1 talk | 2 blink>.
-  const portraitOf: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
+  const portraitOf: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager"];
   for (const v of portraitOf)
     for (const f of [0, 1, 2] as PortraitFrame[]) canvasTex(scene, `portrait_${v}_${f}`, PORTRAIT, PORTRAIT, (ctx) => drawPortrait(ctx, v, f));
   canvasTex(scene, "portrait_sky", PORTRAIT + 8, PORTRAIT + 8, (ctx) => drawPortraitSky(ctx, PORTRAIT + 8));

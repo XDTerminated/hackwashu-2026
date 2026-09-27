@@ -44,6 +44,8 @@ const VOICES: Record<VillagerId, VoiceDef> = {
   scholar: { id: "Xb7hH8MSUJpSbSDYk0k2", stability: 0.5, similarity: 0.8, style: 0.3, speed: 1 },
   // Sarah: soft and dreamy
   stargazer: { id: "EXAVITQu4vr4xnSDxMaL", stability: 0.35, similarity: 0.75, style: 0.4, speed: 0.9 },
+  // Laura: upbeat and quick
+  manager: { id: "FGY2WhTYpPnrIDTdsKH5", stability: 0.5, similarity: 0.8, style: 0.35, speed: 1.05 },
 };
 
 function voiceFor(v: VillagerId): VoiceDef {

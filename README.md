@@ -244,6 +244,13 @@ what they actually fetched for you (no extra API calls).
 | Building smokes | A tool failed ("the post office is closed") |
 | Lantern rises | Task done; the lantern ring at the plaza is your history |
 
+### Ada the Team Lead
+
+Build the Office and **Ada 💼** sets up there. She's a neighbor like the rest (hearts, texts on the
+MoonPad and your phone, "Ada: ..." to reach her), but she works in the Office instead of wandering the
+island. Walk up to her there and press E, or text her: she checks on your coding agents (what's
+running, who's stuck or waiting on you, what finished) and tells you how it's going.
+
 ## Talking to villagers
 
 Talking happens right where you stand, and there's one way in: walk up to a villager and press **E**.

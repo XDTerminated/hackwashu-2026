@@ -271,12 +271,58 @@ function stargazer(g: Grid, f: PortraitFrame) {
   } else g.dots(K, [22, 32], [23, 33], [24, 33], [25, 33], [26, 32]);
 }
 
+/** Ada the Team Lead: a sharp bob, a navy blazer over a white collar, a gold star pin. */
+function manager(g: Grid, f: PortraitFrame) {
+  const s = "#f0c09a", sd = "#d9a07a", sl = "#fbd8b8";
+  const h = "#3b2a2a", hd = "#2a1d1d", hl = "#5a4040";
+  const b = "#3f4f8a", bd = "#2c386a", bl = "#5a6cb0", w = "#fff6ee", wd = "#dcd3cc";
+  const p = "#f0a8bc", y = "#f5c542";
+  // the back of the bob, then shoulders
+  g.oval(24, 24, 15, 15, h, hd, hl);
+  g.oval(24, 52, 17, 13, b, bd, bl);
+  // white collar in a V, and the lapels
+  g.rect(20, 38, 8, 2, w);
+  g.rect(21, 40, 6, 2, w);
+  g.rect(22, 42, 4, 2, wd);
+  g.line(19, 39, 22, 47, bd);
+  g.line(29, 39, 26, 47, bd);
+  // gold star pin
+  g.dots(y, [14, 44], [13, 45], [14, 45], [15, 45], [14, 46]);
+  g.rect(21, 34, 6, 5, sd);
+  // face
+  g.oval(24, 25, 10.5, 12, s, sd, sl);
+  // bangs, cut straight, and the bob's sides to the jaw
+  g.oval(24, 15, 11.5, 5.5, h, hd, hl, 17);
+  g.rect(12, 16, 3, 16, h);
+  g.rect(33, 16, 3, 16, h);
+  g.rect(13, 32, 3, 2, hd);
+  g.rect(32, 32, 3, 2, hd);
+  // brows and eyes
+  g.rect(18, 21, 4, 1, hd);
+  g.rect(26, 21, 4, 1, hd);
+  if (f === BLINK) {
+    g.rect(18, 25, 3, 1, K);
+    g.rect(27, 25, 3, 1, K);
+  } else {
+    g.rect(19, 24, 2, 3, K);
+    g.rect(27, 24, 2, 3, K);
+    g.dots(SHINE, [19, 24], [27, 24]);
+  }
+  g.dots(p, [16, 29], [17, 29], [31, 29], [32, 29]);
+  g.dots(sd, [24, 28]);
+  if (f === TALK) {
+    g.rect(22, 31, 4, 3, K);
+    g.rect(23, 33, 2, 1, p);
+  } else g.dots(K, [22, 32], [23, 33], [24, 33], [25, 33], [26, 32]);
+}
+
 const DRAW: Record<VillagerId, (g: Grid, f: PortraitFrame) => void> = {
   jade_rabbit: jadeRabbit,
   postmaster,
   timekeeper,
   scholar,
   stargazer,
+  manager,
 };
 
 export function drawPortrait(ctx: Ctx, v: VillagerId, f: PortraitFrame) {

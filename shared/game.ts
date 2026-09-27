@@ -1,7 +1,10 @@
 // Contract shared by the agent server and the game client.
 // The server is the source of truth; the client renders and animates.
 
-export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer";
+export type VillagerId = "jade_rabbit" | "postmaster" | "timekeeper" | "scholar" | "stargazer" | "manager";
+
+/** Ada the Team Lead lives and works in the Office, not out on the island. */
+export const IN_OFFICE = (v: VillagerId) => v === "manager";
 
 export type BuildingId =
   | "player_house"
@@ -35,7 +38,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   clock_tower: { id: "clock_tower", name: "Clock Tower", price: 60, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
   library: { id: "library", name: "Library", price: 90, starter: false, resident: "scholar", unlocks: "Mabel the Scholar: reads your Canvas courses, assignments and announcements" },
   rocket_pad: { id: "rocket_pad", name: "Mail Rocket", price: 0, starter: false, unlocks: "an upgrade to Hoot's Post Office: he can send your emails to Earth (with your OK)" },
-  office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk" },
+  office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "for developers: watch your coding agents (Claude Code) work, each sub-agent at its own desk, with Ada the Team Lead keeping track" },
 };
 
 // ---------------------------------------------------------------- the office
@@ -143,6 +146,7 @@ export const VILLAGER_SHORT: Record<VillagerId, string> = {
   timekeeper: "Cog",
   scholar: "Mabel",
   stargazer: "Nova",
+  manager: "Ada",
 };
 
 /** ...their job in the colony... */
@@ -152,6 +156,7 @@ export const VILLAGER_ROLE: Record<VillagerId, string> = {
   timekeeper: "Timekeeper",
   scholar: "Scholar",
   stargazer: "Stargazer",
+  manager: "Team Lead",
 };
 
 /** ...and how they're shown: "Nova the Stargazer". */
@@ -165,6 +170,7 @@ export const VILLAGER_HOME: Record<VillagerId, BuildingId> = {
   timekeeper: "clock_tower",
   scholar: "library",
   stargazer: "observatory",
+  manager: "office",
 };
 
 /** Which real account each villager needs before they'll move in. */
@@ -175,6 +181,7 @@ export const VILLAGER_SERVICE: Record<VillagerId, Service | null> = {
   postmaster: "google",
   timekeeper: "google",
   scholar: "canvas",
+  manager: null,
 };
 export const SERVICE_NAMES: Record<Service, string> = { google: "Gmail + Google Calendar", canvas: "Canvas", web: "the web" };
 

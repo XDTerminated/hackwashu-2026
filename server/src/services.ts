@@ -67,6 +67,8 @@ const AGENTS: VillagerId[] = ["stargazer", "postmaster", "timekeeper", "scholar"
 /** Yutu and Nova were here first; everyone else moves in once their lot's checklist is done. */
 export function isResident(v: VillagerId): boolean {
   if (v === "jade_rabbit" || v === "stargazer") return true;
+  // Ada runs the Office: she's there as soon as it is
+  if (v === "manager") return !!world.buildings.office;
   return world.progress.movedIn.includes(v);
 }
 
@@ -77,7 +79,7 @@ export function needsConnect(v: VillagerId): Service | null {
 }
 
 export function residents(): VillagerId[] {
-  return (["jade_rabbit", ...AGENTS] as VillagerId[]).filter(isResident);
+  return (["jade_rabbit", ...AGENTS, "manager"] as VillagerId[]).filter(isResident);
 }
 
 /** The Rabbit starts as a guide and gains her coordinating powers with two agent neighbors. */

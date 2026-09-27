@@ -18,8 +18,8 @@ import {
 } from "../cutart";
 import { Cutscene, Fam, VOICE } from "./Cutscene";
 
-const SPRITE: Record<VillagerId, string> = { jade_rabbit: "rabbit", postmaster: "postmaster", timekeeper: "timekeeper", stargazer: "stargazer", scholar: "scholar" };
-const PITCH: Record<VillagerId, number> = { jade_rabbit: 980, postmaster: 360, timekeeper: 620, stargazer: 820, scholar: 700 };
+const SPRITE: Record<VillagerId, string> = { jade_rabbit: "rabbit", postmaster: "postmaster", timekeeper: "timekeeper", stargazer: "stargazer", scholar: "scholar", manager: "office_lead" };
+const PITCH: Record<VillagerId, number> = { jade_rabbit: 980, postmaster: 360, timekeeper: 620, stargazer: 820, scholar: 700, manager: 760 };
 
 /**
  * The finale: a night on the Moon with every neighbor home, and

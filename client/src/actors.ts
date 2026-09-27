@@ -13,6 +13,7 @@ const TEX: Record<VillagerId, string> = {
   timekeeper: "timekeeper_0",
   scholar: "scholar_0",
   stargazer: "stargazer_0",
+  manager: "office_lead",
 };
 
 type Alert = "none" | "bang" | "smoke";

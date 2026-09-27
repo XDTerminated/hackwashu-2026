@@ -19,13 +19,14 @@ type Msg = { from: "you" | "them" | "sys"; text: string; tag?: string };
 type View = VillagerId | "phones" | "connect" | null;
 type TestResult = { name: string; ok: boolean | null; detail: string };
 
-const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "timekeeper", "scholar"];
+const ORDER: VillagerId[] = ["jade_rabbit", "stargazer", "postmaster", "timekeeper", "scholar", "manager"];
 const AVATAR: Record<VillagerId, string> = {
   jade_rabbit: "rabbit_0",
   stargazer: "stargazer_0",
   postmaster: "postmaster_0",
   timekeeper: "timekeeper_0",
   scholar: "scholar_0",
+  manager: "office_lead",
 };
 const TAGS: Partial<Record<TaskSource, string>> = { game: "in person", phone: "from your phone" };
 const SAVE_KEY = "moonpad-v1";
@@ -287,7 +288,9 @@ class MoonPadView {
       const rowH = 27;
       const hit = this.scene.add.zone(s.x + 2, y, s.w - 4, rowH - 1).setOrigin(0);
       const bg = this.scene.make.graphics({}, false);
-      const drawBg = (hover: boolean) => bg.clear().fillStyle(hover ? 0xf4d9a6 : 0xfdf3dc, 1).fillRect(s.x + 2, y, s.w - 4, rowH - 1).fillStyle(0xe6d3ad, 1).fillRect(s.x + 4, y + rowH - 1, s.w - 8, 1);
+      // (this row's own top: `y` keeps moving down the list after this)
+      const top = y;
+      const drawBg = (hover: boolean) => bg.clear().fillStyle(hover ? 0xf0d49c : 0xfdf3dc, 1).fillRect(s.x + 2, top, s.w - 4, rowH - 1).fillStyle(0xe6d3ad, 1).fillRect(s.x + 4, top + rowH - 1, s.w - 8, 1);
       drawBg(false);
       const avatar = this.scene.make.image({ x: s.x + 14, y: y + 24, key: AVATAR[v] }, false).setOrigin(0.5, 1);
       if (!here) avatar.setTint(0x9a93a8).setAlpha(0.6);
