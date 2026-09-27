@@ -199,6 +199,22 @@ export function initMoonPad() {
 
 // ---------------------------------------------------------------- view
 
+/** How a phone number reads as you type it: "+1 (314) 555-0123" (other countries: "+44 2079460000"). */
+function formatPhone(raw: string): string {
+  const t = raw.trimStart();
+  if (!t.startsWith("+")) return raw;
+  const d = t.replace(/\D/g, "");
+  if (!d.startsWith("1")) return `+${d}`;
+  const n = d.slice(1);
+  let out = "+1 ";
+  if (n.length) out += `(${n.slice(0, 3)}`;
+  if (n.length >= 3) out += ")";
+  if (n.length > 3) out += ` ${n.slice(3, 6)}`;
+  if (n.length > 6) out += `-${n.slice(6, 10)}`;
+  if (n.length > 10) out += n.slice(10);
+  return out;
+}
+
 class MoonPadView {
   private root: Phaser.GameObjects.Container;
   private body: Phaser.GameObjects.Container;
@@ -207,10 +223,14 @@ class MoonPadView {
   private screen = { x: 0, y: 0, w: 0, h: 0 };
   private scroll = 0;
   private contentH = 0;
+  /** The last number sent to link (back in the box if it doesn't take). */
+  private lastPhone = "";
   /** The scrolling part of the screen (a thread's messages, or the connect list). */
   private scrollArea = { y: 0, h: 0 };
   /** Buttons that scroll: off-screen ones can't be clicked through the bars. */
   private scrollButtons: Button[] = [];
+  /** Rows in a scrolling list that take clicks (only while they're in view). */
+  private scrollZones: { z: Phaser.GameObjects.Zone; h: number }[] = [];
   private scrollbar: Phaser.GameObjects.Graphics | null = null;
   private inputT: Phaser.GameObjects.BitmapText | null = null;
   private cursor: Phaser.GameObjects.Rectangle | null = null;
@@ -232,7 +252,8 @@ class MoonPadView {
     this.body = scene.make.container({}, false);
     this.maskG = scene.make.graphics({}, false);
     scene.input.on("wheel", (_p: unknown, _o: unknown, _dx: number, dy: number) => {
-      if (!this.visible || !this.showing || this.showing === "phones") return;
+      // (the chat list scrolls too, once everyone's moved in)
+      if (!this.visible || this.showing === "phones") return;
       this.scroll += dy > 0 ? 11 : -11;
       this.applyScroll();
     });
@@ -260,11 +281,11 @@ class MoonPadView {
   showThread(v: View) {
     this.showing = v;
     // (a chat opens at its latest message; the connect list at the top)
-    this.scroll = v === "connect" ? 0 : 1e9;
+    this.scroll = v === "connect" || v === null ? 0 : 1e9;
     if (v !== "connect") this.welcome = false;
     if (v === "connect") releaseInput(this.owner);
     else if (v === "phones") {
-      if (this.phoneStep === "number") claimInput(this.owner);
+      if (this.phoneStep === "number") this.claimPhone();
       else releaseInput(this.owner);
     }
     else if (v) {
@@ -292,6 +313,7 @@ class MoonPadView {
     this.root.removeAll(true);
     this.body = this.scene.make.container({}, false);
     this.scrollButtons = [];
+    this.scrollZones = [];
     this.scrollbar = null;
     this.inputT = null;
     this.cursor = null;
@@ -344,6 +366,13 @@ class MoonPadView {
     else this.renderContacts();
   }
 
+  /** The number box: "+1 " to start with (US), ready to type the rest. */
+  private claimPhone(value = "+1 ") {
+    claimInput(this.owner);
+    input.value = value;
+    this.renderInput();
+  }
+
   /** Friendship, Stardew-style: a row of hearts, filled as you get closer. */
   private hearts(v: VillagerId, x: number, y: number, full: number, empty: number) {
     const n = heartsFor((store.friendship[v] ?? 0) + happinessFor(v, store.decos).score);
@@ -354,7 +383,13 @@ class MoonPadView {
 
   private renderContacts() {
     const s = this.screen;
-    let y = s.y + 16;
+    // (the list scrolls between the title bar and the tabs, like the connections list)
+    const area = { y: s.y + 14, h: s.h - 35 };
+    this.scrollArea = area;
+    this.maskG.fillRect(s.x, area.y, s.w, area.h);
+    this.body.setMask(this.maskG.createGeometryMask());
+    this.root.addAt(this.body, 1);
+    let y = 2;
     const rows = ORDER.filter((v) => store.residents.includes(v) || store.buildings[VILLAGER_HOME[v]] || store.progress.revealed.includes(VILLAGER_HOME[v]));
     for (const v of rows) {
       const here = store.residents.includes(v);
@@ -371,9 +406,9 @@ class MoonPadView {
       const last = (threads.get(v) ?? []).at(-1);
       const previewText = !here ? "no signal - they haven't moved in" : waiting.has(v) ? "typing..." : last ? `${last.from === "you" ? "You: " : ""}${last.text}` : "Say hi!";
       const preview = ptext(this.scene, s.x + 28, y + 15, fit(this.scene, previewText, s.w - 28 - 22), here ? C.inkSoft : 0xb09a78);
-      this.root.add([bg, avatar, name, preview]);
-      if (here) this.root.add(this.hearts(v, name.x + measure(name).w + 5, y + 4, 0xd9607e, 0xdcc9a3));
-      this.root.add(hit);
+      this.body.add([bg, avatar, name, preview]);
+      if (here) this.body.add(this.hearts(v, name.x + measure(name).w + 5, y + 4, 0xd9607e, 0xdcc9a3));
+      this.body.add(hit);
       const n = unread.get(v) ?? 0;
       if (n) {
         const badge = this.scene.make.graphics({}, false);
@@ -381,10 +416,11 @@ class MoonPadView {
         const bx = s.x + s.w - 16;
         badge.fillStyle(0x3b2a3a, 1).fillRect(bx, y + 7, 11, 11).fillStyle(0xd0402f, 1).fillRect(bx + 1, y + 8, 9, 9);
         bt.setX(bx + Math.round((11 - measure(bt).w) / 2));
-        this.root.add([badge, bt]);
+        this.body.add([badge, bt]);
       }
       if (here) {
         hit.setInteractive({ useHandCursor: true });
+        this.scrollZones.push({ z: hit, h: rowH });
         hit.on("pointerover", () => drawBg(true));
         hit.on("pointerout", () => drawBg(false));
         hit.on("pointerdown", () => {
@@ -396,8 +432,13 @@ class MoonPadView {
     }
     if (rows.length <= 2) {
       const tip = ptext(this.scene, s.x + 6, y + 6, "More moonfolk will show up here as they move in.", C.inkSoft).setMaxWidth(s.w - 12);
-      this.root.add(tip);
+      this.body.add(tip);
+      y += 6 + measure(tip).h;
     }
+    this.contentH = y + 4;
+    this.scrollbar = this.scene.make.graphics({}, false);
+    this.root.add(this.scrollbar);
+    this.applyScroll();
 
     this.tabBar("chats");
   }
@@ -598,7 +639,7 @@ class MoonPadView {
       redo.on("pointerdown", () => {
         this.phoneStep = "number";
         this.phoneStatus = "";
-        claimInput(this.owner);
+        this.claimPhone();
         this.render();
       });
       this.root.add(redo);
@@ -616,7 +657,7 @@ class MoonPadView {
       y += 18;
     }
     y += 4;
-    line("Type your number below. Then you'll text a code to the colony from that phone to confirm it's yours.", C.ink);
+    line("Type your number below: spaces, dashes and brackets are optional. Not in the US? Change the +1 to your country's code. Then you'll text a code from that phone to show it's yours.", C.ink);
     if (this.phoneStatus) line(this.phoneStatus, this.phoneStatus.startsWith("Linked") ? C.green : C.coral);
 
     const fy = s.y + s.h - 18;
@@ -635,7 +676,17 @@ class MoonPadView {
   private submitPhone() {
     if (this.phoneStep !== "number") return;
     const text = input.value.trim();
-    if (!text) return;
+    const digits = text.replace(/\D/g, "");
+    if (!digits || text === "+1") return;
+    // (a friendly check first; the server reads any format and has the last word)
+    const us = text.startsWith("+1") || (!text.startsWith("+") && digits.length === 10);
+    const short = us ? digits.replace(/^1(?=\d{10})/, "").length < 10 : digits.length < 8;
+    if (short) {
+      this.phoneStatus = us ? "That's a bit short: a US number is 10 digits after the +1." : "That's a bit short for a phone number.";
+      sfx.deny();
+      return void this.render();
+    }
+    this.lastPhone = text;
     input.value = "";
     net.send({ type: "phone_link_start", phone: text });
     this.phoneStatus = "Registering with Photon...";
@@ -658,7 +709,8 @@ class MoonPadView {
       this.phoneStatus = msg.text;
     }
     if (this.showing === "phones") {
-      if (this.phoneStep === "number") claimInput(this.owner);
+      // (a number that didn't take comes back to fix; after linking, a fresh +1)
+      if (this.phoneStep === "number") this.claimPhone(msg.state === "linked" ? "+1 " : this.lastPhone || "+1 ");
       this.render();
     }
   }
@@ -715,6 +767,10 @@ class MoonPadView {
       const top = b.y - this.scroll;
       if (b.input) b.input.enabled = top >= 0 && top + 15 <= h;
     }
+    for (const { z, h: zh } of this.scrollZones) {
+      const top = z.y - this.scroll;
+      if (z.input) z.input.enabled = top >= -zh / 2 && top + zh / 2 <= h;
+    }
     // A thin scrollbar when there's more than fits.
     const bar = this.scrollbar?.clear();
     if (bar && max > 0) {
@@ -736,7 +792,7 @@ class MoonPadView {
       this.cursor.setPosition(this.inputT.x, this.inputT.y - 1);
       return;
     }
-    let s = sanitize(raw);
+    let s = sanitize(phones ? formatPhone(raw) : raw);
     this.inputT.setTint(C.ink).setText(s);
     while (s.length > 1 && measure(this.inputT).w > maxW) this.inputT.setText((s = s.slice(1)));
     this.cursor.setPosition(this.inputT.x + measure(this.inputT).w + 1, this.inputT.y - 1);
