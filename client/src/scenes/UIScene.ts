@@ -808,7 +808,7 @@ export class UIScene extends Phaser.Scene {
     // (online, with a Google account: friends; on a friend's island, only what's yours to use there)
     const social = net.auth.state === "in" && !net.auth.guest;
     const guest = visiting();
-    const friends: Spec[] = social ? [["icon_friends_0", "friends", "Friends - visit, requests, who can do what (T to chat)", later(click(() => this.friendsPanel.isOpen ? this.friendsPanel.close() : this.friendsPanel.open(guest ? { kind: "travel" } : { kind: "board" })))]] : [];
+    const friends: Spec[] = social ? [["icon_friends_0", "friends", "Friends - visit, requests, who can do what (T to chat)", click(() => (this.friendsPanel.isOpen ? this.friendsPanel.close() : this.friendsPanel.open(guest ? { kind: "travel" } : { kind: "board" })))]] : [];
     const groups: Spec[][] = [
       [
         ...(guest ? [] : ([["icon_moonpad_0", "phone", "MoonPad - texts and connections", later(click(() => (isMoonPadOpen() ? closeMoonPad() : openMoonPad())))]] as Spec[])),

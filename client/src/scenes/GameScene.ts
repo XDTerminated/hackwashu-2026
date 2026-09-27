@@ -1864,7 +1864,7 @@ export class GameScene extends Phaser.Scene {
     for (const t of this.town.targets(this.player.x, this.player.y)) add(t, 40);
     // The rocket: off to a friend's island (online), or home again.
     if (net.auth.state === "in" && !net.auth.guest) {
-      add({ verb: "ROCKET", label: guest ? "[E] the rocket: fly home" : "[E] the rocket: visit a friend", x: LANDING.x, y: LANDING.y - 46, d: dist(LANDING.x, LANDING.y - 10), act: () => this.game.events.emit("friends-panel", { kind: "travel" }) }, 34);
+      add({ verb: "ROCKET", label: guest ? "[E] the rocket: fly home" : "[E] the rocket: visit a friend", x: LANDING.x, y: LANDING.y - 46, d: dist(LANDING.x, LANDING.y - 10), act: () => this.game.events.emit("friends-panel", { kind: "travel" }), tut: true }, 34);
     }
     // Visiting: leave your friend something on their doorstep.
     if (guest) {
