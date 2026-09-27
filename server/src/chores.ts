@@ -73,14 +73,14 @@ export function devSpawn(kind: "meteor" | "dust") {
   for (let i = 0; i < 3; i++) spawnMeteor(i * 2500);
 }
 
-export function clearChore(id: string): { ok: true; reward: number } | { ok: false; reason: string } {
+export function clearChore(id: string): { ok: true; reward: number; kind: "dust" | "meteor" } | { ok: false; reason: string } {
   const c = world.chores[id];
   if (!c) return { ok: false, reason: "already gone" };
   if (c.landsAt && Date.now() < c.landsAt) return { ok: false, reason: "it hasn't landed yet!" };
   delete world.chores[id];
   world.coins += c.reward;
   savePersist();
-  return { ok: true, reward: c.reward };
+  return { ok: true, reward: c.reward, kind: c.kind };
 }
 
 // ---------------------------------------------------------------- villager chores

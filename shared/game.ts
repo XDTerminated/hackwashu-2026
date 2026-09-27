@@ -11,7 +11,8 @@ export type BuildingId =
   | "clock_tower"
   | "rocket_pad"
   | "library"
-  | "observatory";
+  | "observatory"
+  | "office";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -27,22 +28,111 @@ export interface BuildingDef {
 /** Buildings the quest chain reveals are free — you can never be too broke to progress. */
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   player_house: { id: "player_house", name: "Your House", price: 0, starter: true, unlocks: "where villagers bring letters that need your OK" },
-  rabbit_burrow: { id: "rabbit_burrow", name: "Rabbit's Burrow", price: 0, starter: true, resident: "jade_rabbit", unlocks: "Jade Rabbit: your guide, and later the one who coordinates everyone" },
-  observatory: { id: "observatory", name: "Observatory", price: 0, starter: true, resident: "stargazer", unlocks: "Stargazer: researches anything on the web" },
-  post_office: { id: "post_office", name: "Post Office", price: 0, starter: false, resident: "postmaster", unlocks: "Postmaster: reads your Gmail and drafts replies" },
+  rabbit_burrow: { id: "rabbit_burrow", name: "Rabbit's Burrow", price: 0, starter: true, resident: "jade_rabbit", unlocks: "Yutu the Jade Rabbit: your guide, and later the one who coordinates everyone" },
+  observatory: { id: "observatory", name: "Observatory", price: 0, starter: true, resident: "stargazer", unlocks: "Nova the Stargazer: researches anything on the web" },
+  post_office: { id: "post_office", name: "Post Office", price: 0, starter: false, resident: "postmaster", unlocks: "Hoot the Postmaster: reads your Gmail and drafts replies" },
   mailbox: { id: "mailbox", name: "Mailbox", price: 0, starter: false, unlocks: "read & summarize email (comes with the Post Office)" },
-  clock_tower: { id: "clock_tower", name: "Clock Tower", price: 0, starter: false, resident: "timekeeper", unlocks: "Timekeeper: checks and books your Google Calendar" },
-  library: { id: "library", name: "Library", price: 0, starter: false, resident: "scholar", unlocks: "Scholar: reads your Canvas courses, assignments and announcements" },
-  rocket_pad: { id: "rocket_pad", name: "Rocket Pad", price: 0, starter: false, unlocks: "lets the Postmaster send mail to Earth (with your OK)" },
+  clock_tower: { id: "clock_tower", name: "Clock Tower", price: 0, starter: false, resident: "timekeeper", unlocks: "Cog the Timekeeper: checks and books your Google Calendar" },
+  library: { id: "library", name: "Library", price: 0, starter: false, resident: "scholar", unlocks: "Mabel the Scholar: reads your Canvas courses, assignments and announcements" },
+  rocket_pad: { id: "rocket_pad", name: "Rocket Pad", price: 0, starter: false, unlocks: "lets Hoot the Postmaster send mail to Earth (with your OK)" },
+  office: { id: "office", name: "Office", price: 120, starter: false, unlocks: "a team of AI workers for developers: brief a project, watch each sub-agent work at a desk (Claude, GPT or Groq)" },
 };
 
-export const VILLAGER_NAMES: Record<VillagerId, string> = {
+// ---------------------------------------------------------------- the office
+// A team of LLM sub-agents. The player is the project manager: they brief the
+// team lead (the model), which spins up workers with a spawn_worker tool. Each
+// worker is an NPC at a desk, working live; the lead combines their results.
+
+// ---------------------------------------------------------------- colony requests
+// Three small goals a day from the villagers, for coins: something to do
+// every time you open the game.
+
+export type RequestKind = "sweep" | "meteor" | "pop" | "rock" | "decorate" | "shard" | "text" | "visit";
+
+export interface ColonyRequest {
+  id: string;
+  kind: RequestKind;
+  villager: VillagerId;
+  text: string;
+  goal: number;
+  count: number;
+  reward: number;
+  done: boolean;
+}
+
+export type OfficeProvider = "claude" | "openai" | "groq" | "gemini" | "openrouter";
+
+export interface OfficeWorker {
+  id: string;
+  name: string;
+  role: string;
+  task: string;
+  /** Which of the worker sprites. */
+  look: number;
+  desk: number;
+  status: "working" | "done" | "failed";
+  /** What they're doing right now (shown over their head). */
+  step: string;
+  steps: { at: number; text: string }[];
+  result?: string;
+  startedAt: number;
+  doneAt?: number;
+}
+
+export interface OfficeProject {
+  id: string;
+  brief: string;
+  provider: OfficeProvider;
+  model: string;
+  status: "planning" | "working" | "wrapping" | "done" | "failed";
+  /** The team lead's latest line (planning / wrapping up). */
+  lead: string;
+  result?: string;
+  error?: string;
+  workers: OfficeWorker[];
+  startedAt: number;
+  doneAt?: number;
+}
+
+export interface OfficeState {
+  providers: {
+    id: OfficeProvider;
+    name: string;
+    model: string;
+    available: boolean;
+    /** Who connected it: a player in-game, or the server's .env. */
+    source: "you" | "server" | null;
+    /** A hint of which key ("••••1a2b"); the key itself never leaves the server. */
+    masked: string | null;
+    /** Models to pick from (OpenRouter). */
+    models?: string[];
+  }[];
+  project: OfficeProject | null;
+  history: { id: string; brief: string; provider: OfficeProvider; doneAt: number }[];
+}
+
+/** Each villager's own name... */
+export const VILLAGER_SHORT: Record<VillagerId, string> = {
+  jade_rabbit: "Yutu",
+  postmaster: "Hoot",
+  timekeeper: "Cog",
+  scholar: "Mabel",
+  stargazer: "Nova",
+};
+
+/** ...their job in the colony... */
+export const VILLAGER_ROLE: Record<VillagerId, string> = {
   jade_rabbit: "Jade Rabbit",
   postmaster: "Postmaster",
   timekeeper: "Timekeeper",
   scholar: "Scholar",
   stargazer: "Stargazer",
 };
+
+/** ...and how they're shown: "Nova the Stargazer". */
+export const VILLAGER_NAMES = Object.fromEntries(
+  (Object.keys(VILLAGER_SHORT) as VillagerId[]).map((v) => [v, `${VILLAGER_SHORT[v]} the ${VILLAGER_ROLE[v]}`]),
+) as Record<VillagerId, string>;
 
 export const VILLAGER_HOME: Record<VillagerId, BuildingId> = {
   jade_rabbit: "rabbit_burrow",
@@ -82,7 +172,7 @@ export interface QuestDef {
 export const QUESTS: QuestDef[] = [
   {
     id: "stargaze",
-    title: "Ask the Stargazer 3 questions",
+    title: "Ask Nova the Stargazer 3 questions",
     hint: "Walk to the Observatory (south) and press E. Ask anything - she searches Earth's web.",
     villager: "stargazer",
     goal: 3,
@@ -93,8 +183,8 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "inbox",
-    title: "Have the Postmaster check your mail",
-    hint: "Talk to the Postmaster and ask what's in your inbox.",
+    title: "Have Hoot check your mail",
+    hint: "Talk to Hoot the Postmaster and ask what's in your inbox.",
     villager: "postmaster",
     goal: 1,
     counts: { tool: "list_inbox" },
@@ -104,19 +194,19 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "week",
-    title: "Ask the Timekeeper about your week",
-    hint: "Talk to the Timekeeper and ask what your week looks like.",
+    title: "Ask Cog about your week",
+    hint: "Talk to Cog the Timekeeper and ask what your week looks like.",
     villager: "timekeeper",
     goal: 1,
     counts: { tool: "list_events" },
     reveals: ["library"],
-    story: "Tick... your week is packed with classes. A Library would bring the Scholar - they know Canvas inside out.",
+    story: "Tick... your week is packed with classes. A Library would bring Mabel the Scholar - she knows Canvas inside out.",
     bonus: 25,
   },
   {
     id: "team",
-    title: "Give the Rabbit a job for two neighbors",
-    hint: "Now the Rabbit can coordinate. Try: \"Reply to my professor and put it on my calendar.\"",
+    title: "Give Yutu a job for two neighbors",
+    hint: "Now Yutu can coordinate. Try: \"Reply to my professor and put it on my calendar.\"",
     villager: "jade_rabbit",
     goal: 1,
     counts: { teamTask: true },
@@ -235,6 +325,18 @@ export interface Snapshot {
   friendship: Partial<Record<VillagerId, number>>;
   /** Buildings the player has moved off their starting spot. */
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
+<<<<<<< Updated upstream
+=======
+  /** Playing on the dev showcase save (everything unlocked) instead of the real one. */
+  devMode: boolean;
+  /** Rocks the player has paid to clear ("x,y"). */
+  clearedRocks: string[];
+  /** Moon shards picked up ("x,y"). */
+  shards: string[];
+  /** Today's colony requests. */
+  requests: ColonyRequest[];
+  office: OfficeState;
+>>>>>>> Stashed changes
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -263,6 +365,15 @@ export type GameEvent =
   | { type: "building_built"; building: BuildingId; coins: number }
   | { type: "deco_placed"; deco: Deco; coins: number }
   | { type: "deco_moved"; id: string; x: number; y: number }
+<<<<<<< Updated upstream
+=======
+  | { type: "deco_toggled"; id: string; off: boolean }
+  | { type: "lantern_moved"; id: string; x: number; y: number }
+  | { type: "rock_cleared"; x: number; y: number; cost: number; coins: number; loot?: { coins: number; what: string } }
+  | { type: "shard_found"; x: number; y: number; found: number; total: number; reward: number; coins: number; bonus?: number }
+  /** The day's colony requests changed (progress, or one was just completed). */
+  | { type: "requests"; requests: ColonyRequest[]; completed?: ColonyRequest; coins: number }
+>>>>>>> Stashed changes
   | { type: "building_moved"; building: BuildingId; x: number; y: number }
   | { type: "deco_sold"; id: string; refund: number; coins: number }
   | { type: "phone"; direction: "in" | "out"; text: string }
@@ -274,7 +385,7 @@ export type GameEvent =
   | { type: "villager_arrived"; villager: VillagerId; residents: VillagerId[]; rabbitTeamwork: boolean }
   | { type: "plot_revealed"; building: BuildingId }
   | { type: "chore_spawned"; chore: Chore }
-  | { type: "chore_cleared"; id: string; reward: number; coins: number }
+  | { type: "chore_cleared"; id: string; kind: "dust" | "meteor"; reward: number; coins: number }
   | { type: "chore_gone"; id: string }
   | { type: "chore_optin"; optIn: Partial<Record<VillagerId, boolean>> };
 
@@ -291,6 +402,21 @@ export type ClientMessage =
   | { type: "move_deco"; id: string; x: number; y: number }
   | { type: "move_building"; building: BuildingId; x: number; y: number }
   | { type: "sell_deco"; id: string }
+<<<<<<< Updated upstream
+=======
+  | { type: "toggle_deco"; id: string }
+  /** Switch to (or back from) the dev showcase save. */
+  | { type: "dev_mode"; on: boolean }
+  | { type: "move_lantern"; id: string; x: number; y: number }
+  | { type: "clear_rock"; x: number; y: number }
+  | { type: "collect_shard"; x: number; y: number }
+  | { type: "office_start"; brief: string; provider: OfficeProvider }
+  | { type: "office_ask"; workerId: string; question: string }
+  | { type: "office_clear" }
+  | { type: "office_key"; provider: OfficeProvider; key: string }
+  | { type: "office_disconnect"; provider: OfficeProvider }
+  | { type: "office_model"; provider: OfficeProvider; model: string }
+>>>>>>> Stashed changes
   | { type: "connect_canvas"; token: string; baseUrl?: string }
   | { type: "use_sandbox"; service: Service }
   | { type: "clear_chore"; id: string }
@@ -303,6 +429,9 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: Snapshot }
+  /** The office changed (live: a worker's step, a new worker, the result). */
+  | { type: "office"; state: OfficeState }
+  | { type: "office_answer"; workerId: string; text: string }
   | { type: "event"; event: SeqEvent }
   | { type: "notice"; text: string }
   /**

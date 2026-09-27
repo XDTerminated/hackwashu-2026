@@ -2,7 +2,7 @@
 // the world scene animates the same events at a watchable pace on its own.
 
 import { applyLayout } from "../../shared/layout";
-import { VILLAGER_NAMES, type Approval, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
+import { VILLAGER_NAMES, type Approval, type OfficeState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
 
 export const store: Snapshot & { connected: boolean } = {
   coins: 0,
@@ -22,6 +22,14 @@ export const store: Snapshot & { connected: boolean } = {
   choreOptIn: {},
   friendship: {},
   layout: {},
+<<<<<<< Updated upstream
+=======
+  devMode: false,
+  clearedRocks: [],
+  shards: [],
+  requests: [],
+  office: { providers: [], project: null, history: [] },
+>>>>>>> Stashed changes
   connected: false,
 };
 
@@ -40,6 +48,11 @@ function notify() {
 export function applySnapshot(s: Snapshot) {
   Object.assign(store, s);
   applyLayout(store.layout ?? {});
+  notify();
+}
+
+export function setOffice(state: OfficeState) {
+  store.office = state;
   notify();
 }
 
@@ -127,6 +140,31 @@ export function applyEvent(e: SeqEvent) {
       store.decos.push(e.deco);
       store.coins = e.coins;
       break;
+<<<<<<< Updated upstream
+=======
+    case "rock_cleared":
+      store.clearedRocks.push(`${e.x},${e.y}`);
+      store.coins = e.coins;
+      break;
+    case "shard_found":
+      store.shards.push(`${e.x},${e.y}`);
+      store.coins = e.coins;
+      break;
+    case "requests":
+      store.requests = e.requests;
+      store.coins = e.coins;
+      break;
+    case "lantern_moved": {
+      const l = store.lanterns.find((l) => l.id === e.id);
+      if (l) Object.assign(l, { x: e.x, y: e.y });
+      break;
+    }
+    case "deco_toggled": {
+      const d = store.decos.find((d) => d.id === e.id);
+      if (d) d.off = e.off;
+      break;
+    }
+>>>>>>> Stashed changes
     case "deco_moved": {
       const d = store.decos.find((d) => d.id === e.id);
       if (d) Object.assign(d, { x: e.x, y: e.y });

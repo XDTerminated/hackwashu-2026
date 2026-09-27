@@ -27,21 +27,50 @@ rehearsing the demo or summoning a meteor shower on cue.
 
 ## Unlocking the colony
 
-You start with the **Jade Rabbit** (your guide) and the **Stargazer** (live web research).
+The villagers: **Yutu the Jade Rabbit** (your guide), **Nova the Stargazer** (web research), **Hoot the Postmaster** (Gmail),
+**Cog the Timekeeper** (Calendar) and **Mabel the Scholar** (Canvas). Text them by name or role ("Nova: ..." or "Stargazer: ...").
+
+You start with Yutu and Nova.
 Each villager's real work uncovers the next one. Coins come from popping finished work ("baby clods").
 
 | Quest | Unlocks | Moves in when you connect |
 |---|---|---|
-| Ask the Stargazer 3 questions | Post Office plot | **Google**: Postmaster reads Gmail, drafts replies |
-| Have the Postmaster check your mail | Clock Tower + Rocket Pad plots | same Google account: Timekeeper reads and books your Calendar |
-| Ask the Timekeeper about your week | Library plot | **Canvas** token: Scholar reads courses, due dates, announcements |
-| Give the Rabbit a job for two neighbors | the finale | (Rabbit starts coordinating once two neighbors live here) |
+| Ask Nova the Stargazer 3 questions | Post Office plot | **Google**: Hoot reads Gmail, drafts replies |
+| Have Hoot check your mail | Clock Tower + Rocket Pad plots | same Google account: Cog reads and books your Calendar |
+| Ask Cog about your week | Library plot | **Canvas** token: Mabel reads courses, due dates, announcements |
+| Give Yutu a job for two neighbors | the finale | (Yutu starts coordinating once two neighbors live here) |
 
 Build a plot, then press **E** at the new house to "call" its villager: **CONNECT GOOGLE** opens
 Google sign-in; for Canvas, paste an access token; or choose **USE SAMPLE DATA** for now.
 
 Buildings the quests reveal are free, so you can never get stuck. Construction takes a few seconds:
 scaffolding goes up, baby clods hammer away, and a path is laid once it's done.
+
+## The Office (for developers)
+
+The other buildings are everyday agents. The **Office** (a 120¢ plot northeast of the plaza, open from
+the start) is for developers: walk in, and you're the **project manager** of a team of LLM sub-agents.
+
+- **Connect your AI** (project board → CONNECT AI): one-click **OpenRouter sign-in** (log in, and the Office
+  can use Claude, GPT, Gemini or free models; pick one with the MODEL button), or **paste a key** for Groq or
+  Gemini (both free) or OpenAI / Anthropic. Keys are checked with a tiny request, stored owner-only in
+  `server/data/ai-keys.json`, never sent back to the game (only "••••1a2b"), and can be disconnected.
+  Server-wide keys in `.env` work too. ChatGPT Plus / Claude Pro subscriptions don't include API access.
+- At the **project board**, pick which connected AI the team uses and write a brief.
+- The **team lead** (the model) splits it up and spins up **workers** with a `spawn_worker` tool. Each
+  sub-agent is an office worker: they walk in from the elevator, sit at a desk and work live. Their
+  current step (thinking, searching the web, running code, writing) floats over their monitor, and
+  the board shows TO DO / DOING / DONE.
+- Walk up to a worker to **check in**: their task, what they've done, and ask them how it's going.
+- When everyone's done, the lead combines their work into one deliverable on the board, and
+  **OPEN REPORT** shows it in a browser tab (reports are saved in `server/data/office/`).
+- Workers can do what the model can: Claude workers have web search and code execution, Groq workers
+  web search, GPT workers reasoning and writing.
+
+## Clearing rocks
+
+Rocks outside your buildings can be cleared: click one (or stand by it and press the action button)
+to haul it away for good. Pebbles 10¢, boulders 25¢, spires 30¢, crystal outcrops 40¢, stone arches 60¢.
 
 ## Earning coins
 

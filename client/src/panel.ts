@@ -3,9 +3,16 @@
 // pixel grid; a hidden <input> handles typing, paste and IME.
 
 import Phaser from "phaser";
+<<<<<<< Updated upstream
 import type { Approval, VillagerId } from "../../shared/game";
 import { CHORE_EVERY_MIN, VILLAGER_NAMES, VILLAGER_SERVICE } from "../../shared/game";
 import { sanitize } from "./font";
+=======
+import type { Approval, OfficeProvider, OfficeWorker, VillagerId } from "../../shared/game";
+import { CHORE_EVERY_MIN, MAX_HEARTS, VILLAGER_NAMES, VILLAGER_SERVICE, heartsFor } from "../../shared/game";
+import { FONT_METRICS, sanitize } from "./font";
+import { listen, micSupported, type Listening } from "./mic";
+>>>>>>> Stashed changes
 import * as net from "./net";
 import { sfx } from "./sfx";
 import { store } from "./store";
@@ -294,7 +301,7 @@ export function initPanel() {
       return;
     }
     if (e.type === "villager_arrived" && dialog?.visible && callingFor === e.villager) {
-      dialog.add("sys", `Signal received! The ${VILLAGER_NAMES[e.villager]} is landing.`);
+      dialog.add("sys", `Signal received! ${VILLAGER_NAMES[e.villager]} is landing.`);
       setTimeout(closePanel, 1600);
       return;
     }
@@ -325,6 +332,7 @@ export function isPanelOpen() {
 function choreToggle(v: VillagerId) {
   if (!dialog || !CHORE_WHAT[v]) return;
   const on = !!store.choreOptIn[v];
+<<<<<<< Updated upstream
   dialog.setButtons([
     {
       label: on ? "[x] CHORES" : "[ ] CHORES",
@@ -332,6 +340,14 @@ function choreToggle(v: VillagerId) {
       onClick: () => net.send({ type: "set_chore_optin", villager: v, enabled: !store.choreOptIn[v] }),
     },
   ]);
+=======
+  dialog.setSide({
+    label: on ? "[x] CHORES" : "[ ] CHORES",
+    kind: on ? "ok" : "",
+    tip: `When idle, ${VILLAGER_NAMES[v]} will ${CHORE_WHAT[v]} on their own about every ${CHORE_EVERY_MIN} min. Each round uses REAL API calls.`,
+    onClick: () => net.send({ type: "set_chore_optin", villager: v, enabled: !store.choreOptIn[v] }),
+  });
+>>>>>>> Stashed changes
 }
 
 export function openTalk(v: VillagerId, greeting: string) {
@@ -416,8 +432,8 @@ export function openConnect(v: VillagerId) {
     dialog.add(
       "them",
       v === "postmaster"
-        ? "The Postmaster is still on Earth, waiting for a signal. Connect your Google account and they'll land with your Gmail: reading, summarizing and drafting replies. Nothing gets sent without your OK."
-        : "The Timekeeper is waiting for a signal from Earth. Connect your Google account so they can read your calendar and book events (you approve every booking).",
+        ? "Hoot the Postmaster is still on Earth, waiting for a signal. Connect your Google account and they'll land with your Gmail: reading, summarizing and drafting replies. Nothing gets sent without your OK."
+        : "Cog the Timekeeper is waiting for a signal from Earth. Connect your Google account so they can read your calendar and book events (you approve every booking).",
     );
     if (!store.connections.google.configured) dialog.add("sys", "Host setup needed first: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env (see README).");
     dialog.setButtons([
@@ -442,7 +458,7 @@ export function openConnect(v: VillagerId) {
     });
     dialog.add(
       "them",
-      "The Scholar needs a line to your Canvas. In Canvas (wustl.instructure.com): Account > Settings > + New Access Token. Paste it below. Read-only - the Scholar never submits anything.",
+      "Mabel the Scholar needs a line to your Canvas. In Canvas (wustl.instructure.com): Account > Settings > + New Access Token. Paste it below. Read-only - Mabel never submits anything.",
     );
     dialog.setButtons([sampleButton]);
   }
@@ -451,8 +467,222 @@ export function openConnect(v: VillagerId) {
 
 export function closePanel() {
   if (!dialog?.visible) return;
+  officeView = null;
   dialog.close();
   talkingTo = null;
   callingFor = null;
   toggleCb(false);
+}
+
+// ---------------------------------------------------------------- the office
+
+let officeView: { kind: "board"; status: string; keys: string } | { kind: "worker"; id: string; now: Label | null } | { kind: "connect"; keys: string } | null = null;
+let officeProvider: OfficeProvider | null = null;
+let officeWired = false;
+
+const excerpt = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 3).trimEnd()}...` : t);
+const reportUrl = (id: string) => `http://${location.hostname || "localhost"}:8787/office/${id}`;
+const serverUrl = (path: string) => `http://${location.hostname || "localhost"}:8787${path}`;
+/** A fingerprint of which AIs are connected (and OpenRouter's model), to know when to redraw. */
+const keysSig = () => store.office.providers.map((p) => `${p.id}:${p.available}:${p.masked}:${p.model}`).join("|");
+
+/** Where to get each key, shown on the connect screen. */
+const HOW_TO_CONNECT: Record<OfficeProvider, string> = {
+  openrouter: "One click: sign in and it works with Claude, GPT, Gemini and some free models.",
+  groq: "Free key: console.groq.com/keys",
+  gemini: "Free key: aistudio.google.com/apikey",
+  openai: "Paid key: platform.openai.com/api-keys",
+  claude: "Paid key: console.anthropic.com (API keys)",
+};
+
+function wireOffice() {
+  if (officeWired) return;
+  officeWired = true;
+  net.onOffice(() => {
+    const v = officeView;
+    if (!v || !dialog?.visible) return;
+    const p = store.office.project;
+    if (v.kind === "board") {
+      // The brief form stays put while you type; the live view re-renders.
+      const status = p?.status ?? "none";
+      const running = !!p && !["done", "failed"].includes(p.status);
+      if (running || status !== v.status || keysSig() !== v.keys) renderBoard();
+    } else if (v.kind === "connect") {
+      if (keysSig() !== v.keys) openConnectAI();
+    } else {
+      const w = p?.workers.find((x) => x.id === v.id);
+      if (w && v.now) v.now.setText(workerNow(w));
+    }
+  });
+  net.onOfficeAnswer((workerId, text) => {
+    const v = officeView;
+    if (v?.kind !== "worker" || v.id !== workerId || !dialog?.visible) return;
+    dialog.hideTyping();
+    dialog.add("them", text);
+    sfx.message();
+  });
+}
+
+function workerNow(w: OfficeWorker) {
+  const state = w.status === "working" ? "working" : w.status === "done" ? "done" : "stuck";
+  return excerpt(`Now (${state}): ${w.step}`, 70);
+}
+
+/** The project board: brief the team (you're the PM), watch them work, read the result. */
+export function openOfficeBoard() {
+  if (!dialog) return;
+  wireOffice();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  renderBoard();
+  toggleCb(true);
+}
+
+function renderBoard() {
+  if (!dialog) return;
+  const o = store.office;
+  const p = o.project;
+  const running = !!p && !["done", "failed"].includes(p.status);
+  officeView = { kind: "board", status: p?.status ?? "none", keys: keysSig() };
+  const available = o.providers.filter((x) => x.available);
+  if (!officeProvider || !available.some((x) => x.id === officeProvider)) officeProvider = available[0]?.id ?? null;
+
+  if (running && p) {
+    dialog.open("PROJECT BOARD", false);
+    dialog.add("title", excerpt(p.brief, 160));
+    const name = o.providers.find((x) => x.id === p.provider)?.name ?? p.provider;
+    dialog.add("sys", `Team lead (${name}, ${p.model}): ${p.lead}`);
+    if (!p.workers.length) dialog.add("sys", "Planning who to hire...");
+    for (const w of p.workers) dialog.add("them", `${w.name} - ${w.role} ${w.status === "done" ? "[done]" : w.status === "failed" ? "[stuck]" : ""}\n${excerpt(w.step, 90)}`);
+    dialog.setButtons([]);
+    return;
+  }
+
+  dialog.open("PROJECT BOARD", true, {
+    placeholder: available.length ? "Brief the team: what should they build or research?" : "No LLM is set up on the server",
+    onSubmit: (text) => {
+      if (!officeProvider) return sfx.deny();
+      net.send({ type: "office_start", brief: text, provider: officeProvider });
+      sfx.blip();
+    },
+  });
+  if (p?.status === "done") {
+    dialog.add("title", `Delivered: ${excerpt(p.brief, 80)}`);
+    dialog.add("letter", excerpt(p.result ?? "", 900));
+  } else if (p?.status === "failed") {
+    dialog.add("sys", `The last project stopped: ${p.error ?? "something went wrong"}.`);
+  }
+  dialog.add(
+    "sys",
+    available.length
+      ? "You're the project manager. Write a brief below: the team lead splits it up and spins up a worker (a sub-agent) for each piece. Walk up to any desk to check in on them."
+      : "Your team needs an AI to think with. Press CONNECT AI to sign in with OpenRouter or paste a key (Groq and Gemini keys are free).",
+  );
+  const buttons: ButtonSpec[] = available.map((x) => ({
+    label: x.id === officeProvider ? `[x] ${x.name.toUpperCase()}` : `[ ] ${x.name.toUpperCase()}`,
+    kind: x.id === officeProvider ? "ok" : "",
+    onClick: () => {
+      officeProvider = x.id;
+      sfx.blip();
+      renderBoard();
+    },
+  }));
+  const chosen = available.find((x) => x.id === officeProvider);
+  if (chosen?.id === "openrouter" && chosen.models?.length) {
+    const models = chosen.models;
+    const short = chosen.model.split("/").pop()!.replace(/:free$/, " (free)");
+    buttons.push({
+      label: `MODEL: ${short.length > 22 ? `${short.slice(0, 20)}..` : short}`,
+      onClick: () => {
+        const next = models[(models.indexOf(chosen.model) + 1) % models.length];
+        net.send({ type: "office_model", provider: "openrouter", model: next });
+        sfx.blip();
+      },
+    });
+  }
+  buttons.push({ label: "CONNECT AI", onClick: () => openConnectAI() });
+  if (p?.status === "done") buttons.push({ label: "OPEN REPORT", kind: "ok", onClick: () => window.open(reportUrl(p.id), "_blank") });
+  if (p) buttons.push({ label: "CLEAR BOARD", onClick: () => net.send({ type: "office_clear" }) });
+  dialog.setButtons(buttons);
+}
+
+/** Check in on a worker: what they're on, what they've done, and ask them about it. */
+export function openOfficeWorker(id: string) {
+  if (!dialog) return;
+  wireOffice();
+  const w = store.office.project?.workers.find((x) => x.id === id);
+  if (!w) return;
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  dialog.open(`${w.name.toUpperCase()} - ${w.role.toUpperCase()}`, true, {
+    placeholder: `Ask ${w.name} how it's going...`,
+    onSubmit: (q) => {
+      dialog?.add("you", q);
+      dialog?.showTyping();
+      net.send({ type: "office_ask", workerId: id, question: q });
+    },
+  });
+  dialog.add("title", "Their task");
+  dialog.add("letter", excerpt(w.task, 420));
+  const now = dialog.add("sys", workerNow(w));
+  const recent = w.steps.slice(-6, -1).map((s) => `- ${excerpt(s.text, 70)}`);
+  if (recent.length) dialog.add("sys", `Earlier:\n${recent.join("\n")}`);
+  if (w.result) dialog.add("them", excerpt(w.result, 500));
+  officeView = { kind: "worker", id, now };
+  dialog.setButtons([]);
+  toggleCb(true);
+}
+
+/** Plug your own AI into the Office: OpenRouter sign-in, or paste a key. Keys stay on the server. */
+export function openConnectAI() {
+  if (!dialog) return;
+  wireOffice();
+  closeMoonPad();
+  talkingTo = null;
+  callingFor = null;
+  dialog.open("CONNECT YOUR AI", false);
+  officeView = { kind: "connect", keys: keysSig() };
+  dialog.add("sys", "Bring your own model for the Office. Keys are checked, stored privately on this server, and never shown again.");
+  for (const p of store.office.providers) {
+    const status = !p.available ? "not connected" : p.source === "you" ? `connected by you (${p.masked})` : `connected on the server (${p.masked})`;
+    dialog.add("them", `${p.name}: ${status}\n${HOW_TO_CONNECT[p.id]}`);
+  }
+  const buttons: ButtonSpec[] = [
+    { label: "OPENROUTER SIGN-IN", kind: "ok", onClick: () => window.open(serverUrl("/connect/openrouter"), "_blank") },
+    { label: "PASTE A KEY", onClick: () => openPasteKey() },
+    ...store.office.providers.filter((p) => p.source === "you").map((p) => ({ label: `DISCONNECT ${p.name.toUpperCase()}`, onClick: () => net.send({ type: "office_disconnect", provider: p.id }) })),
+    { label: "BACK", onClick: () => openOfficeBoard() },
+  ];
+  dialog.setButtons(buttons);
+  toggleCb(true);
+}
+
+function openPasteKey(provider?: OfficeProvider) {
+  if (!dialog) return;
+  if (!provider) {
+    dialog.open("PASTE A KEY", false);
+    officeView = null;
+    dialog.add("sys", "Which AI is the key for?");
+    const ids: OfficeProvider[] = ["groq", "gemini", "openai", "claude", "openrouter"];
+    dialog.setButtons([
+      ...ids.map((id) => ({ label: store.office.providers.find((p) => p.id === id)?.name.toUpperCase() ?? id.toUpperCase(), onClick: () => openPasteKey(id) })),
+      { label: "BACK", onClick: () => openConnectAI() },
+    ]);
+    return;
+  }
+  const name = store.office.providers.find((p) => p.id === provider)?.name ?? provider;
+  dialog.open(`${name.toUpperCase()} KEY`, true, {
+    secret: true,
+    placeholder: `Paste your ${name} API key`,
+    onSubmit: (key) => {
+      net.send({ type: "office_key", provider, key });
+      dialog?.add("sys", "Checking the key...");
+      setTimeout(() => openConnectAI(), 1800);
+    },
+  });
+  officeView = null;
+  dialog.add("sys", HOW_TO_CONNECT[provider]);
+  dialog.setButtons([{ label: "BACK", onClick: () => openConnectAI() }]);
 }

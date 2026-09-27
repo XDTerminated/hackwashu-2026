@@ -1,10 +1,20 @@
 import "./env.js";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ServerMessage, Service, VillagerId } from "../../shared/game.js";
 import { BUILDINGS } from "../../shared/game.js";
 import { BRAIN, startTask, lastApprovalVia } from "./agents.js";
 import { chatText } from "./chat.js";
+<<<<<<< Updated upstream
+=======
+import { askWorker, clearProject, officeState, onOfficeChange, providersChanged, reportPath, startProject } from "./office.js";
+import { chooseModel, connectKey, disconnectKey, finishOpenRouter, openRouterAuthUrl, openRouterModels } from "./aikeys.js";
+import type { OfficeProvider } from "../../shared/game.js";
+
+const OFFICE_PROVIDERS: OfficeProvider[] = ["claude", "openai", "groq", "gemini", "openrouter"];
+import { announceHappiness, happinessAll } from "./memory.js";
+>>>>>>> Stashed changes
 import { resolveApproval } from "./approvals.js";
 import { connectCanvas, disconnectCanvas, initCanvas } from "./connectors/canvas.js";
 import { disconnectGoogle, finishGoogleAuth, GOOGLE_REDIRECT, googleAuthUrl, googleConfigured, initGoogle } from "./connectors/google.js";
@@ -12,8 +22,14 @@ import { onPhoneLinked, phoneLinked, photonReady, sendOpeningText, startLink, st
 import { clearChore, devSpawn, setChoreOptIn, startChores } from "./chores.js";
 import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
+<<<<<<< Updated upstream
 import { buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { build, emit, moveBuilding, moveDeco, newId, occupied, onEvent, placeDeco, popClod, removeDeco, snapshot, world } from "./world.js";
+=======
+import { SHARD_COUNT, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
+import { currentRequests, startRequests } from "./requests.js";
+import { build, clearRock, collectShard, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
+>>>>>>> Stashed changes
 
 const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer"];
@@ -30,6 +46,40 @@ function page(res: ServerResponse, status: number, title: string, body: string) 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
+<<<<<<< Updated upstream
+=======
+  // A villager line to speak aloud in the talk dialog.
+  if (url.pathname === "/voice") return handleVoice(req, res);
+
+  // "Connect your AI": one-click OpenRouter sign-in for the Office.
+  if (url.pathname === "/connect/openrouter") {
+    // Come back to whichever address the player's browser used to reach this server.
+    const host = /^[\w.\-]+(:\d+)?$/.test(req.headers.host ?? "") ? req.headers.host : `localhost:${PORT}`;
+    res.writeHead(302, { location: openRouterAuthUrl(`http://${host}/oauth/openrouter/callback`) });
+    return res.end();
+  }
+  if (url.pathname === "/oauth/openrouter/callback") {
+    const code = url.searchParams.get("code");
+    if (!code) return page(res, 400, "Sign-in cancelled", "<p>No code from OpenRouter. You can close this tab.</p>");
+    try {
+      await finishOpenRouter(code);
+      await providersChanged();
+      return page(res, 200, "Your AI is connected! 🚀", "<p>The Office can now use your OpenRouter account. Close this tab, pick a model on the project board, and brief your team.</p>");
+    } catch (err) {
+      console.error("[openrouter] sign-in failed:", err);
+      return page(res, 500, "Sign-in failed", `<p>${err instanceof Error ? err.message : "Unknown error"}</p>`);
+    }
+  }
+
+  // An office project's deliverable, to read in a browser tab.
+  if (url.pathname.startsWith("/office/")) {
+    const file = reportPath(url.pathname.slice("/office/".length));
+    if (!file || !existsSync(file)) return page(res, 404, "No such report", "<p>That project's report isn't here.</p>");
+    const esc = readFileSync(file, "utf8").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    return page(res, 200, "Office report", `<pre style="white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;color:#f2e6cc">${esc}</pre>`);
+  }
+
+>>>>>>> Stashed changes
   // Google sign-in: the game opens this in a new tab.
   if (url.pathname === "/connect/google") {
     if (!googleConfigured()) {
@@ -57,6 +107,9 @@ const httpServer = createServer(async (req, res) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer });
+onOfficeChange((state) => {
+  for (const c of wss.clients) send(c, { type: "office", state });
+});
 
 function send(ws: WebSocket, msg: ServerMessage) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -65,6 +118,8 @@ function send(ws: WebSocket, msg: ServerMessage) {
 function fullSnapshot() {
   return {
     ...snapshot(),
+    requests: currentRequests(),
+    office: officeState(),
     phoneLinked: phoneLinked(),
     connections: services.connections(),
     residents: services.residents(),
@@ -148,7 +203,34 @@ wss.on("connection", (ws) => {
         const def = placed && decorById(placed.item);
         if (!placed || !def || !Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
         const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), def.tiles[0]);
+<<<<<<< Updated upstream
         if (canOccupy(decorFootprint(def, x, y), occupied({ deco: placed.id })) && moveDeco(placed.id, x, y)) emit({ type: "deco_moved", id: placed.id, x, y });
+=======
+        if (canOccupy(decorFootprint(def, x, y), occupied({ deco: placed.id })) && moveDeco(placed.id, x, y)) {
+          emit({ type: "deco_moved", id: placed.id, x, y });
+          announceHappiness(before, def.name);
+        } else send(ws, { type: "notice", text: "That spot's taken." });
+        break;
+      }
+
+      case "clear_rock": {
+        const r = clearRock(Math.round(Number(msg.x)), Math.round(Number(msg.y)));
+        if (r.ok) emit({ type: "rock_cleared", x: msg.x, y: msg.y, cost: r.cost, coins: world.coins, ...(r.loot ? { loot: r.loot } : {}) });
+        else send(ws, { type: "notice", text: r.reason });
+        break;
+      }
+
+      case "collect_shard": {
+        const r = collectShard(Math.round(Number(msg.x)), Math.round(Number(msg.y)));
+        if (r.ok) emit({ type: "shard_found", x: msg.x, y: msg.y, found: world.shards.length, total: SHARD_COUNT, reward: r.reward, coins: world.coins, ...(r.bonus ? { bonus: r.bonus } : {}) });
+        break;
+      }
+
+      case "move_lantern": {
+        if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) break;
+        const { x, y } = snapToTiles(Number(msg.x), Number(msg.y), 1);
+        if (moveLantern(String(msg.id), x, y)) emit({ type: "lantern_moved", id: msg.id, x, y });
+>>>>>>> Stashed changes
         else send(ws, { type: "notice", text: "That spot's taken." });
         break;
       }
@@ -162,6 +244,71 @@ wss.on("connection", (ws) => {
         break;
       }
 
+<<<<<<< Updated upstream
+=======
+      case "office_start": {
+        const problem = startProject(String(msg.brief ?? ""), msg.provider);
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "office_ask": {
+        const text = await askWorker(String(msg.workerId), String(msg.question ?? ""));
+        send(ws, { type: "office_answer", workerId: msg.workerId, text });
+        break;
+      }
+
+      case "office_key": {
+        const provider = msg.provider;
+        if (!OFFICE_PROVIDERS.includes(provider)) break;
+        try {
+          const masked = await connectKey(provider, String(msg.key ?? ""));
+          await providersChanged();
+          send(ws, { type: "notice", text: `Connected (${masked}). Your team can use it now.` });
+        } catch (err) {
+          send(ws, { type: "notice", text: `Couldn't connect: ${err instanceof Error ? err.message : err}.` });
+        }
+        break;
+      }
+
+      case "office_disconnect": {
+        if (!OFFICE_PROVIDERS.includes(msg.provider)) break;
+        disconnectKey(msg.provider);
+        await providersChanged();
+        break;
+      }
+
+      case "office_model": {
+        if (msg.provider !== "openrouter" || typeof msg.model !== "string") break;
+        if (!(await openRouterModels()).includes(msg.model)) break;
+        chooseModel("openrouter", msg.model);
+        await providersChanged();
+        break;
+      }
+
+      case "office_clear": {
+        const problem = clearProject();
+        if (problem) send(ws, { type: "notice", text: problem });
+        break;
+      }
+
+      case "dev_mode": {
+        if (!switchWorld(!!msg.on)) break;
+        services.initResidents();
+        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        break;
+      }
+
+      case "toggle_deco": {
+        const placed = world.decos.find((d) => d.id === msg.id);
+        if (!placed || !decorById(placed.item)?.light) break;
+        placed.off = !placed.off;
+        savePersist();
+        emit({ type: "deco_toggled", id: placed.id, off: placed.off });
+        break;
+      }
+
+>>>>>>> Stashed changes
       case "sell_deco": {
         const placed = world.decos.find((d) => d.id === msg.id);
         const def = placed && decorById(placed.item);
@@ -197,7 +344,7 @@ wss.on("connection", (ws) => {
 
       case "clear_chore": {
         const r = clearChore(String(msg.id));
-        if (r.ok) emit({ type: "chore_cleared", id: msg.id, reward: r.reward, coins: world.coins });
+        if (r.ok) emit({ type: "chore_cleared", id: msg.id, kind: r.kind, reward: r.reward, coins: world.coins });
         break;
       }
 
@@ -226,6 +373,8 @@ await Promise.all([initGoogle(), initCanvas()]);
 services.setWebAvailable(BRAIN !== "mock");
 services.initResidents();
 startChores();
+startRequests();
+void providersChanged();
 
 httpServer.listen(PORT, () => {
   console.log(`[server] Moon Village agents on http://localhost:${PORT}`);

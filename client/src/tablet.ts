@@ -110,7 +110,7 @@ export function initMoonPad() {
         if (!view?.visible) sfx.message();
       }
     } else if (e.type === "handoff" && e.from === "jade_rabbit") {
-      push("jade_rabbit", { from: "sys", text: `asked the ${VILLAGER_NAMES[e.to]} to help` });
+      push("jade_rabbit", { from: "sys", text: `asked ${VILLAGER_NAMES[e.to]} to help` });
     } else if (e.type === "approval_needed") {
       push(e.villager, { from: "sys", text: `needs your OK: ${e.approval.title} (letter at your door)` });
       bump(e.villager);
@@ -416,7 +416,7 @@ class MoonPadView {
     this.body.setMask(this.maskG.createGeometryMask());
     const msgs = [...(threads.get(v) ?? [])];
     if (waiting.has(v)) msgs.push({ from: "them", text: ". . ." });
-    if (!msgs.length) msgs.push({ from: "sys", text: `Text the ${VILLAGER_NAMES[v]} to get to know them - they'll remember. For real work, visit them at the ${BUILDINGS[VILLAGER_HOME[v]].name}.` });
+    if (!msgs.length) msgs.push({ from: "sys", text: `Text ${VILLAGER_NAMES[v]} to get to know them - they'll remember. For real work, visit them at the ${BUILDINGS[VILLAGER_HOME[v]].name}.` });
     let y = 0;
     for (const m of msgs) {
       const text = m.tag ? `${m.text}\n(${m.tag})` : m.text;

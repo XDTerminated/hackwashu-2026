@@ -3,6 +3,7 @@ import { BootScene } from "./scenes/BootScene";
 import { TitleScene } from "./scenes/TitleScene";
 import { GameScene } from "./scenes/GameScene";
 import { UIScene } from "./scenes/UIScene";
+import { OfficeScene } from "./scenes/OfficeScene";
 import * as net from "./net";
 import { initChatter } from "./chatter";
 import { initPanel } from "./panel";
@@ -43,7 +44,7 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.NONE,
     zoom: initial.zoom,
   },
-  scene: [BootScene, TitleScene, GameScene, UIScene],
+  scene: [BootScene, TitleScene, GameScene, OfficeScene, UIScene],
 });
 
 let resizeTimer = 0;

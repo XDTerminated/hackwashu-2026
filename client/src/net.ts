@@ -4,7 +4,7 @@
 import type { ClientMessage, SeqEvent, ServerMessage } from "../../shared/game";
 
 export type PhoneLinkMsg = Extract<ServerMessage, { type: "phone_link" }>;
-import { applyEvent, applySnapshot, setConnected } from "./store";
+import { applyEvent, applySnapshot, setConnected, setOffice } from "./store";
 
 const URL = `ws://${location.hostname || "localhost"}:8787`;
 const eventListeners = new Set<(e: SeqEvent) => void>();
@@ -39,6 +39,11 @@ export function connect() {
       eventListeners.forEach((fn) => fn(msg.event));
     } else if (msg.type === "notice") {
       noticeListeners.forEach((fn) => fn(msg.text));
+    } else if (msg.type === "office") {
+      setOffice(msg.state);
+      officeListeners.forEach((fn) => fn());
+    } else if (msg.type === "office_answer") {
+      answerListeners.forEach((fn) => fn(msg.workerId, msg.text));
     } else if (msg.type === "phone_link") {
       phoneLinkListeners.forEach((fn) => fn(msg));
     }
@@ -75,6 +80,21 @@ export function onNotice(fn: (text: string) => void) {
 export function onSnapshot(fn: () => void) {
   snapshotListeners.add(fn);
   return () => snapshotListeners.delete(fn);
+}
+
+const officeListeners = new Set<() => void>();
+const answerListeners = new Set<(workerId: string, text: string) => void>();
+
+/** The office changed (a worker's step, a new worker, the result). */
+export function onOffice(fn: () => void) {
+  officeListeners.add(fn);
+  return () => officeListeners.delete(fn);
+}
+
+/** A worker answered a check-in question. */
+export function onOfficeAnswer(fn: (workerId: string, text: string) => void) {
+  answerListeners.add(fn);
+  return () => answerListeners.delete(fn);
 }
 
 export function onPhoneLink(fn: (msg: PhoneLinkMsg) => void) {

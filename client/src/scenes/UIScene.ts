@@ -11,6 +11,7 @@ import { onStoreChange, store } from "../store";
 import { MINIMAP_H, MINIMAP_W } from "../terrain";
 import { Button, C, IconButton, Label, fit, measure, pixBox, ptext, woodFrame } from "../widgets";
 import { VERB_ICON } from "../icons";
+import { isMusicMuted, onMusicToggle, toggleMusic } from "../music";
 
 type ArrangeState = { edit: boolean; holding: { name: string; isNew: boolean; refund: number | null } | null };
 import type { GameScene } from "./GameScene";
@@ -191,8 +192,72 @@ export class UIScene extends Phaser.Scene {
     for (const c of dots.clods) g.fillStyle(c.status === "ready" ? 0xffb07a : 0xd97757, 1).fillRect(X(c.x), Y(c.y), 1, 1);
     for (const v of dots.villagers) g.fillStyle(MAP_DOT[v.id], 1).fillRect(X(v.x) - 1, Y(v.y) - 1, 2, 2);
     const blink = Math.floor(time / 400) % 2 === 0;
+<<<<<<< Updated upstream
     g.fillStyle(0x3b2a3a, 1).fillRect(X(dots.player.x) - 2, Y(dots.player.y) - 2, 4, 4);
     g.fillStyle(blink ? 0xffffff : 0xf5c542, 1).fillRect(X(dots.player.x) - 1, Y(dots.player.y) - 1, 2, 2);
+=======
+    top.fillStyle(0x3b2a3a, 1).fillRect(X(dots.player.x) - 2, Y(dots.player.y) - 2, 4, 4);
+    top.fillStyle(blink ? 0xffffff : 0xf5c542, 1).fillRect(X(dots.player.x) - 1, Y(dots.player.y) - 1, 2, 2);
+    // Indoors (the Office), the island's edge markers would point through walls.
+    if (!this.scene.isActive("Office")) this.drawMeteorMarkers(game, dots.meteors, time);
+  }
+
+  /**
+   * Meteors you can't see: a badge on the screen edge with an arrow pointing to
+   * where it's falling (red, blinking) or where the moon-rock landed (gold).
+   * One that's on screen but still falling gets a blinking "!" over its spot.
+   */
+  private drawMeteorMarkers(game: GameScene, meteors: { x: number; y: number; incoming: boolean }[], time: number) {
+    const W = this.scale.width;
+    const H = this.scale.height - 26;
+    const view = game.cameras.main.worldView;
+    const g = this.meteorG;
+    const blink = Math.floor(time / 200) % 2 === 0;
+    let used = 0;
+    const icon = (key: string, x: number, y: number) => {
+      const img = this.meteorIcons[used] ?? (this.meteorIcons[used] = this.add.image(0, 0, key).setDepth(1501));
+      used++;
+      return img.setTexture(key).setOrigin(0.5).setPosition(Math.round(x), Math.round(y)).setVisible(true);
+    };
+    for (const m of meteors) {
+      const sx = m.x - view.x;
+      const sy = m.y - view.y;
+      if (sx > 6 && sx < W - 6 && sy > 6 && sy < H - 6) {
+        if (m.incoming && blink) icon("bang", sx, sy - 18);
+        continue;
+      }
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const t = Math.min((cx - 16) / Math.abs(dx || 1e-6), (cy - 16) / Math.abs(dy || 1e-6));
+      let ex = Math.round(cx + dx * t);
+      let ey = Math.round(cy + dy * t);
+      // Stay clear of the corner panels (roster top-left, minimap and accounts top-right).
+      if (ey < this.cornerBottom && (ex < HUD_W + 14 || ex > W - this.cornerWidth)) {
+        ex = ex < W / 2 ? 16 : W - 16;
+        ey = this.cornerBottom + 10;
+      }
+      // The arrow points from the badge to the meteor.
+      const len = Math.hypot(sx - ex, sy - ey) || 1;
+      const ux = (sx - ex) / len;
+      const uy = (sy - ey) / len;
+      const ring = m.incoming ? (blink ? 0xff4a3a : 0xb0302a) : 0xf5c542;
+      const tri = (tip: number, back: number, half: number) => {
+        const bx = ex + ux * back;
+        const by = ey + uy * back;
+        g.fillTriangle(Math.round(ex + ux * tip), Math.round(ey + uy * tip), Math.round(bx - uy * half), Math.round(by + ux * half), Math.round(bx + uy * half), Math.round(by - ux * half));
+      };
+      g.fillStyle(0x3b2a3a, 1);
+      tri(15, 6, 6);
+      g.fillCircle(ex, ey, 9);
+      g.fillStyle(ring, 1);
+      tri(13, 7, 4);
+      g.fillCircle(ex, ey, 8);
+      g.fillStyle(0x1a1224, 1).fillCircle(ex, ey, 6);
+      icon(m.incoming ? "meteor" : "moonrock", ex, ey);
+    }
+>>>>>>> Stashed changes
   }
 
   // ------------------------------------------------------------ phone toasts
@@ -259,8 +324,13 @@ export class UIScene extends Phaser.Scene {
         ["icon_help_0", "How to play", click(() => this.showHelp())],
       ],
       [
+<<<<<<< Updated upstream
         ["icon_call_0", "Call villager home", () => (this.canCall ? this.game.events.emit("call-press") : sfx.deny())],
         ["icon_edit_0", "Edit layout", () => this.game.events.emit("edit-toggle")],
+=======
+        ["icon_edit_0", "Edit layout", () => this.game.events.emit("edit-toggle")],
+        [isMusicMuted() ? "icon_music_off_0" : "icon_music_0", isMusicMuted() ? "Music: off" : "Music: on", () => toggleMusic()],
+>>>>>>> Stashed changes
       ],
     ];
     const count = groups.reduce((n, g) => n + g.length, 0);
@@ -280,9 +350,14 @@ export class UIScene extends Phaser.Scene {
       x += sep - gap;
       g.fillStyle(C.woodDark, 1).fillRect(x - Math.ceil(sep / 2) - 1, y0 + 5, 1, 14);
     }
+<<<<<<< Updated upstream
     const [moonpad, , , , call, edit] = made;
     this.callBtn = call.setFill(0x8a8199).setTooltip("Call villager home (stand at their door)");
+=======
+    const [moonpad, , , , edit, music] = made;
+>>>>>>> Stashed changes
     this.editBtn = edit;
+    this.unsubs.push(onMusicToggle((m) => music.setIcon(m ? "icon_music_off_0" : "icon_music_0").setTooltip(m ? "Music: off" : "Music: on")));
 
     this.action = new IconButton(this, x, y0 + 3, "icon_idle_0", 0x8a8199, "Nothing to do here", () => {}, actionW).setDepth(2001);
     this.action.on("pointerdown", () => {

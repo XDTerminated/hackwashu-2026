@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import * as net from "../net";
+import { startMusic } from "../music";
 import { measure, ptext } from "../widgets";
 
 const STORY = [
@@ -47,14 +48,18 @@ export class TitleScene extends Phaser.Scene {
     const sm = measure(story);
     story.setPosition(cx - Math.round(sm.w / 2), Math.round(H * 0.56 - sm.h / 2));
 
-    const press = ptext(this, 0, Math.round(H * 0.88), "- PRESS SPACE TO LAND -", 0xf5c542, "pxb");
+    const press = ptext(this, 0, Math.round(H * 0.88), "- PRESS SPACE OR CLICK TO LAND -", 0xf5c542, "pxb");
     press.setX(cx - Math.round(measure(press).w / 2));
     this.time.addEvent({ delay: 550, loop: true, callback: () => press.setVisible(!press.visible) });
 
     const fine = ptext(this, 0, H - 12, "*terms and conditions apply", 0x555c78);
     fine.setX(W - 6 - measure(fine).w);
 
-    this.input.keyboard!.once("keydown-SPACE", () => {
+    let landing = false;
+    const land = () => {
+      if (landing) return;
+      landing = true;
+      startMusic();
       // The opening scene ends with your real phone buzzing.
       net.send({ type: "landed" });
       this.cameras.main.fadeOut(400, 11, 10, 26);
@@ -62,6 +67,8 @@ export class TitleScene extends Phaser.Scene {
         this.scene.start("Game");
         this.scene.launch("UI");
       });
-    });
+    };
+    this.input.keyboard!.once("keydown-SPACE", land);
+    this.input.once("pointerdown", land);
   }
 }

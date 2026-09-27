@@ -9,6 +9,7 @@ import {
   scholar,
   rocket,
 } from "./art";
+<<<<<<< Updated upstream
 import { DECOR_ART_IDS, decorArt } from "./decorart";
 import { ICON_SPRITES } from "./icons";
 import {
@@ -23,6 +24,18 @@ import {
   drawRocketPad,
 } from "./buildings";
 import { type Ctx, INK, box, disc, rect } from "./pix";
+=======
+import { DECOR_ART_IDS, decorArt, drawStoneLantern } from "./decorart";
+import { ICON_SPRITES, VILLAGER_ICONS } from "./icons";
+import { decorById } from "../../shared/decor";
+import { drawMailbox, drawPlot } from "./buildings";
+import { drawGrandClock, drawGrandLibrary, drawGrandObservatory, drawGrandPost, drawHollow, drawLaunchComplex, drawManor } from "./estate";
+import { SPOTS, TILE, buildingTiles } from "./layout";
+import type { BuildingId, VillagerId } from "../../shared/game";
+import { type Ctx, INK, box, disc, hash, rect } from "./pix";
+import { PORTRAIT, drawPortrait, drawPortraitSky, type PortraitFrame } from "./portraits";
+import { ROOM_H, ROOM_W, WORKER_LOOKS, drawCoffee, drawCouch, drawDesk, drawOfficeTower, drawPlant, drawRoom, drawWorkerBack, drawWorkerFront } from "./officeart";
+>>>>>>> Stashed changes
 
 const CORAL = "#d97757";
 const CORAL_DARK = "#b85c3e";
@@ -217,11 +230,36 @@ export function buildTextures(scene: Phaser.Scene) {
   canvasTex(scene, "b_rabbit_burrow", 56, 40, drawRabbitBurrow);
   canvasTex(scene, "b_post_office", 64, 56, drawPostOffice);
   canvasTex(scene, "b_mailbox", 16, 24, drawMailbox);
+<<<<<<< Updated upstream
   canvasTex(scene, "b_clock_tower", 44, 88, drawClockTower);
   canvasTex(scene, "b_rocket_pad", 64, 22, drawRocketPad);
   canvasTex(scene, "b_observatory", 60, 60, drawObservatory);
   canvasTex(scene, "b_library", 64, 56, drawLibrary);
   canvasTex(scene, "b_plot", 48, 34, drawPlot);
+=======
+  canvasTex(scene, "b_clock_tower", 72, 180, drawGrandClock);
+  canvasTex(scene, "b_rocket_pad", 112, 132, drawLaunchComplex);
+  canvasTex(scene, "b_observatory", 112, 124, drawGrandObservatory);
+  canvasTex(scene, "b_library", 128, 120, drawGrandLibrary);
+  canvasTex(scene, "b_office", 128, 156, drawOfficeTower);
+  // The office interior.
+  canvasTex(scene, "office_room", ROOM_W, ROOM_H, drawRoom);
+  for (const screen of ["off", "code0", "code1", "code2", "done", "failed"] as const) canvasTex(scene, `desk_${screen}`, 48, 32, (ctx) => drawDesk(ctx, screen));
+  for (let look = 0; look < WORKER_LOOKS; look++) {
+    for (const f of [0, 1]) canvasTex(scene, `worker_back_${look}_${f}`, 20, 26, (ctx) => drawWorkerBack(ctx, look, f));
+    canvasTex(scene, `worker_front_${look}`, 16, 26, (ctx) => drawWorkerFront(ctx, look));
+  }
+  canvasTex(scene, "office_lead", 16, 26, (ctx) => drawWorkerFront(ctx, 4, true));
+  canvasTex(scene, "office_coffee", 18, 32, drawCoffee);
+  canvasTex(scene, "office_plant", 18, 26, drawPlant);
+  canvasTex(scene, "office_couch", 52, 26, drawCouch);
+  // A staked plot per building, the size of its footprint, and its formal grounds.
+  for (const b of Object.keys(SPOTS) as BuildingId[]) {
+    const t = buildingTiles(b);
+    if (b !== "mailbox") canvasTex(scene, `grounds_${b}`, (t.w + 4) * TILE, 44, (ctx) => drawGrounds(ctx, (t.w + 4) * TILE, 44));
+    canvasTex(scene, `plot_${b}`, t.w * TILE, t.h * TILE + 16, (ctx) => drawPlot(ctx, t.w * TILE, t.h * TILE + 16));
+  }
+>>>>>>> Stashed changes
 
   canvasTex(scene, "ship", 28, 57, drawShip);
   canvasTex(scene, "earth_s", 28, 28, (ctx) => drawEarth(ctx, 28));
@@ -366,6 +404,12 @@ export function buildAnims(scene: Phaser.Scene) {
   mk("walk-up", ["astro_4", "astro_3", "astro_5", "astro_3"], 8);
   mk("walk-side", ["astro_7", "astro_6", "astro_8", "astro_6"], 8);
   mk("clod-twinkle", ["clod_0", "clod_1"], 4);
+<<<<<<< Updated upstream
+=======
+  mk("desk-coding", ["desk_code0", "desk_code1", "desk_code2"], 3);
+  for (let look = 0; look < WORKER_LOOKS; look++) mk(`worker-typing-${look}`, [`worker_back_${look}_0`, `worker_back_${look}_1`], 5);
+  mk("plaza-fountain", ["plaza_fountain_0", "plaza_fountain_1", "plaza_fountain_2"], 4);
+>>>>>>> Stashed changes
   mk("jade_rabbit-idle", ["rabbit_0", "rabbit_1"], 1.5);
   mk("postmaster-idle", ["postmaster_0", "postmaster_0", "postmaster_0", "postmaster_1"], 2);
   mk("timekeeper-idle", ["timekeeper_0", "timekeeper_1"], 1);

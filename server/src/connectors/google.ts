@@ -239,7 +239,7 @@ export async function calendarCreate(title: string, startLocal: string, endLocal
     calendarId: "primary",
     requestBody: {
       summary: title,
-      description: notes ? `${notes}\n\n— booked by the Timekeeper, Moon Village` : "Booked by the Timekeeper, Moon Village",
+      description: notes ? `${notes}\n\n— booked by Cog the Timekeeper, Moon Village` : "Booked by Cog the Timekeeper, Moon Village",
       start: { dateTime: withSeconds(startLocal), timeZone: TZ },
       end: { dateTime: withSeconds(endLocal), timeZone: TZ },
     },

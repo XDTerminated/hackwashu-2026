@@ -10,9 +10,12 @@ import {
   type BuildingId,
   type Chore,
   type Clod,
+  type ColonyRequest,
   type Deco,
   type GameEvent,
   type Lantern,
+  type OfficeProject,
+  type OfficeState,
   type Progress,
   QUESTS,
   type SeqEvent,
@@ -22,7 +25,11 @@ import {
 } from "../../shared/game.js";
 
 import { decorById, decorFootprint } from "../../shared/decor.js";
+<<<<<<< Updated upstream
 import { SPOTS, applyLayout, buildingFootprint, canOccupy, type Rect } from "../../shared/layout.js";
+=======
+import { ROCK_COST, SHARD_BONUS, SHARD_COUNT, SHARD_REWARD, SPOTS, applyLayout, buildingRects, canOccupy, footprint, lanternAt, rockKey, rockRect, rockSpots, shardKey, shardSpots, type Rect, type RockKind } from "../../shared/layout.js";
+>>>>>>> Stashed changes
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = join(here, "..", "data", "world.json");
@@ -47,6 +54,10 @@ interface World {
   choreOptIn: Partial<Record<VillagerId, boolean>>;
   memory: Partial<Record<VillagerId, VillagerMemory>>;
   layout: Partial<Record<BuildingId, { x: number; y: number }>>;
+  clearedRocks: string[];
+  shards: string[];
+  requests: { day: string; list: ColonyRequest[] };
+  office: { project: OfficeProject | null; history: OfficeState["history"] };
   lastChoreAt: Partial<Record<VillagerId, number>>;
   progress: Progress;
   buildings: Partial<Record<BuildingId, boolean>>;
@@ -64,7 +75,7 @@ const idle = (): VillagerState => ({ status: "idle", activity: "relaxing" });
 function freshWorld(): World {
   const buildings: Partial<Record<BuildingId, boolean>> = {};
   for (const b of Object.values(BUILDINGS)) if (b.starter) buildings[b.id] = true;
-  const progress: Progress = { quest: 0, count: 0, revealed: Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), sandbox: {} };
+  const progress: Progress = { quest: 0, count: 0, revealed: [...Object.values(BUILDINGS).filter((b) => b.starter).map((b) => b.id), "office"], sandbox: {} };
   // Demo prep / testing: everything built and revealed, on the last quest.
   if (process.env.UNLOCK_ALL === "1") {
     for (const b of Object.values(BUILDINGS)) buildings[b.id] = true;
@@ -79,6 +90,10 @@ function freshWorld(): World {
     choreOptIn: {},
     memory: {},
     layout: {},
+    clearedRocks: [],
+    shards: [],
+    requests: { day: "", list: [] },
+    office: { project: null, history: [] },
     lastChoreAt: {},
     progress,
     buildings,
@@ -106,6 +121,20 @@ function load(): World {
     w.choreOptIn ??= {};
     w.memory ??= {};
     w.layout ??= {};
+    w.clearedRocks ??= [];
+    w.shards ??= [];
+    w.requests ??= { day: "", list: [] };
+    w.office ??= { project: null, history: [] };
+    // An office project mid-flight when the server stopped can't resume.
+    const op = w.office.project;
+    if (op && !["done", "failed"].includes(op.status)) {
+      op.status = "failed";
+      op.error = "interrupted when the colony server restarted";
+      op.lead = "stuck: the server restarted mid-project";
+      for (const wk of op.workers) if (wk.status === "working") wk.status = "failed";
+    }
+    // The office is open to everyone from the start (a plot to build).
+    if (!w.progress.revealed.includes("office")) w.progress.revealed.push("office");
     w.decos.forEach((d, i) => (d.id ??= `deco_old${i}`));
     w.lastChoreAt ??= {};
     // Anything mid-flight when the server stopped can't resume — its agent loop is gone.
@@ -180,6 +209,15 @@ export function snapshot(): Snapshot {
     choreOptIn: world.choreOptIn,
     friendship: Object.fromEntries(Object.entries(world.memory).map(([v, m]) => [v, m!.points])),
     layout: world.layout,
+<<<<<<< Updated upstream
+=======
+    devMode: isDevWorld(),
+    clearedRocks: world.clearedRocks,
+    shards: world.shards,
+    requests: world.requests.list,
+    // filled in by index.ts from office.ts (it knows which providers are set up)
+    office: { providers: [], project: world.office.project, history: world.office.history },
+>>>>>>> Stashed changes
   };
 }
 
@@ -251,9 +289,73 @@ export function occupied(except?: { building?: BuildingId; deco?: string }): Rec
     const def = decorById(d.item);
     if (def && d.id !== except?.deco) out.push(decorFootprint(def, d.x, d.y));
   }
+<<<<<<< Updated upstream
   return out;
 }
 
+=======
+  world.lanterns.forEach((l, i) => {
+    if (l.id === except?.lantern) return;
+    const p = lanternAt(l, i);
+    out.push(footprint(p.x, p.y, 1, 1));
+  });
+  for (const r of rockSpots(decoRects(), world.clearedRocks)) out.push(rockRect(r));
+  return out;
+}
+
+/**
+ * What turns up under a rock. Crystal outcrops always pay, arches usually
+ * do, so clearing is a little gamble (sometimes a big win).
+ */
+const LOOT: Record<RockKind, { chance: number; min: number; max: number; what: string }> = {
+  small: { chance: 0.3, min: 5, max: 15, what: "a few moon pennies" },
+  big: { chance: 0.5, min: 10, max: 45, what: "a geode" },
+  spire: { chance: 0.55, min: 15, max: 50, what: "an old probe part" },
+  crystal: { chance: 1, min: 20, max: 90, what: "raw moon-crystal" },
+  arch: { chance: 0.75, min: 30, max: 130, what: "a fossilized meteorite" },
+};
+
+/** Pay to clear a rock away for good. */
+export function clearRock(x: number, y: number): { ok: true; cost: number; loot?: { coins: number; what: string } } | { ok: false; reason: string } {
+  const rock = rockSpots(decoRects(), world.clearedRocks).find((r) => r.x === x && r.y === y);
+  if (!rock) return { ok: false, reason: "There's no rock there." };
+  const cost = ROCK_COST[rock.kind];
+  if (world.coins < cost) return { ok: false, reason: `Clearing that costs ${cost}¢.` };
+  world.coins -= cost;
+  world.clearedRocks.push(rockKey(rock));
+  const l = LOOT[rock.kind];
+  let loot: { coins: number; what: string } | undefined;
+  if (Math.random() < l.chance) {
+    loot = { coins: Math.round(l.min + Math.random() * (l.max - l.min)), what: l.what };
+    world.coins += loot.coins;
+  }
+  persist();
+  return { ok: true, cost, ...(loot ? { loot } : {}) };
+}
+
+/** Pick up a Moon Shard (each spot once); finding them all pays a bonus. */
+export function collectShard(x: number, y: number): { ok: true; reward: number; bonus?: number } | { ok: false } {
+  const spot = shardSpots().find((p) => p.x === x && p.y === y);
+  if (!spot || world.shards.includes(shardKey(spot))) return { ok: false };
+  world.shards.push(shardKey(spot));
+  world.coins += SHARD_REWARD;
+  const bonus = world.shards.length === SHARD_COUNT ? SHARD_BONUS : undefined;
+  if (bonus) world.coins += bonus;
+  persist();
+  return { ok: true, reward: SHARD_REWARD, ...(bonus ? { bonus } : {}) };
+}
+
+/** Task lanterns can be moved (but not sold: they're earned). */
+export function moveLantern(id: string, x: number, y: number): boolean {
+  const l = world.lanterns.find((l) => l.id === id);
+  if (!l || !canOccupy(footprint(x, y, 1, 1), occupied({ lantern: id }))) return false;
+  l.x = x;
+  l.y = y;
+  persist();
+  return true;
+}
+
+>>>>>>> Stashed changes
 /** Buildings (and revealed plots) can be moved anywhere their tiles fit. */
 export function moveBuilding(b: BuildingId, x: number, y: number): boolean {
   if (!SPOTS[b] || (!owns(b) && !world.progress.revealed.includes(b))) return false;
