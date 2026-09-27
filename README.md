@@ -318,8 +318,9 @@ starts hands-free. You can keep walking; walk off (or press **ESC**) to leave. O
 them (or **Enter** mid-conversation) to type instead. The chat bar shows the conversation so far.
 
 They stop, turn to you, think ("..."), and answer out loud in bubbles over their head, a sentence or
-two at a time. **Talk over them to interrupt:** they stop mid-sentence and listen (the mic ignores their
-own voice coming back through your speakers). Pausing mid-sentence doesn't cut you off: what you say
+two at a time. **Talk over them to interrupt** (a real sentence of your own: 3+ words); their own voice
+coming back through your speakers is filtered out, during and just after, so it can't loop back in as
+yours. Pausing mid-sentence doesn't cut you off: what you say
 builds up and sends after about two seconds of quiet (a thin bar under the chat fills as it's about to
 go), or right away when you press Enter. They greet you once; come back within five minutes and the
 conversation so far is still there. (Letters to approve and account connections still open their own

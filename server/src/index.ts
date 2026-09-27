@@ -630,7 +630,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       }
 
       case "spotify_device":
-        if (typeof msg.id === "string" && msg.id) setSpotifyDevice(msg.id);
+        if (typeof msg.id === "string") setSpotifyDevice(msg.id);
         break;
 
       case "place_deco": {

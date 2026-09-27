@@ -153,10 +153,38 @@ async function api<T>(method: string, path: string, body?: object): Promise<T | 
 let device: string | null = null;
 
 export function setDevice(id: string) {
-  device = id.slice(0, 80);
+  // ("" when the tab's player went away: stop aiming at it)
+  device = id ? id.slice(0, 80) : null;
 }
 
 const onDevice = () => (device ? `?device_id=${encodeURIComponent(device)}` : "");
+
+/** The player we last handed playback to (a fresh one needs handing over before it'll take commands). */
+let handedTo: string | null = null;
+const NOT_READY = "The game's Spotify player hasn't started yet: click anywhere in the game once (in Chrome, Edge or Firefox), then ask Echo again.";
+
+async function handOver() {
+  if (!device) throw new Error(NOT_READY);
+  await api("PUT", "/me/player", { device_ids: [device], play: false }).catch(() => undefined);
+  handedTo = device;
+  await new Promise((r) => setTimeout(r, 400));
+}
+
+/**
+ * Send a command to the game's player: hand playback over to it first if it's
+ * new, and if Spotify says it can't find it, hand over once more and retry.
+ */
+async function onGame<T>(command: () => Promise<T>): Promise<T> {
+  if (!device) throw new Error(NOT_READY);
+  if (handedTo !== device) await handOver();
+  try {
+    return await command();
+  } catch (err) {
+    if (!/isn't ready yet/.test(String(err))) throw err;
+    await handOver();
+    return command();
+  }
+}
 
 type Kind = "track" | "album" | "playlist" | "artist";
 interface Found {
@@ -176,20 +204,20 @@ async function find(query: string, kind: Kind): Promise<Found> {
 /** Find something and play it in the game. */
 export async function play(query: string, kind: Kind = "track"): Promise<Found> {
   const f = await find(query, kind);
-  await api("PUT", `/me/player/play${onDevice()}`, kind === "track" ? { uris: [f.uri] } : { context_uri: f.uri });
+  await onGame(() => api("PUT", `/me/player/play${onDevice()}`, kind === "track" ? { uris: [f.uri] } : { context_uri: f.uri }));
   return f;
 }
 
 export async function queue(query: string): Promise<Found> {
   const f = await find(query, "track");
-  await api("POST", `/me/player/queue?uri=${encodeURIComponent(f.uri)}${device ? `&device_id=${encodeURIComponent(device)}` : ""}`);
+  await onGame(() => api("POST", `/me/player/queue?uri=${encodeURIComponent(f.uri)}${device ? `&device_id=${encodeURIComponent(device)}` : ""}`));
   return f;
 }
 
-export const pause = () => api("PUT", `/me/player/pause${onDevice()}`);
-export const resume = () => api("PUT", `/me/player/play${onDevice()}`);
-export const skip = (back: boolean) => api("POST", `/me/player/${back ? "previous" : "next"}${onDevice()}`);
-export const volume = (percent: number) => api("PUT", `/me/player/volume?volume_percent=${Math.round(Math.max(0, Math.min(100, percent)))}${device ? `&device_id=${encodeURIComponent(device)}` : ""}`);
+export const pause = () => onGame(() => api("PUT", `/me/player/pause${onDevice()}`));
+export const resume = () => onGame(() => api("PUT", `/me/player/play${onDevice()}`));
+export const skip = (back: boolean) => onGame(() => api("POST", `/me/player/${back ? "previous" : "next"}${onDevice()}`));
+export const volume = (percent: number) => onGame(() => api("PUT", `/me/player/volume?volume_percent=${Math.round(Math.max(0, Math.min(100, percent)))}${device ? `&device_id=${encodeURIComponent(device)}` : ""}`));
 
 export async function nowPlaying(): Promise<{ playing: boolean; track?: string; by?: string; progress?: string } | null> {
   const r = await api<{ is_playing: boolean; progress_ms?: number; item?: { name: string; duration_ms: number; artists?: { name: string }[] } }>("GET", "/me/player/currently-playing");

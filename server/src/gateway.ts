@@ -923,7 +923,8 @@ async function phoneRoute(req: IncomingMessage, url: URL, json: (status: number,
 // ---------------------------------------------------------------- the server
 
 /** The game server's own pages and endpoints (everything else is the built game). */
-const GAME_PATHS = /^\/(voice|connect\/|oauth\/|setup\/|agents\/|team\/)/;
+// (spotify/: the game's own Spotify player fetches its token there; without it, it never starts online)
+const GAME_PATHS = /^\/(voice|connect\/|oauth\/|setup\/|agents\/|team\/|spotify\/)/;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");

@@ -2,8 +2,8 @@
 // neighbor, say their name ("Hey Hoot, ...") or say hi right beside them, and
 // the conversation starts hands-free (you can keep walking; walk off or press
 // ESC to leave). Or press E (or Enter) to type. They stop, turn to you, and
-// answer out loud in bubbles over their head, and you can talk over them to
-// interrupt. The mic button (on the bar and the toolbar) turns voice off, and
+// answer out loud in bubbles over their head. You can talk over them to cut
+// in; their own voice coming back through the speakers is filtered out. The mic button (on the bar and the toolbar) turns voice off, and
 // it stays off until you turn it back on. Letters, account connections and
 // the Office keep their windows.
 
@@ -153,6 +153,9 @@ export class NearTalk {
   /** Bumped to cut off whatever they're still saying (you walked away). */
   private replySeq = 0;
   private speaking: Promise<void> = Promise.resolve();
+  /** What they said last, and until when their voice may still be coming back through the speakers. */
+  private lastSaid = "";
+  private quietUntil = 0;
   /** What's been said, per neighbor (come back within a few minutes and it's still there). */
   private history = new Map<VillagerId, { at: number; lines: { you: boolean; text: string }[] }>();
   private logUntil = 0;
@@ -348,12 +351,21 @@ export class NearTalk {
     this.renderChat(true);
   }
 
-  /** Is that just their own voice coming back through the speakers? */
-  private echo(text: string) {
-    const w = words(text);
+  /**
+   * Is that them, not you? Their voice through your speakers reaches the mic
+   * too. While they talk, only a real sentence of your own (3+ words, mostly
+   * not their words) counts as you cutting in; for a moment after they stop,
+   * anything that sounds like their last words is still them.
+   */
+  private theirVoice(heard: string) {
+    const w = words(heard);
     if (!w.length) return true;
-    const theirs = new Set(words(this.saying));
-    return w.filter((x) => theirs.has(x)).length / w.length >= 0.6;
+    const overlap = (said: string) => {
+      const theirs = new Set(words(said));
+      return w.filter((x) => theirs.has(x)).length / w.length;
+    };
+    if (this.them === "talking") return w.length < 3 || overlap(this.saying) >= 0.3;
+    return Date.now() < this.quietUntil && overlap(this.lastSaid) >= 0.5;
   }
 
   /** You talked over them: they stop mid-sentence and listen. */
@@ -362,6 +374,8 @@ export class NearTalk {
     this.replySeq++;
     voice.stopSpeaking();
     this.host.actor(this.with)?.say("!", 700, this.theirSide());
+    this.lastSaid = this.saying;
+    this.quietUntil = Date.now() + 1500;
     this.them = null;
     this.saying = "";
   }
@@ -379,8 +393,9 @@ export class NearTalk {
 
   /**
    * The mic (when it's on) listens only with a neighbor close by, or in a
-   * conversation: never out on your own. It keeps listening while they talk,
-   * so you can cut in, and waits while you type.
+   * conversation: never out on your own. It stays on while they talk so you
+   * can cut in, but their own voice coming back through the speakers is
+   * filtered out (so it can't loop back in as yours), and it waits while you type.
    */
   private syncMic() {
     const near = this.chatting ? !!this.with : this.host.around(HEAR_PX).length > 0;
@@ -394,19 +409,15 @@ export class NearTalk {
             return;
           }
           if (!this.with || (this.typing && input.value)) return;
-          if (this.them === "talking") {
-            if (this.echo(phrase) || words(phrase).length < 2) return;
-            this.interrupt();
-          }
+          if (this.theirVoice(phrase)) return;
+          if (this.them === "talking") this.interrupt();
           // A pause in your sentence isn't the end of it: keep adding until you've been quiet a moment.
           this.hear(phrase);
         },
         (partial) => {
           if (!this.chatting || (this.typing && input.value)) return;
-          if (this.them === "talking") {
-            if (!partial || this.echo(partial) || words(partial).length < 2) return;
-            this.interrupt();
-          }
+          if (partial && this.theirVoice(partial)) return;
+          if (partial && this.them === "talking") this.interrupt();
           this.heard = partial;
           if (partial) {
             this.armSend(); // (still talking: push the send back)
@@ -476,7 +487,9 @@ export class NearTalk {
       }
       if (seq !== this.replySeq) return;
       this.them = null;
+      this.lastSaid = this.saying;
       this.saying = "";
+      this.quietUntil = Date.now() + 1500;
       this.renderChat();
     });
   }

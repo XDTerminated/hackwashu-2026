@@ -2890,8 +2890,9 @@ export class GameScene extends Phaser.Scene {
     dy /= len;
     // Walk, then break into a run after a moment (kicking up moondust).
     this.moveTime += dt;
-    const run = Math.min(1, Math.max(0, (this.moveTime - 0.35) / 0.5));
-    const speed = 125 + run * 60;
+    // (a brisk walk from the first step, then the run: slow first steps felt sluggish)
+    const run = Math.min(1, Math.max(0, (this.moveTime - 0.2) / 0.25));
+    const speed = 150 + run * 40;
     this.player.anims.timeScale = 1 + run * 0.6;
     this.dustT -= dt;
     if (run >= 1 && this.dustT <= 0) {

@@ -45,7 +45,8 @@ function load() {
       device = device_id;
       net.send({ type: "spotify_device", id: device_id });
     });
-    p.addListener("not_ready", () => (device = null));
+    // (gone: tell the server, so it stops sending music to a player that isn't there)
+    p.addListener("not_ready", () => ((device = null), net.send({ type: "spotify_device", id: "" })));
     p.addListener("player_state_changed", (state) => duckMusic(!!state && !state.paused));
     for (const e of ["initialization_error", "authentication_error", "account_error", "playback_error"] as const) p.addListener(e, ({ message }) => console.warn(`[spotify] ${e}: ${message}`));
     void p.connect();
