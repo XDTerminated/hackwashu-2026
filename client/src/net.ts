@@ -27,7 +27,7 @@ let ws: WebSocket | null = null;
 // ---------------------------------------------------------------- signing in (online)
 
 /** Online, everyone signs in first (on the title screen). On your computer there are no accounts: "local". */
-export const auth = { state: (HOSTED ? "checking" : "local") as "local" | "checking" | "in" | "out", name: "", email: "", note: "", devLogin: false };
+export const auth = { state: (HOSTED ? "checking" : "local") as "local" | "checking" | "in" | "out", name: "", email: "", note: "", devLogin: false, guest: false };
 const authListeners = new Set<() => void>();
 
 export function onAuth(fn: () => void) {
@@ -57,11 +57,12 @@ export function start() {
     history.replaceState(null, "", `${location.pathname}${q.size ? `?${q}` : ""}`);
   }
   fetch("/auth/me", { cache: "no-store" })
-    .then((r) => r.json() as Promise<{ signedIn?: boolean; name?: string; email?: string; devLogin?: boolean }>)
+    .then((r) => r.json() as Promise<{ signedIn?: boolean; name?: string; email?: string; devLogin?: boolean; guest?: boolean }>)
     .then((me) => {
       auth.devLogin = !!me.devLogin;
       if (me.signedIn) {
         auth.state = "in";
+        auth.guest = !!me.guest;
         auth.name = me.name ?? "";
         auth.email = me.email ?? "";
         connect();
@@ -75,6 +76,16 @@ export function start() {
 }
 
 export const signIn = () => void (location.href = "/auth/google");
+/** Online: a village of your own that's never saved. */
+export const playAsGuest = () => void (location.href = "/auth/guest");
+
+// On your own computer, playing as a guest puts your real save aside (the server keeps a
+// fresh colony in memory only). If the server restarts mid-game, ask for that again.
+let wantGuest = false;
+export function localGuest(on: boolean) {
+  wantGuest = on;
+  send({ type: "guest_mode", on });
+}
 export const signOut = () => void (location.href = "/auth/logout");
 
 export function connect() {
@@ -87,6 +98,7 @@ export function connect() {
   ws.onopen = () => {
     setConnected(true);
     send({ type: "hello" });
+    if (wantGuest && !HOSTED) send({ type: "guest_mode", on: true });
   };
   ws.onmessage = (ev) => {
     let msg: ServerMessage;

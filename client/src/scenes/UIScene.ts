@@ -99,6 +99,7 @@ export class UIScene extends Phaser.Scene {
     // Phaser reuses this object on restart (resize): forget the old screen's state.
     this.reqOpen = -1;
     this.devBadge = null;
+    this.guestBadge = null;
     this.banner = null;
     this.shopOpen = false;
     this.registry.set("shopOpen", false);
@@ -297,6 +298,7 @@ export class UIScene extends Phaser.Scene {
 
   private refresh() {
     this.renderDevBadge();
+    this.renderGuestBadge();
     for (const b of this.tutorialLocked) b.setAlpha(inTutorial() ? 0.45 : 1);
     this.renderRequestBadge();
     this.coins.setText(String(store.coins));
@@ -420,6 +422,7 @@ export class UIScene extends Phaser.Scene {
     const inOffice = this.scene.isActive("Office");
     this.colony.setVisible(!inOffice);
     this.devBadge?.setVisible(!inOffice);
+    this.guestBadge?.setVisible(!inOffice);
     this.officePanel.setVisible(inOffice);
     if (inOffice) {
       const t = this.officeStatus();
@@ -598,7 +601,9 @@ export class UIScene extends Phaser.Scene {
   private showHint(text: string, ms = 0) {
     this.hint?.destroy();
     // Top centre: clear of the toolbar, the goal arrow and speech bubbles.
-    this.hint = new Label(this, this.scale.width / 2, 6, text, { bg: C.outline, border: null, color: C.cream, font: "pxb", padX: 5, originY: 0, maxWidth: Math.max(120, this.scale.width - HUD_W - MINIMAP_W - 44) }).setDepth(2400);
+    // (below the guest or dev-mode badge, when there is one)
+    const top = this.guestBadge || this.devBadge ? 30 : 6;
+    this.hint = new Label(this, this.scale.width / 2, top, text, { bg: C.outline, border: null, color: C.cream, font: "pxb", padX: 5, originY: 0, maxWidth: Math.max(120, this.scale.width - HUD_W - MINIMAP_W - 44) }).setDepth(2400);
     this.hint.setX(Math.round(HUD_W + 8 + (this.scale.width - HUD_W - MINIMAP_W - 20) / 2));
     // In the Office the top of the screen is the whiteboard: sit above the toolbar instead.
     if (this.scene.isActive("Office")) {
@@ -1042,6 +1047,29 @@ export class UIScene extends Phaser.Scene {
     exit.setPosition(x + w - exit.width_ - 3, 7);
     c.add([g, t, exit]);
     this.devBadge = c;
+  }
+
+  private guestBadge: Phaser.GameObjects.Container | null = null;
+
+  /** Playing as a guest: a reminder at the top that nothing is saved, and a way to sign in. */
+  private renderGuestBadge() {
+    const guest = store.guest || (net.auth.state === "in" && net.auth.guest);
+    if (!!this.guestBadge === guest) return;
+    this.guestBadge?.destroy();
+    this.guestBadge = null;
+    if (!guest) return;
+    const c = this.add.container(0, 0).setDepth(2600);
+    const t = ptext(this, 0, 0, "GUEST - nothing is saved", C.paperLight, "pxb");
+    // (online: straight to Google; on your own computer: back to the title, to sign in there)
+    const signIn = new Button(this, 0, 0, "SIGN IN", C.greenBtn, () => (sfx.blip(), net.auth.state === "in" ? net.signIn() : location.reload()));
+    const w = measure(t).w + signIn.width_ + 18;
+    const x = Math.round((this.scale.width - w) / 2);
+    const g = this.add.graphics();
+    pixBox(g, x, 4, w, 21, 0x3a4a7e, C.outline);
+    t.setPosition(x + 6, 11);
+    signIn.setPosition(x + w - signIn.width_ - 3, 7);
+    c.add([g, t, signIn]);
+    this.guestBadge = c;
   }
 
   // ------------------------------------------------------------ shop

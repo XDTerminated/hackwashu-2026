@@ -9,10 +9,9 @@ import { onStoreChange, store } from "../store";
 const STORY = ["Every home you build brings back a line to Earth."];
 
 /**
- * The front door. Online, everyone signs in (with Google) for their own
- * private village; then PLAY. On your own computer, signing in with Google
- * brings your Gmail and Calendar along (or just PLAY). The intro plays the
- * first time a player plays, and never again.
+ * The front door. Sign in with Google for a village that's kept (online, your
+ * own private one), or play as a guest: a fresh colony that's never saved.
+ * The intro plays the first time a player plays, and never again.
  */
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -97,9 +96,10 @@ export class TitleScene extends Phaser.Scene {
     // Online, signed out: sign in first (your own private village).
     if (auth.state === "out") {
       inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
-      inside(22, "Sign in for your own private village. Your Gmail, Calendar, Canvas, Spotify, GitHub and Claude Code stay yours alone.", C.inkSoft, "sm");
+      inside(22, "Sign in for your own private village, kept safe. Or look around as a guest (nothing is saved).", C.inkSoft, "sm");
       buttons([
         { label: "SIGN IN WITH GOOGLE", act: () => net.signIn(), main: true },
+        { label: "SIGN IN AS GUEST", act: () => net.playAsGuest() },
         // (a test server lets you sign in as anyone, to try out several accounts)
         ...(auth.devLogin
           ? [
@@ -141,22 +141,41 @@ export class TitleScene extends Phaser.Scene {
         this.scene.launch("UI");
       });
     };
-    if (auth.state === "in") {
+    /** On your own computer: into the guest colony (in memory only) or your saved one, then play. */
+    const enter = (guest: boolean) => {
+      if (landing) return;
+      if (store.guest === guest) return play();
+      net.localGuest(guest);
+      const off = onStoreChange(() => {
+        if (store.guest !== guest) return;
+        off();
+        play();
+      });
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+    };
+    if (auth.state === "in" && auth.guest) {
+      // Online, as a guest: a village of your own until you leave, never saved.
+      inside(9, "PLAYING AS A GUEST", C.coral, "pxb");
+      inside(22, "Nothing you do is saved. Sign in with Google to keep a village of your own.", C.inkSoft, "sm");
+      buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN IN WITH GOOGLE", act: () => net.signIn() }]);
+      link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
+    } else if (auth.state === "in") {
       inside(9, `WELCOME BACK, ${(auth.name || auth.email.split("@")[0]).toUpperCase()}`, C.coral, "pxb");
       inside(22, auth.email, C.inkSoft, "sm");
       buttons([{ label: "PLAY", act: play, main: true }, { label: "SIGN OUT", act: () => net.signOut() }]);
       link(6, H - 12, "privacy", () => window.open("/privacy", "_blank", "noopener"));
     } else {
-      // On your own computer: sign in with Google (just your name and email), or just play.
+      // On your own computer: sign in with Google (just your name and email) and play your
+      // saved colony, or sign in as a guest: a fresh colony, and nothing gets saved.
       const me = store.connections.me;
       if (me) {
         inside(9, `WELCOME BACK, ${me.name.split(" ")[0].toUpperCase()}`, C.coral, "pxb");
         inside(22, me.email, C.inkSoft, "sm");
-        buttons([{ label: "PLAY", act: play, main: true }]);
+        buttons([{ label: "PLAY", act: () => enter(false), main: true }]);
         link(6, H - 12, "sign out", () => net.send({ type: "forget_me" }));
       } else {
         inside(9, "WELCOME, TRAVELER", C.coral, "pxb");
-        inside(22, "Sign in with Google (just your name and email). Your Gmail and Calendar are asked for later, when you connect Hoot or Cog.", C.inkSoft, "sm");
+        inside(22, "Sign in with Google to keep your colony (just your name and email). As a guest, nothing is saved.", C.inkSoft, "sm");
         buttons([
           {
             label: "SIGN IN WITH GOOGLE",
@@ -164,7 +183,7 @@ export class TitleScene extends Phaser.Scene {
             // (the title updates by itself once you're signed in)
             act: () => window.open(`${net.SERVER_HTTP}/signin/google`, "_blank"),
           },
-          { label: "PLAY", act: play },
+          { label: "SIGN IN AS GUEST", act: () => enter(true) },
         ]);
       }
       let was = me?.email ?? "";
@@ -176,7 +195,9 @@ export class TitleScene extends Phaser.Scene {
       });
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
     }
-    below("SPACE or ENTER to play");
-    for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, play);
+    // (on your own computer, signed out: SPACE plays as a guest)
+    const go = auth.state === "local" ? () => enter(!store.connections.me) : play;
+    below(auth.state === "local" && !store.connections.me ? "SPACE or ENTER to play as a guest" : "SPACE or ENTER to play");
+    for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, go);
   }
 }

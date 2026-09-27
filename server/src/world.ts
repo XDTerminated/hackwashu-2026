@@ -223,8 +223,31 @@ function load(file = DATA_FILE): World {
   }
 }
 
-export const world = load();
+// ---------------------------------------------------------------- guests
+// Playing as a guest: a brand-new colony kept only in memory, and nothing is
+// ever written. Online, a guest's whole copy (MOON_GUEST=1) is thrown away
+// when they leave; on your own computer, the real save is put aside untouched
+// and comes back when you play signed in.
+let guest = process.env.MOON_GUEST === "1";
+export const isGuest = () => guest;
+
+export const world = guest ? freshWorld() : load();
 applyLayout(world.layout);
+
+/** Into guest play (a fresh colony, in memory only) or back to the real save. */
+export function setGuest(on: boolean) {
+  // (already there: a reconnect asking again keeps the guest colony as it is)
+  if (on === guest) return false;
+  // (the real save, just as it stands, before it's put aside)
+  if (!guest) flushSave();
+  guest = on;
+  const w = on ? freshWorld() : load(saveFile);
+  for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
+  Object.assign(world, w);
+  applyLayout(world.layout);
+  console.log(on ? "[world] playing as a guest (nothing is saved)" : "[world] back on the real save");
+  return true;
+}
 
 // ---------------------------------------------------------------- dev mode
 // A separate showcase save with everything unlocked. Switching never touches
@@ -258,7 +281,7 @@ function showcase(w: World): World {
 
 /** Swap between the real save and the dev showcase save. Returns false if already there. */
 export function switchWorld(dev: boolean): boolean {
-  if (dev === isDevWorld()) return false;
+  if (dev === isDevWorld() || guest) return false;
   flushSave();
   const next = dev ? DEV_FILE : DATA_FILE;
   const w = dev && !existsSync(DEV_FILE) ? showcase(JSON.parse(JSON.stringify(world)) as World) : load(next);
@@ -273,6 +296,13 @@ export function switchWorld(dev: boolean): boolean {
 
 /** Start this save over from scratch (for testing). The old one is kept beside it, just in case. */
 export function resetWorld(): string {
+  if (guest) {
+    // (a guest's colony was never saved: just start it fresh)
+    for (const k of Object.keys(world)) delete (world as unknown as Record<string, unknown>)[k];
+    Object.assign(world, freshWorld());
+    applyLayout(world.layout);
+    return "";
+  }
   flushSave();
   const backup = `${saveFile}.before-reset-${Date.now()}`;
   if (existsSync(saveFile)) copyFileSync(saveFile, backup);
@@ -287,6 +317,8 @@ export function resetWorld(): string {
 
 /** Write to a temp file and rename, so a crash mid-write can't leave half a save. */
 function writeSave() {
+  // (a guest's colony is never written anywhere)
+  if (guest) return;
   mkdirSync(dirname(saveFile), { recursive: true });
   const tmp = `${saveFile}.tmp`;
   writeFileSync(tmp, JSON.stringify(world));
@@ -351,6 +383,7 @@ export function snapshot(): Snapshot {
     layout: world.layout,
     devMode: isDevWorld(),
     introSeen: !!world.introSeen,
+    guest,
     clearedRocks: world.clearedRocks,
     shards: world.shards,
     requests: world.requests.list,

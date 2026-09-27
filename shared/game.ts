@@ -490,6 +490,8 @@ export interface Snapshot {
   requests: ColonyRequest[];
   /** This player has seen the intro (it plays once, the first time they play). */
   introSeen: boolean;
+  /** Playing as a guest: a colony kept only in memory, never saved. */
+  guest: boolean;
 }
 
 /** Friendship points needed for each heart (5 hearts = best friends). */
@@ -578,6 +580,8 @@ export type ClientMessage =
   | { type: "toggle_deco"; id: string }
   /** Switch to (or back from) the dev showcase save. */
   | { type: "dev_mode"; on: boolean }
+  /** On your own computer: play as a guest (a fresh colony that's never saved), or back to your real one. */
+  | { type: "guest_mode"; on: boolean }
   /** Sign out on the title screen (on your own computer). */
   | { type: "forget_me" }
   /** The intro's been watched (it only plays the first time). */

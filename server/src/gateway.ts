@@ -14,6 +14,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
 import { connect as tcp } from "node:net";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,8 @@ interface Player {
   lastSeen: number;
   /** Bumped on sign-out: every session made before it stops working (all tabs, copied cookies). */
   epoch?: number;
+  /** A guest: never saved, and their whole copy is thrown away when it stops. */
+  guest?: boolean;
 }
 
 const USERS = join(ROOT, "players.json");
@@ -60,7 +63,9 @@ const players: Record<string, Player> = existsSync(USERS) ? JSON.parse(readFileS
 
 function savePlayers() {
   const tmp = `${USERS}.tmp`;
-  writeFileSync(tmp, JSON.stringify(players, null, 1), { mode: 0o600 });
+  // (guests aren't kept: they're gone when their copy is)
+  const kept = Object.fromEntries(Object.entries(players).filter(([, p]) => !p.guest));
+  writeFileSync(tmp, JSON.stringify(kept, null, 1), { mode: 0o600 });
   renameSync(tmp, USERS);
 }
 
@@ -110,8 +115,10 @@ function sessionCookie(req: IncomingMessage, value: string, maxAge: number) {
 }
 
 function newSession(req: IncomingMessage, p: Player) {
-  const body = `${p.id}.${Date.now() + SESSION_DAYS * 86_400_000}.${p.epoch ?? 0}`;
-  return sessionCookie(req, `${body}.${sign(body)}`, SESSION_DAYS * 86_400);
+  // (a guest's session lasts the day at most)
+  const secs = p.guest ? 12 * 3600 : SESSION_DAYS * 86_400;
+  const body = `${p.id}.${Date.now() + secs * 1000}.${p.epoch ?? 0}`;
+  return sessionCookie(req, `${body}.${sign(body)}`, secs);
 }
 
 /** Who's asking, from their session cookie (or nobody). */
@@ -167,7 +174,8 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
     }
     const port = freePort();
     const site = siteUrl(req);
-    const dir = join(ROOT, "players", p.id);
+    // (a guest's copy lives in a scratch folder, deleted when it stops)
+    const dir = p.guest ? join(tmpdir(), "moon-guests", p.id) : join(ROOT, "players", p.id);
     mkdirSync(dir, { recursive: true });
     const proc = spawn(process.execPath, ["--import", "tsx", join(SERVER_DIR, "src", "index.ts")], {
       cwd: SERVER_DIR,
@@ -180,6 +188,7 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
         MOON_USER_ID: p.id,
         MOON_USER_EMAIL: p.email,
         MOON_USER_NAME: p.name,
+        MOON_GUEST: p.guest ? "1" : "",
         GOOGLE_REDIRECT: `${site}/oauth/google/callback`,
         // Texting runs through the host's own line: never in a player's copy.
         PHOTON_PROJECT_ID: "",
@@ -211,6 +220,11 @@ async function copyFor(p: Player, req: IncomingMessage): Promise<Copy> {
     copies.set(p.id, c);
     proc.on("exit", () => {
       if (copies.get(p.id)?.proc === proc) copies.delete(p.id);
+      // A guest's village is gone for good once it stops.
+      if (p.guest) {
+        rmSync(dir, { recursive: true, force: true });
+        delete players[p.id];
+      }
       console.log(`[gateway] ${tag} stopped`);
     });
     console.log(`[gateway] ${tag} starting on :${port}`);
@@ -247,6 +261,8 @@ const deleting = new Set<string>();
 // Idle copies go to sleep (their saves stay).
 setInterval(() => {
   for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > IDLE_MS) void stopCopy(id);
+  // (guests who never started a village, or whose session ran out)
+  for (const [id, p] of Object.entries(players)) if (p.guest && !copies.has(id) && Date.now() - p.createdAt > IDLE_MS) delete players[id];
 }, 60_000);
 
 // ---------------------------------------------------------------- passing things through
@@ -390,6 +406,14 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       return redirect("/?signin=failed");
     }
   }
+  if (url.pathname === "/auth/guest") {
+    // Play as a guest: a village of your own that's never saved.
+    const id = randomBytes(9).toString("base64url").replace(/[-_]/g, "x");
+    const p: Player = { id, sub: `guest:${id}`, email: "", name: "Guest", createdAt: Date.now(), lastSeen: Date.now(), guest: true };
+    players[id] = p;
+    console.log(`[gateway] new guest ${id}`);
+    return redirect("/", newSession(req, p));
+  }
   if (url.pathname === "/auth/dev" && DEV_LOGIN) {
     const email = (url.searchParams.get("email") ?? "tester@example.com").slice(0, 80);
     const p = playerFor(`dev:${email}`, email, email.split("@")[0]);
@@ -402,6 +426,8 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       p.epoch = (p.epoch ?? 0) + 1;
       savePlayers();
       void stopCopy(p.id); // open game tabs lose their connection and go back to sign-in
+      // (a guest's village is thrown away: the copy's exit deletes it)
+      if (p.guest && !copies.has(p.id)) delete players[p.id];
     }
     return redirect("/?signin=signedout", sessionCookie(req, "", 0));
   }
@@ -409,7 +435,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === "/auth/me") {
     const p = whoIs(req);
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    return res.end(JSON.stringify(p ? { signedIn: true, name: p.name, email: p.email } : { signedIn: false, devLogin: DEV_LOGIN }));
+    return res.end(JSON.stringify(p ? { signedIn: true, name: p.name, email: p.email, guest: !!p.guest } : { signedIn: false, devLogin: DEV_LOGIN }));
   }
   if (url.pathname === "/auth/delete" && req.method === "POST") {
     // Same-site form posts only (the game's DELETE MY DATA button).

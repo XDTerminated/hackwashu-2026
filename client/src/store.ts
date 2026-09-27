@@ -29,6 +29,7 @@ export const store: Snapshot & { connected: boolean } = {
   shards: [],
   requests: [],
   introSeen: false,
+  guest: false,
   connected: false,
 };
 

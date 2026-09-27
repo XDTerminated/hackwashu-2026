@@ -25,7 +25,7 @@ import * as services from "./services.js";
 import { decorById, decorFootprint, sellPrice } from "../../shared/decor.js";
 import { SHARD_COUNT, buildingTiles, canOccupy, snapToTiles } from "../../shared/layout.js";
 import { currentRequests, startRequests } from "./requests.js";
-import { build, clearRock, regrowRocks, resetWorld, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
+import { build, clearRock, isGuest, regrowRocks, resetWorld, setGuest, collectShard, shardsFound, emit, moveBuilding, moveDeco, moveLantern, newId, occupied, onEvent, placeDeco, popClod, removeDeco, savePersist, snapshot, switchWorld, world } from "./world.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "manager", "dj", "mechanic"];
@@ -492,9 +492,23 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
       }
 
       case "dev_mode": {
+        if (isGuest()) {
+          send(ws, { type: "notice", text: "Dev mode isn't available while playing as a guest." });
+          break;
+        }
         // Open letters belong to the save being left: answer them "no" so nobody waits forever.
         denyAllPending();
         if (!switchWorld(!!msg.on)) break;
+        services.initResidents();
+        for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
+        break;
+      }
+
+      case "guest_mode": {
+        // On your own computer only: online, a guest gets a throwaway copy of their own.
+        if (HOSTED || !localClients.has(ws)) break;
+        denyAllPending();
+        if (!setGuest(!!msg.on)) break;
         services.initResidents();
         for (const c of wss.clients) send(c, { type: "snapshot", snapshot: fullSnapshot() });
         break;
