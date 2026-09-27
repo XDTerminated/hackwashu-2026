@@ -530,9 +530,8 @@ export class GameScene extends Phaser.Scene {
       const half = Math.round(RX * Math.sqrt(Math.max(0, 1 - mid * mid)));
       this.solids.push(new Phaser.Geom.Rectangle(P.x - half, CY + dy, half * 2, 3));
     }
-    // Obelisks stand just outside the rim, between the paths; the paving stays open.
-    // (every other gap: a ring of eight read as clutter)
-    plazaRing().obelisks.forEach((o, i) => i % 2 === 0 && prop("obelisk", o.x - P.x, o.y - P.y, 14));
+    // Obelisks stand just outside the rim at the ends of the east-west axis; the paving stays open.
+    plazaRing().obelisks.forEach((o) => prop("obelisk", o.x - P.x, o.y - P.y, 14));
   }
 
   // ================================================================ the town

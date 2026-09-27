@@ -135,8 +135,12 @@ for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snap
 Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
 Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
 
-/** The ship you arrived in: parked near the west end of Main Street (far enough in that the crater wall doesn't fill your first view). */
-export const LANDING = snapToTiles(STREET.x0 + 104, STREET.y + 56, 2);
+/**
+ * The ship you arrived in: parked south of Main Street, straight across from
+ * the Library's door (so its path and the Library's make one crossroads), and
+ * far enough in that the crater wall doesn't fill your first view.
+ */
+export const LANDING = snapToTiles(STREET.x0 + 160, STREET.y + 56, 2);
 
 /** Lanterns from finished tasks are planted on a ring of tiles around the plaza. */
 export function lanternSpot(i: number): { x: number; y: number } {
@@ -164,14 +168,17 @@ export function lampSpots(built: (b: BuildingId) => boolean = () => true): { x: 
   return out;
 }
 
-/** Lamps along Main Street's south edge, spaced out, never in front of a door's path or on the square. */
+/**
+ * Lamps along Main Street's south edge in an even rhythm, mirrored about the
+ * plaza's axis (the Town Hall's door), and spaced so the ship's path runs down
+ * the middle of a gap. (The doors are all on the north side, so no lamp ever
+ * stands in a path.) Mirrored points stay mirrored when snapped to tiles.
+ */
 export function streetLamps(): Pt[] {
   const out: Pt[] = [];
-  const doors = (Object.keys(SPOTS) as BuildingId[]).filter((b) => !isAnnex(b)).map((b) => SPOTS[b].x + SPOTS[b].door.dx);
-  for (let x = STREET.x0 + 96; x < STREET.x1 - 40; x += 128) {
-    if (Math.abs(x - PLAZA.x) < PLAZA_R + 40 || Math.abs(x - LANDING.x) < 48 || doors.some((d) => Math.abs(d - x) < 36)) continue;
-    out.push(snapToTiles(x, STREET.y + 32, 1));
-  }
+  const gap = (PLAZA.x - LANDING.x) / 4;
+  for (let d = gap * 1.5; d < STREET.x1 - PLAZA.x - 40; d += gap)
+    for (const side of [-1, 1]) out.push(snapToTiles(PLAZA.x + side * d, STREET.y + 32, 1));
   return out;
 }
 
@@ -183,21 +190,32 @@ export function nearBuilding(x: number, y: number, margin = 0): boolean {
 type Pt = { x: number; y: number };
 
 /**
- * A building's path, from the plaza's rim to its door. Doors face south, so
- * for buildings below the plaza it doglegs around the side instead of running
- * under the house.
+ * The plaza's gates: paths only ever leave the square here, south-east, south
+ * and south-west (its north side opens onto Main Street, and its east and west
+ * ends are where the obelisks stand). Angles, clockwise from east.
+ */
+export const PLAZA_GATES = [45, 90, 135].map((d) => (d * Math.PI) / 180);
+
+const turn = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+/**
+ * A building's path. North of Main Street: a short spur down to the street.
+ * Otherwise from the plaza: out through the gate that faces it (straight out
+ * for a few steps, so paths leave the square square-on), then to the door.
+ * Doors face south, so for buildings below the plaza it doglegs around the
+ * side instead of running under the house.
  */
 export function pathPoints(b: BuildingId, at: Pt = SPOTS[b]): Pt[] {
   const s = { ...SPOTS[b], ...at };
   const door = { x: s.x + s.door.dx, y: s.y + s.door.dy };
-  // North of Main Street: a short spur straight down to it.
   if (door.y < STREET.y) return [{ x: door.x, y: STREET.y }, door];
   const behind = s.y - s.fh > PLAZA.y;
   const via = behind ? { x: s.x + (PLAZA.x < s.x ? -1 : 1) * (s.fw + 14), y: door.y } : null;
   const first = via ?? door;
-  const len = Math.hypot(first.x - PLAZA.x, first.y - PLAZA.y) || 1;
-  const start = { x: PLAZA.x + ((first.x - PLAZA.x) / len) * (PLAZA_R + 2), y: PLAZA.y + ((first.y - PLAZA.y) / len) * (PLAZA_R + 2) };
-  return via ? [start, via, door] : [start, door];
+  const toward = Math.atan2(first.y - PLAZA.y, first.x - PLAZA.x);
+  const gate = PLAZA_GATES.reduce((best, g) => (turn(g, toward) < turn(best, toward) ? g : best));
+  const out = (r: number) => ({ x: PLAZA.x + Math.cos(gate) * r, y: PLAZA.y + Math.sin(gate) * r });
+  return [out(PLAZA_R + 2), out(PLAZA_R + 22), ...(via ? [via] : []), door];
 }
 
 function distToPath(b: BuildingId, x: number, y: number, at: Pt): number {
@@ -226,34 +244,16 @@ export function besideDoor(b: BuildingId, side: -1 | 1, at: Pt = SPOTS[b]): Pt {
 }
 
 /**
- * The plaza's rim furniture, placed in the gaps between the paths that leave
- * the plaza (so nothing ever blocks a path): a grand lamppost on the rim, and
- * a marble obelisk standing just outside it. The paving itself stays open.
- * Recomputed as buildings move.
+ * The plaza's rim furniture, laid out symmetrically: eight lampposts evenly
+ * round the rim, one either side of every opening (the gates, the way in from
+ * Main Street, and the east and west ends), and a marble obelisk just outside
+ * the rim at each end of the east-west axis. Nothing stands in a gate, and the
+ * paving itself stays open. (Mirrored points stay mirrored when snapped to tiles.)
  */
 export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
-  const angles = (Object.keys(SPOTS) as BuildingId[])
-    .filter((b) => !isAnnex(b))
-    .map((b) => {
-      const p = pathPoints(b)[0];
-      return Math.atan2(p.y - PLAZA.y, p.x - PLAZA.x);
-    });
-  // (the top of the square opens onto Main Street)
-  angles.push(-Math.PI / 2);
-  angles.sort((a, b) => a - b);
-  const lamps: Pt[] = [];
-  const obelisks: Pt[] = [];
   const at = (a: number, r: number) => snapToTiles(PLAZA.x + Math.cos(a) * r, PLAZA.y + Math.sin(a) * r + 8, 1);
-  angles.forEach((a, i) => {
-    const next = i + 1 < angles.length ? angles[i + 1] : angles[0] + Math.PI * 2;
-    const gap = next - a;
-    const mid = a + gap / 2;
-    // (nothing on the rim where the square meets Main Street, and no crowding in the narrow gaps)
-    const lamp = at(mid, PLAZA_R - 6);
-    const obelisk = at(mid, PLAZA_R + 18);
-    if (lamp.y > PLAZA.y - PLAZA_R * 0.75 && gap > 0.4) lamps.push(lamp);
-    if (gap > 0.5 && obelisk.y > STREET.y + 48) obelisks.push(obelisk);
-  });
+  const lamps = Array.from({ length: 8 }, (_, i) => at(((22.5 + i * 45) * Math.PI) / 180, PLAZA_R - 6));
+  const obelisks = [at(Math.PI, PLAZA_R + 18), at(0, PLAZA_R + 18)];
   return { lamps, obelisks };
 }
 
@@ -288,9 +288,9 @@ export function buildingRects(b: BuildingId, at: Pt = SPOTS[b]): Rect[] {
 /** Ground nothing can go on: the plaza (with its lamps) and the ship you landed in. */
 export const RESERVED: Rect[] = [
   // the round plaza (with its rim lamps and the obelisks just outside), as an octagon
-  { x: PLAZA.x - 152, y: PLAZA.y - 80, w: 304, h: 160 },
-  { x: PLAZA.x - 120, y: PLAZA.y - 120, w: 240, h: 240 },
-  { x: PLAZA.x - 80, y: PLAZA.y - 152, w: 160, h: 304 },
+  { x: PLAZA.x - (PLAZA_R + 32), y: PLAZA.y - (PLAZA_R - 40), w: (PLAZA_R + 32) * 2, h: (PLAZA_R - 40) * 2 },
+  { x: PLAZA.x - PLAZA_R, y: PLAZA.y - PLAZA_R, w: PLAZA_R * 2, h: PLAZA_R * 2 },
+  { x: PLAZA.x - (PLAZA_R - 40), y: PLAZA.y - (PLAZA_R + 32), w: (PLAZA_R - 40) * 2, h: (PLAZA_R + 32) * 2 },
   footprint(LANDING.x, LANDING.y, 2, 2),
   // Main Street itself
   { x: STREET.x0, y: STREET.y - 18, w: STREET.x1 - STREET.x0, h: 36 },
@@ -382,6 +382,8 @@ export function rockSpots(avoid: Rect[] = [], cleared: string[] = []): Rock[] {
     if (keepOut.some((k) => overlaps(k, r)) || taken.some((t) => overlaps(grow(t, TILE), r))) return;
     const cx = p.x;
     const cy = p.y - TILE / 2;
+    // (open ground all round the plaza, so the square reads clean and symmetrical)
+    if (Math.hypot(cx - PLAZA.x, cy - PLAZA.y) < PLAZA_R + 150) return;
     if (paths.some((pts) => pts.some((a, i) => i < pts.length - 1 && segDist(cx, cy, a, pts[i + 1]) < 20 + (w * TILE) / 2))) return;
     rocks.push({ kind, x: p.x, y: p.y });
     taken.push(r);
@@ -447,6 +449,8 @@ function computeShards(): Pt[] {
       let ok = true;
       for (let dy = -1; dy <= 1 && ok; dy++) for (let dx = -1; dx <= 1 && ok; dx++) ok = inIslandXY(p.x + dx * TILE * 2, p.y - TILE / 2 + dy * TILE * 2);
       if (!ok || keepOut.some((k) => overlaps(k, r)) || rocks.some((k) => overlaps(k, r))) continue;
+      // (open ground all round the plaza, like the rocks)
+      if (Math.hypot(p.x - PLAZA.x, p.y - 8 - PLAZA.y) < PLAZA_R + 150) continue;
       if (paths.some((pts) => pts.some((a, i) => i < pts.length - 1 && segDist(p.x, p.y - 8, a, pts[i + 1]) < 28))) continue;
       candidates.push(p);
     }

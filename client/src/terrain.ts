@@ -5,7 +5,8 @@
 // the grey plains beyond it, and the Moon itself curving away into space.
 
 import Phaser from "phaser";
-import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, STREET, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";export { PLAZA, lampSpots } from "./layout";
+import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, STREET, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
+export { PLAZA, lampSpots } from "./layout";
 import type { BuildingId } from "../../shared/game";
 import { type Ctx, hash, rect } from "./pix";
 

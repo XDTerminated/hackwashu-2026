@@ -111,6 +111,12 @@ function freshWorld(): World {
   };
 }
 
+/** How far a shard key ("x,y") is from a point. */
+const dist = (key: string, x: number, y: number) => {
+  const [kx, ky] = key.split(",").map(Number);
+  return Math.hypot(kx - x, ky - y);
+};
+
 function load(file = DATA_FILE): World {
   try {
     if (!existsSync(file)) return freshWorld();
@@ -128,6 +134,15 @@ function load(file = DATA_FILE): World {
     w.layout ??= {};
     w.clearedRocks ??= [];
     w.shards ??= [];
+    // A shard found at a spot that has since moved (the town's layout changed)
+    // counts as found at the nearest spot you haven't found yet.
+    const spots = shardSpots().map(shardKey);
+    w.shards = w.shards.map((k) => {
+      if (spots.includes(k)) return k;
+      const [x, y] = k.split(",").map(Number);
+      const open = spots.filter((s) => !w.shards.includes(s));
+      return open.sort((a, b) => dist(a, x, y) - dist(b, x, y))[0] ?? k;
+    });
     w.requests ??= { day: "", list: [] };
     w.materials = { ...noMaterials(), ...w.materials };
     w.progress.town ??= freshTown();
