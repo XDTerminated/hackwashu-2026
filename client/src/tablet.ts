@@ -477,8 +477,8 @@ class MoonPadView {
             btn: null,
           },
     ];
-    // Texting runs through the host's own line, so it isn't offered online.
-    for (const r of net.HOSTED ? rows.filter((x) => x.title !== "Your phone") : rows) {
+    // Online, texting is only offered when the site has its iMessage line turned on.
+    for (const r of net.HOSTED && !c.photon.connected ? rows.filter((x) => x.title !== "Your phone") : rows) {
       const failed = r.tests.find((t) => t.ok === false);
       const passed = r.tests.length && r.tests.every((t) => t.ok !== false) && r.state === "ok";
       const mark = failed ? "✗" : r.state === "ok" ? "✓" : r.state === "sample" ? "●" : "○";
@@ -547,7 +547,7 @@ class MoonPadView {
     };
     const photon = store.connections.photon;
     if (!photon.connected) {
-      line("Photon isn't set up on the colony server yet (SPECTRUM_PROJECT_ID / SPECTRUM_PROJECT_SECRET in .env).", C.red);
+      line(net.HOSTED ? "Texting isn't turned on for this site yet." : "Photon isn't set up on the colony server yet (SPECTRUM_PROJECT_ID / SPECTRUM_PROJECT_SECRET in .env).", C.red);
       return;
     }
 
@@ -581,7 +581,7 @@ class MoonPadView {
       return;
     }
 
-    line("Link your real phone and text any villager over iMessage. Everyone on the team can link theirs.");
+    line(net.HOSTED ? "Link your real phone and text your moonfolk over iMessage. One phone per account: linking a new one replaces the old." : "Link your real phone and text any villager over iMessage. Everyone on the team can link theirs.");
     for (const p of photon.phones) {
       const row = ptext(this.scene, s.x + 10, y + 3, fit(this.scene, p.line ? `${p.masked} - colony texts from ${p.line}` : `iMessage ${p.masked}`, s.w - 72), C.ink);
       const un = this.rightButton("UNLINK", y, C.woodMid, () => {

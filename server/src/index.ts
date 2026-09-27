@@ -987,8 +987,8 @@ httpServer.listen(PORT, LISTEN, () => {
   console.log(`[server] built: ${Object.keys(world.buildings).map((b) => BUILDINGS[b as keyof typeof BUILDINGS].name).join(", ")} · coins ${world.coins} · residents ${services.residents().join(", ")}`);
 });
 
-// Texting runs through the host's own iMessage line: only on your computer, never hosted.
-if (!HOSTED) void startPhoton().catch((err) => console.error("[photon] failed to start:", err));
+// Texting: on your computer, through your own iMessage line; online, through the site's line (the gateway's).
+void startPhoton().catch((err) => console.error("[photon] failed to start:", err));
 onPhoneLinked((masked) => {
   for (const c of wss.clients) send(c, { type: "phone_link", state: "linked", text: `Linked ${masked}! Your phone is now a line home.` });
 });

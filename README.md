@@ -42,7 +42,11 @@ Gmail and Calendar, their Canvas, their Claude Code in the Office). Nobody share
   own log reader, `server/src/bridge.ts`) watches your Claude Code there and sends what it sees to your
   village only; your subagents walk into your Office live. `--summary` sends less; Ctrl+C unlinks.
   The code works once, for 10 minutes. REPLAY plays a recorded, scrubbed session (`server/demo/`).
-- Texting (iMessage) is only on the host's own computer, never online.
+- **Texting (iMessage)** goes through the site's one Photon line (set `SPECTRUM_PROJECT_ID` and
+  `SPECTRUM_PROJECT_SECRET` on the site). Each account links one phone on the MoonPad (LINK, then
+  text the code from that phone), and each phone belongs to one account: a text goes to its sender's
+  village, which wakes up to answer it. Texting in another account's code moves the phone there.
+  `server/src/phoneline.ts` is the line; villages only ever text their own player's phone.
 - **Help → MY ACCOUNT**: sign out, or **DELETE MY DATA** (village, connections and account).
 
 How it works: `server/src/gateway.ts` is the front door. It handles Google sign-in (signed session
@@ -81,6 +85,7 @@ All the settings:
 | `MOON_PUBLIC_URL` | the site's address (required: the gateway won't start without it) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | your Web OAuth client |
 | `GROQ_API` | the villagers' brain |
+| `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET` | the site's iMessage line (optional: without them, there's no texting online). Testing with `MOON_DEV_LOGIN=1`, `MOON_TEXT_DRYRUN=1` logs texts instead of sending them and `POST /dev/text {"from","text"}` fakes one arriving |
 | `SESSION_SECRET` | any long random string (the blueprint makes one; without it, every restart signs everyone out) |
 | `MOON_MAX_RUNNING` | villages running at once (default 30; the blueprint sets `4` for the free plan's 512 MB; 2 GB fits roughly 15-25) |
 | `MOON_IDLE_MIN` | minutes before an unused village stops (default 5) |

@@ -17,6 +17,7 @@ import { askLookOnly, friendlyError } from "./agents.js";
 import { plainChat } from "./chat.js";
 import { signedInAs } from "./connectors/google.js";
 import { HOSTED } from "./env.js";
+import { phoneMoved, textFromGateway } from "./photon.js";
 import * as services from "./services.js";
 import { audienceNote, personaFor } from "./villagers.js";
 import { savePersist, world } from "./world.js";
@@ -452,6 +453,17 @@ export async function internalRoute(req: IncomingMessage, res: ServerResponse, u
       return json(200, { ok: true });
     case "/internal/social":
       toOwners({ type: "social", ...(typeof b.text === "string" ? { text: b.text.slice(0, 200) } : {}) });
+      return json(200, { ok: true });
+    // ---- texting: this player's phone (the gateway only hands us texts from it)
+    case "/internal/text":
+      try {
+        await textFromGateway(b);
+      } catch (err) {
+        console.error("[photon] couldn't answer a text:", err instanceof Error ? err.message : err);
+      }
+      return json(200, { ok: true });
+    case "/internal/phone-moved":
+      phoneMoved(b.phone);
       return json(200, { ok: true });
   }
   return json(404, { error: "no such thing" });

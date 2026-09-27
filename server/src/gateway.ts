@@ -20,6 +20,8 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OAuth2Client } from "google-auth-library";
 import { suitTint, type SocialState, type VisitPerms } from "../../shared/visit.js";
+import { PhoneLine, type Delivery } from "./phoneline.js";
+import { normalizePhone } from "./phones.js";
 import { Social } from "./social.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +67,37 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
 
 /** Friends: who may visit whom, and what they may do there (see social.ts). */
 const social = new Social(join(ROOT, "social.json"));
+
+/**
+ * Texting (iMessage): the site's one Photon line, one phone per account; a text
+ * goes to its sender's village (see phoneline.ts). MOON_TEXT_DRYRUN=1 (testing,
+ * with MOON_DEV_LOGIN) logs texts instead of sending them; POST /dev/text fakes one arriving.
+ */
+const phones = new PhoneLine(join(ROOT, "phones.json"), deliverText, (player, phone) => tell(player, "/internal/phone-moved", { phone }));
+const phonesUp = phones.start(DEV_LOGIN && process.env.MOON_TEXT_DRYRUN === "1").catch((err) => {
+  console.error("[phone] couldn't start the iMessage line:", err);
+  return false;
+});
+
+/** A text from a player's phone, handed to their village (woken if asleep) until it has answered. */
+async function deliverText(id: string, d: Delivery) {
+  const p = Object.hasOwn(players, id) ? players[id] : null;
+  if (!p || p.guest) return;
+  const c = await copyFor(p, publicUrl || lastSite, true);
+  // (counted as a connection meanwhile, so the village isn't put to sleep mid-reply)
+  c.sockets++;
+  try {
+    await fetch(`http://127.0.0.1:${c.port}/internal/text`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
+      body: JSON.stringify(d),
+      signal: AbortSignal.timeout(150_000),
+    });
+  } finally {
+    c.sockets = Math.max(0, c.sockets - 1);
+    c.lastUsed = Date.now();
+  }
+}
 
 /**
  * Islands talk to each other (a visitor's coins, gifts, a friend's question for
@@ -230,6 +263,8 @@ function copyEnv(): Record<string, string> {
 
 /** This player's game server, started if it isn't running (`relay`: only to hand it a relayed action). */
 async function copyFor(p: Player, site: string, relay = false): Promise<Copy> {
+  // (a village learns whether texting is on when it starts, so the line has to be up first)
+  await phonesUp;
   if (deleting.has(p.id)) throw new Error("That village is being deleted.");
   let c = copies.get(p.id);
   if (!c) {
@@ -264,6 +299,8 @@ async function copyFor(p: Player, site: string, relay = false): Promise<Copy> {
         GOOGLE_REDIRECT: `${site}/oauth/google/callback`,
         MOON_INTERNAL_KEY: INTERNAL_KEY,
         MOON_GATEWAY: `http://127.0.0.1:${PORT}`,
+        // (texting goes through the gateway's line; guests' villages can't link a phone)
+        MOON_TEXTING: phones.ready && !p.guest ? "1" : "",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -587,6 +624,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       delete players[p.id];
       savePlayers();
       social.forget(p.id);
+      phones.forget(p.id);
       tellAll("/internal/kick", { id: p.id, text: "That player's account is gone." });
     } finally {
       deleting.delete(p.id);
@@ -732,6 +770,7 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
   const key = Buffer.from(String(req.headers["x-moon-key"] ?? ""));
   const want = Buffer.from(INTERNAL_KEY);
   if (key.length !== want.length || !timingSafeEqual(key, want)) return json(404, { error: "no such thing" });
+  if (url.pathname.startsWith("/internal/phone/") && req.method === "POST") return phoneRoute(req, url, json);
   if (url.pathname !== "/internal/relay" || req.method !== "POST") return json(404, { error: "no such thing" });
   let body: Record<string, unknown>;
   try {
@@ -763,6 +802,34 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
   }
 }
 
+/** A village about its own player's phone: link it, unlink it, text it, or ask which one it is. */
+async function phoneRoute(req: IncomingMessage, url: URL, json: (status: number, body: object) => void) {
+  let b: Record<string, unknown>;
+  try {
+    b = await readJson(req);
+  } catch {
+    return json(400, { error: "bad request" });
+  }
+  const id = String(b.from ?? "");
+  const p = Object.hasOwn(players, id) ? players[id] : null;
+  if (!p || p.guest) return json(403, { ok: false, text: "Sign in with Google to link your phone." });
+  const phone = String(b.phone ?? "");
+  switch (url.pathname) {
+    case "/internal/phone/link":
+      return json(200, await phones.startLink(p.id, phone));
+    case "/internal/phone/unlink":
+      phones.unlink(p.id, phone);
+      return json(200, { ok: true });
+    case "/internal/phone/send":
+      return json(200, { ok: await phones.send(p.id, phone, String(b.text ?? "")) });
+    case "/internal/phone/mine": {
+      const mine = phones.phoneOf(p.id);
+      return json(200, { phone: mine ?? null, line: mine ? (phones.lineOf(mine) ?? null) : null });
+    }
+  }
+  return json(404, { error: "no such thing" });
+}
+
 // ---------------------------------------------------------------- the server
 
 /** The game server's own pages and endpoints (everything else is the built game). */
@@ -775,6 +842,13 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/social" || url.pathname.startsWith("/social/")) return await socialRoute(req, res, url);
     if (url.pathname.startsWith("/internal/")) return await internalRoute(req, res, url);
     if (url.pathname === "/privacy") return privacyPage(res);
+    // Testing only (MOON_DEV_LOGIN): a text "arriving" from a phone, as if it came over iMessage.
+    if (DEV_LOGIN && url.pathname === "/dev/text" && req.method === "POST") {
+      const b = await readJson(req);
+      await phones.receive(normalizePhone(String(b.from ?? "")) ?? "", String(b.text ?? ""));
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: true }));
+    }
     if (url.pathname === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({ ok: true, players: Object.keys(players).length, running: copies.size }));

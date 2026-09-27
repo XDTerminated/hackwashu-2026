@@ -30,3 +30,8 @@ services:
         sync: false
       - key: GROQ_API
         sync: false
+      # Texting (iMessage): the site's one Photon line; each account links its own phone.
+      - key: SPECTRUM_PROJECT_ID
+        sync: false
+      - key: SPECTRUM_PROJECT_SECRET
+        sync: false
