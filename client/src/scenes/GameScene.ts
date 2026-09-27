@@ -45,6 +45,7 @@ import { fromKey, pathDef, pathKey, pathTileOk, type PathStyle } from "../../../
 import { inTutorial, pendingApprovalFor, store } from "../store";
 import { hostName, isMe, mayAsk, mp, onPeers, onSession, perms, visiting } from "../multiplayer";
 import { PeerActor } from "../peerview";
+import { PlayerIdle } from "../idle";
 import type { Peer } from "../../../shared/visit";
 
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
@@ -232,6 +233,7 @@ export class GameScene extends Phaser.Scene {
     this.resumeAt = null;
     this.player = this.add.sprite(start.x, start.y, "astro_0").setOrigin(0.5, 1);
     this.playerShadow = this.add.image(this.player.x, this.player.y, shadowKey(this, 16)).setDepth(-8);
+    this.idle = new PlayerIdle(this, this.player);
     this.watchPeers();
 
     this.prompt = new Label(this, 0, 0, "", { bg: C.wood, border: C.woodDark, color: C.paperLight, font: "pxb" }).setDepth(99999).setVisible(false);
@@ -2581,11 +2583,21 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
       if (!a.isFree || this.chatting.has(v)) continue;
-      if (this.distTo(a.x, a.y - 8) < 48) continue;
       const cd = (this.idleCooldown.get(v) ?? Phaser.Math.FloatBetween(1, 4)) - dt;
       this.idleCooldown.set(v, cd);
       if (cd > 0) continue;
       this.idleCooldown.set(v, Phaser.Math.FloatBetween(5, 11));
+      // Standing near you, they stay put, but do their own little thing now and then.
+      if (this.distTo(a.x, a.y - 8) < 48) {
+        if (Math.random() < 0.5) void a.fidget();
+        continue;
+      }
+      // Now and then, a fidget instead of a walk.
+      if (Math.random() < 0.3) {
+        void a.fidget();
+        this.idleCooldown.set(v, Phaser.Math.FloatBetween(3, 7));
+        continue;
+      }
       const partners = [...this.villagers.values()].filter((b) => b.id !== v && b.isFree && !this.chatting.has(b.id));
       // Mostly in town: a visit, a turn around the fountain, a stroll down Main
       // Street, a potter in the front yard; now and then a wander a bit further out.
@@ -2709,6 +2721,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private moveTime = 0;
+  /** What you do while standing still (breathe, look around, doze off). */
+  private idle!: PlayerIdle;
   private dustT = 0;
   private greeted = new Map<VillagerId, number>();
 
@@ -2820,6 +2834,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.windowOpen()) {
       this.player.anims.stop();
+      this.idle.reset();
       return;
     }
     const left = this.cursors.left.isDown || this.keys.A.isDown;
@@ -2833,8 +2848,12 @@ export class GameScene extends Phaser.Scene {
       this.player.anims.stop();
       this.player.setTexture({ down: "astro_0", up: "astro_3", side: "astro_6" }[this.facing]);
       this.moveTime = 0;
+      // (talking with someone, or busy placing things: no fidgeting)
+      if (this.talkingWith || this.near.partner || this.arranging) this.idle.reset();
+      else this.idle.update(dt, this.facing);
       return;
     }
+    this.idle.reset();
     const len = Math.hypot(dx, dy);
     dx /= len;
     dy /= len;

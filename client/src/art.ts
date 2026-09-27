@@ -95,15 +95,16 @@ const TORSO_UP = [
   ".KOOKWWWWWWWWWWKOOK.",
 ];
 
+// (in profile: the arm hangs at the side, glove at the bottom; the chest patch shows at the front)
 const TORSO_SIDE = [
   ".KKWWWWWWWWWWWWKK...",
   "KWGGWWWWWWWWWWWWWK..",
-  "KWGGWWWWWWWWWWWWWK..",
-  "KWGGWWWOOOOOOWWWWK..",
-  "KWGGWWWOooooOWWWWK..",
-  "KWGGWWWOOOOOOWWWWK..",
-  "KWWGWWWWWWWWWWWWWK..",
-  "KWWWWWWWWWWWWWOOK...",
+  "KWGGWWWWKWKWWWWWWK..",
+  "KWGGWWWWKWKWWOOOWK..",
+  "KWGGWWWWKWKWWOoOWK..",
+  "KWGGWWWWKWKWWOOOWK..",
+  "KWWGWWWWKWKWWWWWWK..",
+  "KWWWWWWWKOKWWWWWK...",
 ];
 
 const LEGS_IDLE = [
@@ -130,12 +131,13 @@ const LEGS_WALK_B = [
   "....KBBBBKKBBBBK....",
 ];
 
+// (standing in profile: two legs, the front boot's toe pointing the way you face)
 const SIDE_LEGS_IDLE = [
-  "...KWWWWWWWWWWK.....",
-  "...KWWWWWWWWWWK.....",
   "....KWWWWWWWWK......",
-  "....KBBBBBBBBK......",
-  "...KBBBBBBBBBK......",
+  "....KWWWKKWWWK......",
+  "....KWWWKKWWWK......",
+  "....KBBBKKBBBBK.....",
+  "...KBBBBKKBBBBBK....",
 ];
 
 const SIDE_LEGS_A = [
@@ -212,18 +214,19 @@ export const jadeRabbit: PixelSprite = {
     [
       "....KK......KK....",
       "...KWWK....KWWK...",
-      "...KWPK....KWPK...",
-      "...KWPK....KWPK...",
-      "...KWPK....KWPK...",
+      "...KWPK....KPWK...",
+      "...KWPK....KPWK...",
+      "...KWPK....KPWK...",
       "...KWWK....KWWK...",
       ...RABBIT_BODY,
     ],
+    // (both ears tip outward together, pink sides in)
     [
-      "...KK.......KK....",
-      "..KWWK.....KWWK...",
-      "..KWPK.....KWPK...",
-      "...KWPK....KWPK...",
-      "...KWPK....KWPK...",
+      "...KK........KK...",
+      "..KWWK......KWWK..",
+      "..KWPK......KPWK..",
+      "...KWPK....KPWK...",
+      "...KWPK....KPWK...",
       "...KWWK....KWWK...",
       ...RABBIT_BODY,
     ],

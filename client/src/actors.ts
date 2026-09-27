@@ -1,3 +1,4 @@
+import { floatEmote } from "./idle";
 import Phaser from "phaser";
 import type { Clod, ClodStatus, VillagerId } from "../../shared/game";
 import { VILLAGER_NAMES } from "../../shared/game";
@@ -87,7 +88,93 @@ export class VillagerActor {
 
   /** Free for idle life: no queued work, not strolling, not flagging the player down, not mid-conversation. */
   get isFree() {
-    return !this.running && this.queue.length === 0 && !this.strolling && this.alert === "none" && !this.held;
+    return !this.running && this.queue.length === 0 && !this.strolling && this.alert === "none" && !this.held && !this.fidgeting;
+  }
+
+  // ---------------------------------------------------------------- fidgets
+  // Little things each neighbor does now and then while standing around.
+
+  private fidgeting = false;
+  /** How far the sprite is lifted off the ground right now (a hop; the shadow stays put). */
+  private lift = 0;
+
+  private tweenTo(props: Record<string, number>, duration: number): Promise<void> {
+    return new Promise((done) => this.scene.tweens.add({ targets: this, ...props, duration, ease: "sine.out", onComplete: () => done() }));
+  }
+
+  /** `n` little hops, `h` pixels high. */
+  private async hops(n: number, h: number, ms = 110) {
+    for (let i = 0; i < n; i++) {
+      await this.tweenTo({ lift: h }, ms);
+      await this.tweenTo({ lift: 0 }, ms);
+    }
+  }
+
+  /** A glance one way, then the other, then back as they were. */
+  private async lookAround() {
+    const was = this.sprite.flipX;
+    this.sprite.setFlipX(!was);
+    await this.wait(700);
+    this.sprite.setFlipX(was);
+    await this.wait(500);
+  }
+
+  private emote(kind: Parameters<typeof floatEmote>[3], dx = 0, dy = 0) {
+    floatEmote(this.scene, this.sprite.x + dx, this.sprite.y - this.sprite.height - 2 + dy, kind);
+  }
+
+  /** Do their own little thing (only when they're free: never mid-task, mid-walk or mid-conversation). */
+  async fidget() {
+    if (!this.isFree) return;
+    this.fidgeting = true;
+    try {
+      switch (this.id) {
+        case "jade_rabbit": // a couple of bunny hops, and sometimes a little heart
+          await this.hops(2, 4);
+          if (Math.random() < 0.4) this.emote("heart");
+          break;
+        case "postmaster": // an owl's look around, then a thought
+          await this.lookAround();
+          if (Math.random() < 0.5) this.emote("dots");
+          break;
+        case "timekeeper": // tick: checks the time, a little sparkle, a glance
+          this.emote("sparkle");
+          await this.hops(1, 2);
+          await this.lookAround();
+          break;
+        case "scholar": // thinking... then an idea
+          this.emote("dots");
+          await this.wait(1100);
+          this.emote("sparkle", 4);
+          break;
+        case "stargazer": // looks up at the stars
+          await this.hops(1, 3, 160);
+          this.emote("sparkle", -6);
+          await this.wait(350);
+          this.emote("sparkle", 6, -4);
+          break;
+        case "dj": // bobs to the beat
+          this.emote("note", 5);
+          for (let beat = 0; beat < 6; beat++) {
+            if (beat === 3) this.emote("note", -5, -2);
+            await this.hops(1, 1, 90);
+            await this.wait(90);
+          }
+          break;
+        case "mechanic": // a turn of the wrench, sparks flying
+          for (let i = 0; i < 3; i++) {
+            floatEmote(this.scene, this.sprite.x + (this.sprite.flipX ? -8 : 8), this.sprite.y - 8, "spark", -6);
+            await this.wait(260);
+          }
+          await this.hops(1, 2);
+          break;
+        default:
+          await this.lookAround();
+      }
+    } finally {
+      this.lift = 0;
+      this.fidgeting = false;
+    }
   }
 
   private held = false;
@@ -316,6 +403,9 @@ export class VillagerActor {
 
   update(time: number) {
     const s = this.sprite;
+    // (a hop lifts the picture, not the villager: the shadow stays on the ground)
+    const lift = Math.round(this.lift);
+    if (s.originY !== 1 + lift / s.height) s.setOrigin(0.5, 1 + lift / s.height);
     if (this.walkTween && !this.strolling) this.walkTween.timeScale = this.speed;
     const x = Math.round(s.x);
     const y = Math.round(s.y);

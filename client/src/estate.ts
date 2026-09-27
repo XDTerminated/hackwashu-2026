@@ -264,21 +264,22 @@ export function drawManor(ctx: Ctx) {
 
 /** The Jade Rabbit's Hollow: a great hill of jade moon-moss under a blossoming tree. 112 x 96. */
 export function drawHollow(ctx: Ctx) {
-  // the tree grows up behind the hill
-  rect(ctx, O, 73, 16, 9, 42);
-  rect(ctx, "#8a5a3b", 74, 17, 7, 41);
-  rect(ctx, "#a86f43", 74, 17, 2, 41);
-  rect(ctx, O, 66, 24, 9, 3);
-  rect(ctx, "#8a5a3b", 66, 25, 8, 1);
-  rect(ctx, O, 81, 20, 10, 3);
-  rect(ctx, "#8a5a3b", 82, 21, 8, 1);
+  // the tree grows up behind the hill (T: set down far enough that its crown fits in the picture)
+  const T = 4;
+  rect(ctx, O, 73, 16 + T, 9, 42);
+  rect(ctx, "#8a5a3b", 74, 17 + T, 7, 41);
+  rect(ctx, "#a86f43", 74, 17 + T, 2, 41);
+  rect(ctx, O, 66, 24 + T, 9, 3);
+  rect(ctx, "#8a5a3b", 66, 25 + T, 8, 1);
+  rect(ctx, O, 81, 20 + T, 10, 3);
+  rect(ctx, "#8a5a3b", 82, 21 + T, 8, 1);
   const lobes: [number, number, number, number][] = [
-    [78, 16, 22, 13],
-    [58, 20, 12, 9],
-    [98, 21, 12, 9],
-    [78, 4, 13, 5],
-    [64, 8, 9, 6],
-    [92, 8, 9, 6],
+    [78, 16 + T, 22, 13],
+    [58, 20 + T, 12, 9],
+    [98, 21 + T, 12, 9],
+    [78, 4 + T, 13, 5],
+    [64, 8 + T, 9, 6],
+    [92, 8 + T, 9, 6],
   ];
   for (const [x, y, rx, ry] of lobes) disc(ctx, O, x, y, rx + 1, ry + 1);
   for (const [x, y, rx, ry] of lobes) disc(ctx, "#2f6f63", x, y, rx, ry);
@@ -286,7 +287,7 @@ export function drawHollow(ctx: Ctx) {
   for (const [x, y, rx, ry] of lobes) disc(ctx, "#72bfa2", x - 3, y - 3, rx * 0.4, ry * 0.35);
   for (let i = 0; i < 110; i++) {
     const x = 44 + Math.floor(hash(i, 1, 13) * 68);
-    const y = Math.floor(hash(i, 2, 13) * 34);
+    const y = T + Math.floor(hash(i, 2, 13) * 34);
     if (lobes.some(([cx, cy, rx, ry]) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 0.8)) rect(ctx, hash(i, 3, 13) < 0.5 ? GOLD : "#ffe08a", x, y, 1, 1);
   }
   // the hill

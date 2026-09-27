@@ -1,3 +1,4 @@
+import { EMOTES } from "./idle";
 import { drawDigSpot, drawHeliumNode, drawIceNode, drawMarket, drawOreNode, drawScrapNode, drawTownHall } from "./townart";
 import Phaser from "phaser";
 import { drawStar } from "./star";
@@ -454,6 +455,7 @@ export function shadowKey(scene: Phaser.Scene, w: number): string {
 
 export function buildTextures(scene: Phaser.Scene) {
   registerSprite(scene, "astro", astronaut);
+  for (const [k, s] of Object.entries(EMOTES)) registerSprite(scene, `emote_${k}`, s);
   registerSprite(scene, "rabbit", jadeRabbit);
   registerSprite(scene, "postmaster", postmaster);
   registerSprite(scene, "timekeeper", timekeeper);
