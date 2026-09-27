@@ -1948,9 +1948,13 @@ export class GameScene extends Phaser.Scene {
       add({ verb: v.off ? "TURN ON" : "TURN OFF", label: `[E] turn ${v.off ? "on" : "off"}`, x: v.x, y: v.y - v.item.h - 2, d: dist(v.x, v.y - 4) + 6, act: () => net.send({ type: "toggle_deco", id }) }, r + 6);
     }
     // Rocks you could clear.
+    // (how close you are to the rock's solid edge, so walking up from any side counts:
+    // its middle's out of reach from the side, and hidden behind it from above)
     for (const r of this.rocks) {
-      const w = ROCK_TILES[r.kind] * TILE;
-      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]} moonstone)`, x: r.x, y: r.y - 30, d: dist(r.x, r.y - 6) + 8, act: () => this.clearRockNow(r), tut: true }, Math.max(20, w / 2 + 10));
+      const f = this.rockViews.get(rockKey(r))?.solid;
+      if (!f) continue;
+      const edge = Math.hypot(this.player.x - Phaser.Math.Clamp(this.player.x, f.left, f.right), this.player.y - Phaser.Math.Clamp(this.player.y, f.top, f.bottom));
+      add({ verb: "CLEAR", label: `[E] clear ${ROCK_NAME[r.kind].toLowerCase()} (+${ROCK_STONE[r.kind]} moonstone)`, x: r.x, y: r.y - 30, d: edge + 8, act: () => this.clearRockNow(r), tut: true }, 24);
     }
     // Things you stand on: prompts float above the player's head.
     const head = this.player.y - 30;
