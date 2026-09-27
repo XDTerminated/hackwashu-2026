@@ -19,6 +19,7 @@ import { connect as tcp, isIP } from "node:net";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OAuth2Client } from "google-auth-library";
+import type { VillagerId } from "../../shared/game.js";
 import { suitTint, type SocialState, type VisitPerms } from "../../shared/visit.js";
 import { PhoneLine, type Delivery } from "./phoneline.js";
 import { normalizePhone } from "./phones.js";
@@ -73,7 +74,20 @@ const social = new Social(join(ROOT, "social.json"));
  * goes to its sender's village (see phoneline.ts). MOON_TEXT_DRYRUN=1 (testing,
  * with MOON_DEV_LOGIN) logs texts instead of sending them; POST /dev/text fakes one arriving.
  */
-const phones = new PhoneLine(join(ROOT, "phones.json"), deliverText, (player, phone) => tell(player, "/internal/phone-moved", { phone }));
+const phones = (() => {
+  const file = join(ROOT, "phones.json");
+  const make = () => new PhoneLine(file, deliverText, (player, phone) => tell(player, "/internal/phone-moved", { phone }));
+  try {
+    return make();
+  } catch (err) {
+    if (!existsSync(file)) throw err;
+    // A damaged phones.json doesn't keep the site down: set it aside (nobody's phone is linked until they link again).
+    const aside = `${file}.corrupt-${Date.now()}`;
+    console.error(`[phone] couldn't read ${file} (moved it to ${aside}):`, err);
+    renameSync(file, aside);
+    return make();
+  }
+})();
 const phonesUp = phones.start(DEV_LOGIN && process.env.MOON_TEXT_DRYRUN === "1").catch((err) => {
   console.error("[phone] couldn't start the iMessage line:", err);
   return false;
@@ -87,12 +101,13 @@ async function deliverText(id: string, d: Delivery) {
   // (counted as a connection meanwhile, so the village isn't put to sleep mid-reply)
   c.sockets++;
   try {
-    await fetch(`http://127.0.0.1:${c.port}/internal/text`, {
+    const r = await fetch(`http://127.0.0.1:${c.port}/internal/text`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
+      headers: { "content-type": "application/json", "x-moon-key": keyFor(id) },
       body: JSON.stringify(d),
       signal: AbortSignal.timeout(150_000),
     });
+    if (!r.ok) throw new Error(`the village answered ${r.status}`);
   } finally {
     c.sockets = Math.max(0, c.sockets - 1);
     c.lastUsed = Date.now();
@@ -105,6 +120,21 @@ async function deliverText(id: string, d: Delivery) {
  * notes to an island ("send Sam home"). New every start, never sent to a browser.
  */
 const INTERNAL_KEY = randomBytes(24).toString("hex");
+/**
+ * Each island gets its own key, made from the gateway's ("<id>.<mac>"): so a call
+ * from an island says which island made it, and one island's key can't speak for
+ * another (it can't text from someone else's phone or spend a stranger's coins).
+ */
+const keyFor = (id: string) => `${id}.${createHmac("sha256", INTERNAL_KEY).update(id).digest("hex")}`;
+/** Which island (player id) sent this key, or null. */
+function islandOf(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.split(".")[0];
+  if (!id || !Object.hasOwn(players, id)) return null;
+  const want = Buffer.from(keyFor(id));
+  const got = Buffer.from(raw);
+  return want.length === got.length && timingSafeEqual(want, got) ? id : null;
+}
 
 // ---------------------------------------------------------------- the site's address
 
@@ -297,7 +327,7 @@ async function copyFor(p: Player, site: string, relay = false): Promise<Copy> {
         MOON_USER_NAME: p.name,
         MOON_GUEST: p.guest ? "1" : "",
         GOOGLE_REDIRECT: `${site}/oauth/google/callback`,
-        MOON_INTERNAL_KEY: INTERNAL_KEY,
+        MOON_INTERNAL_KEY: keyFor(p.id),
         MOON_GATEWAY: `http://127.0.0.1:${PORT}`,
         // (texting goes through the gateway's line; guests' villages can't link a phone)
         MOON_TEXTING: phones.ready && !p.guest ? "1" : "",
@@ -368,7 +398,29 @@ setInterval(() => {
   for (const [id, c] of copies) if (c.sockets === 0 && Date.now() - c.lastUsed > (c.relayOnly ? RELAY_IDLE_MS : IDLE_MS)) void stopCopy(id);
   // (guests who never started a village, or whose session ran out)
   for (const [id, p] of Object.entries(players)) if (p.guest && !copies.has(id) && Date.now() - p.createdAt > IDLE_MS) delete players[id];
+  // (visits that ended a while ago)
+  for (const [id, stays] of visiting) {
+    for (const [host, s] of stays) if (s.open === 0 && Date.now() - s.at > VISIT_GRACE_MS) stays.delete(host);
+    if (!stays.size) visiting.delete(id);
+  }
 }, 60_000);
+
+/**
+ * Where each player is visiting (host id → their open connections there, and when they
+ * last came or went). An island may only reach a player's own island (their coins, their
+ * neighbors) while that player is visiting it, or just after.
+ */
+interface Stay {
+  open: number;
+  at: number;
+}
+const visiting = new Map<string, Map<string, Stay>>();
+const VISIT_GRACE_MS = 10 * 60_000;
+
+function visitedLately(visitor: string, host: string) {
+  const s = visiting.get(visitor)?.get(host);
+  return !!s && (s.open > 0 || Date.now() - s.at < VISIT_GRACE_MS);
+}
 
 // ---------------------------------------------------------------- passing things through
 
@@ -405,7 +457,7 @@ function proxyUpgrade(req: IncomingMessage, socket: import("node:stream").Duplex
   const up = tcp(c.port, "127.0.0.1", () => {
     const lines = [`${req.method} ${req.url} HTTP/1.1`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) if (!OURS.test(req.rawHeaders[i])) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
-    lines.push(`x-moon-key: ${INTERNAL_KEY}`, `x-moon-who: ${Buffer.from(JSON.stringify(who)).toString("base64url")}`);
+    lines.push(`x-moon-key: ${keyFor(who.host.id)}`, `x-moon-who: ${Buffer.from(JSON.stringify(who)).toString("base64url")}`);
     up.write(`${lines.join("\r\n")}\r\n\r\n`);
     if (head.length) up.write(head);
     up.pipe(socket);
@@ -413,12 +465,25 @@ function proxyUpgrade(req: IncomingMessage, socket: import("node:stream").Duplex
   });
   c.sockets++;
   if (who.role === "owner") c.ownerSockets++;
+  let stay: Stay | undefined;
+  if (who.role === "visitor") {
+    let stays = visiting.get(who.id);
+    if (!stays) visiting.set(who.id, (stays = new Map()));
+    stay = stays.get(who.host.id) ?? { open: 0, at: 0 };
+    stays.set(who.host.id, stay);
+    stay.open++;
+    stay.at = Date.now();
+  }
   let closed = false;
   const done = () => {
     if (closed) return;
     closed = true;
     c.sockets = Math.max(0, c.sockets - 1);
     if (who.role === "owner") c.ownerSockets = Math.max(0, c.ownerSockets - 1);
+    if (stay) {
+      stay.open = Math.max(0, stay.open - 1);
+      stay.at = Date.now();
+    }
     c.lastUsed = Date.now();
     up.destroy();
     socket.destroy();
@@ -598,7 +663,7 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       p.epoch = (p.epoch ?? 0) + 1;
       savePlayers();
       void stopCopy(p.id); // open game tabs lose their connection and go back to sign-in
-      tellAll("/internal/kick", { id: p.id, text: "You signed out." });
+      kickEverywhere(p.id, "You signed out.");
       // (a guest's village is thrown away: the copy's exit deletes it)
       if (p.guest && !copies.has(p.id)) delete players[p.id];
     }
@@ -625,7 +690,9 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
       savePlayers();
       social.forget(p.id);
       phones.forget(p.id);
-      tellAll("/internal/kick", { id: p.id, text: "That player's account is gone." });
+      kickEverywhere(p.id, "That player's account is gone.");
+      visiting.delete(p.id);
+      socialAdds.delete(p.id);
     } finally {
       deleting.delete(p.id);
     }
@@ -639,7 +706,8 @@ async function auth(req: IncomingMessage, res: ServerResponse, url: URL) {
 // ---------------------------------------------------------------- friends (the phone's FRIENDS tab)
 
 const firstName = (p: Player) => (p.name || p.email.split("@")[0] || "Friend").split(" ")[0].slice(0, 24);
-const card = (id: string) => ({ id, name: firstName(players[id]), email: players[id].email });
+/** (a player's email only goes to someone they asked to be friends with: a friend code never gives it away) */
+const card = (id: string, email = false) => ({ id, name: firstName(players[id]), email: email ? players[id].email : "" });
 /** Real, signed-up players only (never a guest, never a made-up id). */
 const real = (id: unknown): id is string => typeof id === "string" && Object.hasOwn(players, id) && !players[id].guest;
 
@@ -649,26 +717,28 @@ function socialState(me: Player): SocialState {
     code: t.code,
     closed: t.closed,
     friends: t.friends.filter(real).map((id) => ({ ...card(id), online: (copies.get(id)?.ownerSockets ?? 0) > 0, perms: social.permsFor(me.id, id), theirs: social.permsFor(id, me.id) })),
-    incoming: t.incoming.filter(real).map(card),
-    outgoing: social.outgoing(me.id).filter(real).map(card),
-    blocked: t.blocked.filter(real).map(card),
+    incoming: t.incoming.filter(real).map((id) => card(id, true)),
+    outgoing: social.outgoing(me.id).filter(real).map((id) => card(id)),
+    blocked: t.blocked.filter(real).map((id) => card(id)),
   };
 }
 
 /** You're somewhere now: off every other island you were visiting (you're one astronaut, in one place). */
 function leaveOtherIslands(p: Player, here: string) {
   if (p.guest) return;
-  for (const id of copies.keys()) if (id !== here) tell(id, "/internal/kick", { id: p.id, text: "You flew somewhere else (in another tab or window)." });
+  for (const [id, s] of visiting.get(p.id) ?? []) if (id !== here && s.open > 0) tell(id, "/internal/kick", { id: p.id, text: "You flew somewhere else (in another tab or window)." });
+}
+
+/** Off every island this player is visiting. */
+function kickEverywhere(id: string, text: string) {
+  for (const [host, s] of visiting.get(id) ?? []) if (s.open > 0) tell(host, "/internal/kick", { id, text });
 }
 
 /** A note to one island, if it's running (nothing to tell a sleeping one: it asks when it wakes). */
 function tell(id: string, path: string, body: object) {
   const c = copies.get(id);
   if (!c) return;
-  void fetch(`http://127.0.0.1:${c.port}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY }, body: JSON.stringify(body) }).catch(() => null);
-}
-function tellAll(path: string, body: object) {
-  for (const id of copies.keys()) tell(id, path, body);
+  void fetch(`http://127.0.0.1:${c.port}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-moon-key": keyFor(id) }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) }).catch(() => null);
 }
 
 async function readJson(req: IncomingMessage, limit = 16_384): Promise<Record<string, unknown>> {
@@ -680,6 +750,14 @@ async function readJson(req: IncomingMessage, limit = 16_384): Promise<Record<st
   const v = JSON.parse(raw || "{}");
   return v && typeof v === "object" ? v : {};
 }
+
+/** Friend requests each player has tried lately (by email or code). */
+const socialAdds = new Map<string, number[]>();
+const ADDS_PER_WINDOW = 15;
+const ADD_WINDOW_MS = 10 * 60_000;
+setInterval(() => {
+  for (const [id, times] of socialAdds) if (times.every((t) => Date.now() - t > ADD_WINDOW_MS)) socialAdds.delete(id);
+}, 10 * 60_000).unref();
 
 async function socialRoute(req: IncomingMessage, res: ServerResponse, url: URL) {
   const json = (status: number, body: object) => {
@@ -699,10 +777,17 @@ async function socialRoute(req: IncomingMessage, res: ServerResponse, url: URL) 
   } catch {
     return json(400, { error: "That didn't make sense." });
   }
-  const them = body.id;
+  // (nobody else's id, and never your own)
+  const them = body.id !== me.id ? body.id : undefined;
   const done = (text?: string) => json(200, { ...socialState(me), ...(text ? { text } : {}) });
   switch (url.pathname) {
     case "/social/add": {
+      // (a few at a time: nobody gets to try every email or friend code)
+      const now = Date.now();
+      const tries = (socialAdds.get(me.id) ?? []).filter((t) => now - t < ADD_WINDOW_MS);
+      if (tries.length >= ADDS_PER_WINDOW) return json(429, { error: "That's a lot of friend requests! Try again in a few minutes." });
+      tries.push(now);
+      socialAdds.set(me.id, tries);
       // By friend code, or by the Google email they signed in with.
       const raw = String(body.code ?? body.email ?? "").trim().slice(0, 120);
       const byEmail = raw.includes("@");
@@ -766,11 +851,10 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify(body));
   };
-  // Only islands (started by this gateway, with its key) ever call these.
-  const key = Buffer.from(String(req.headers["x-moon-key"] ?? ""));
-  const want = Buffer.from(INTERNAL_KEY);
-  if (key.length !== want.length || !timingSafeEqual(key, want)) return json(404, { error: "no such thing" });
-  if (url.pathname.startsWith("/internal/phone/") && req.method === "POST") return phoneRoute(req, url, json);
+  // Only islands (started by this gateway, each with its own key) ever call these.
+  const caller = islandOf(req.headers["x-moon-key"]);
+  if (!caller) return json(404, { error: "no such thing" });
+  if (url.pathname.startsWith("/internal/phone/") && req.method === "POST") return phoneRoute(req, url, json, caller);
   if (url.pathname !== "/internal/relay" || req.method !== "POST") return json(404, { error: "no such thing" });
   let body: Record<string, unknown>;
   try {
@@ -780,6 +864,11 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
   }
   const { to, path } = body;
   if (!real(to) || typeof path !== "string" || !RELAY_PATHS.has(path)) return json(400, { error: "bad relay" });
+  // (only for someone visiting the asking island right now, or who just left it)
+  if (!visitedLately(to, caller)) return json(403, { error: "They aren't visiting here." });
+  // (and a neighbor only helps a visitor the owner said may ask them)
+  const inner = (body.body && typeof body.body === "object" ? body.body : {}) as Record<string, unknown>;
+  if (path === "/internal/ask" && !social.permsFor(caller, to).agents.includes(inner.villager as VillagerId)) return json(403, { error: "You can't ask them for help here." });
   try {
     // (the other island wakes up if it's asleep: a visitor's coins go home even while they're away)
     const c = await copyFor(players[to], publicUrl || lastSite, true);
@@ -788,7 +877,7 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
     try {
       const r = await fetch(`http://127.0.0.1:${c.port}${path}`, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-moon-key": INTERNAL_KEY },
+        headers: { "content-type": "application/json", "x-moon-key": keyFor(to) },
         body: JSON.stringify(body.body ?? {}),
         signal: AbortSignal.timeout(path === "/internal/ask" ? 120_000 : 15_000),
       });
@@ -803,15 +892,16 @@ async function internalRoute(req: IncomingMessage, res: ServerResponse, url: URL
 }
 
 /** A village about its own player's phone: link it, unlink it, text it, or ask which one it is. */
-async function phoneRoute(req: IncomingMessage, url: URL, json: (status: number, body: object) => void) {
+async function phoneRoute(req: IncomingMessage, url: URL, json: (status: number, body: object) => void, caller: string) {
   let b: Record<string, unknown>;
   try {
     b = await readJson(req);
   } catch {
     return json(400, { error: "bad request" });
   }
+  // (a village only ever speaks for its own player)
   const id = String(b.from ?? "");
-  const p = Object.hasOwn(players, id) ? players[id] : null;
+  const p = id === caller && Object.hasOwn(players, id) ? players[id] : null;
   if (!p || p.guest) return json(403, { ok: false, text: "Sign in with Google to link your phone." });
   const phone = String(b.phone ?? "");
   switch (url.pathname) {

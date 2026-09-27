@@ -860,6 +860,8 @@ export async function askLookOnly(v: VillagerId, text: string, host: string, ask
     audienceNote("talk") +
     `\n\nRIGHT NOW YOU'RE ON ${host.toUpperCase()}'S ISLAND, talking with ${asker}, a friend who's visiting. ${asker} is who you're helping: anything you look up is ${asker}'s own (their inbox, their calendar, their repos), never ${host}'s. You can only look things up for a visitor: never send, draft, book, change, file, queue or play anything. If ${asker} asks for that, say you can only do it for them on their own island.`;
   if (BRAIN === "mock") return `(Visiting mode: I'd look that up in ${asker}'s own accounts, but villagers are on scripted lines right now.)`;
+  // (a real model run like any task: counts toward the same limit)
+  if (!takeStart()) return "Phew, the whole colony's been run off its feet. Give us a few minutes' breather, then ask again?";
   const tools = Object.entries(LEAF_TOOLS)
     .filter(([name, t]) => t.owner === v && LOOK_ONLY.has(name))
     .map(([, t]) => t.def);

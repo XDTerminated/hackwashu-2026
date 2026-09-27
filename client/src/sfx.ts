@@ -120,6 +120,8 @@ function beep(
   osc.stop(t0 + dur + 0.02);
 }
 
+let noiseBuf: AudioBuffer | null = null;
+
 /** Filtered noise: engines, rumbles, dust. */
 function noise(dur: number, vol: number, freq: number, delay = 0, slideTo?: number) {
   if (muted) return;
@@ -127,12 +129,15 @@ function noise(dur: number, vol: number, freq: number, delay = 0, slideTo?: numb
   const out = a && output(a);
   if (!a || !out) return;
   const t0 = a.currentTime + delay;
-  const len = Math.max(1, Math.floor(a.sampleRate * dur));
-  const buf = a.createBuffer(1, len, a.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  // (one shared stretch of noise, looped, started somewhere random: not a fresh buffer per footstep)
+  if (!noiseBuf || noiseBuf.sampleRate !== a.sampleRate) {
+    noiseBuf = a.createBuffer(1, a.sampleRate * 2, a.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
   const src = a.createBufferSource();
-  src.buffer = buf;
+  src.buffer = noiseBuf;
+  src.loop = true;
   const filter = a.createBiquadFilter();
   filter.type = "lowpass";
   filter.frequency.setValueAtTime(freq, t0);
@@ -142,7 +147,7 @@ function noise(dur: number, vol: number, freq: number, delay = 0, slideTo?: numb
   gain.gain.linearRampToValueAtTime(vol, t0 + Math.min(0.3, dur / 4));
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   src.connect(filter).connect(gain).connect(out);
-  src.start(t0);
+  src.start(t0, Math.random() * 2);
   src.stop(t0 + dur + 0.02);
 }
 

@@ -140,6 +140,14 @@ export class FriendsPanel implements InputOwner {
     return this.typing && !!this.spec;
   }
 
+  /** Another box took the keyboard: stop typing here (or the world stays frozen, waiting on it). */
+  lost() {
+    if (!this.typing) return;
+    this.typing = false;
+    this.scene.registry.set("keysFree", false);
+    this.render();
+  }
+
   // ---------------------------------------------------------------- drawing
 
   private draw() {

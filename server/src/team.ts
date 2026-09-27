@@ -11,16 +11,23 @@
 
 // (the SDK loads the first time the team uses Claude: a small host needn't carry it otherwise)
 import type Anthropic from "@anthropic-ai/sdk";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TeamProject, TeamProvider, TeamState, TeamWorker } from "../../shared/team.js";
 import { DATA_DIR } from "./env.js";
 import { newId, savePersist, world } from "./world.js";
-import { cachedOpenRouterModels, chosenModel, keyFor, keySource, maskedKey, openRouterModels } from "./aikeys.js";
+import { cachedOpenRouterModels, chosenModel, isTeamProvider, keyFor, keySource, maskedKey, openRouterModels } from "./aikeys.js";
 
 const MAX_WORKERS = 5;
 const MAX_LEAD_TURNS = 6;
 const MAX_WORKER_TURNS = 8;
+/** What's kept in the save (and sent to the game every step): the full deliverable is in the report file. */
+const KEEP_WORKER_RESULT = 20_000;
+const KEEP_PROJECT_RESULT = 60_000;
+/** Reports kept on disk (the board's history shows the last 10). */
+const KEEP_REPORTS = 20;
+/** A single model call that's still going after this long is given up on (so the board can't hang on "working"). */
+const CALL_TIMEOUT_MS = 10 * 60_000;
 // (not Ada: she's the Office's Team Lead, for your Claude Code)
 const WORKER_NAMES = ["Linus", "Grace", "Alan", "Margaret", "Dennis", "Radia", "Ken", "Barbara", "Guido", "Hedy", "Tim"];
 
@@ -80,9 +87,30 @@ export function teamState(): TeamState {
 
 // ---------------------------------------------------------------- live updates
 
-/** The team's part of the save (made on first use). */
+/** The project running in this process right now (null when none is). */
+let current: TeamProject | null = null;
+
+/**
+ * The team's part of the save (made on first use). A project that says it's still
+ * going but isn't this process's running one (the colony restarted, or a save
+ * saved mid-project was loaded back) can't finish: it's marked failed.
+ */
 function team() {
-  return (world.team ??= { project: null, history: [] });
+  const t = (world.team ??= { project: null, history: [] });
+  const p = t.project;
+  if (p && p !== current && !["done", "failed"].includes(p.status)) {
+    p.status = "failed";
+    p.error = "the colony restarted mid-project";
+    p.lead = `stuck: ${p.error}`;
+    p.doneAt = Date.now();
+    for (const w of p.workers) if (w.status === "working") w.status = "failed";
+    if (!t.history.some((h) => h.id === p.id)) {
+      t.history.unshift({ id: p.id, brief: p.brief.slice(0, 200), provider: p.provider, doneAt: p.doneAt });
+      t.history.splice(10);
+    }
+    savePersist();
+  }
+  return t;
 }
 
 const listeners = new Set<(s: TeamState) => void>();
@@ -92,15 +120,7 @@ export function onTeamChange(fn: (s: TeamState) => void) {
 
 /** On start: a project the colony was in the middle of when it stopped won't finish now. */
 export function initTeam() {
-  const p = team().project;
-  if (p && !["done", "failed"].includes(p.status)) {
-    p.status = "failed";
-    p.error = "the colony restarted mid-project";
-    p.lead = `stuck: ${p.error}`;
-    p.doneAt = Date.now();
-    for (const w of p.workers) if (w.status === "working") w.status = "failed";
-    savePersist();
-  }
+  team();
 }
 
 /** Keys or models changed: refresh OpenRouter's menu if needed and tell the game. */
@@ -194,12 +214,13 @@ function hire(p: TeamProject, role: string, task: string): TeamWorker {
 async function runWorker(p: TeamProject, w: TeamWorker): Promise<string> {
   try {
     const result = p.provider === "claude" ? await claudeWorker(w) : await chatWorker(p.provider, w);
-    w.result = result || "(no output)";
+    const full = result || "(no output)";
+    w.result = cap(full, KEEP_WORKER_RESULT);
     w.status = "done";
     w.doneAt = Date.now();
     step(w, "done - handed my work to the lead");
     announce(true);
-    return w.result;
+    return full;
   } catch (err) {
     console.error(`[office] ${w.name} failed:`, err);
     w.status = "failed";
@@ -209,6 +230,8 @@ async function runWorker(p: TeamProject, w: TeamWorker): Promise<string> {
     return `ERROR: ${w.name} couldn't finish (${errorText(err)}).`;
   }
 }
+
+const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n\n...(cut short here; the full text is in the project report)` : s);
 
 function errorText(err: unknown) {
   // (an SDK API error, told apart by its shape so the SDK needn't be loaded)
@@ -243,21 +266,29 @@ async function claudeLead(p: TeamProject): Promise<string> {
   let final = "";
   for (let turn = 0; turn < MAX_LEAD_TURNS; turn++) {
     let text = "";
-    const stream = (await claude()).messages.stream({ model: p.model, max_tokens: 32000, system: LEAD_PROMPT, tools, messages });
+    // (last turn: no more hiring, so whatever came back gets written up)
+    const last = turn === MAX_LEAD_TURNS - 1;
+    const stream = (await claude()).messages.stream(
+      { model: p.model, max_tokens: 32000, system: LEAD_PROMPT, tools, ...(last ? { tool_choice: { type: "none" as const } } : {}), messages },
+      { timeout: CALL_TIMEOUT_MS },
+    );
     stream.on("text", (d) => {
       text += d;
       p.lead = writing(text);
       announce();
     });
     const msg = await stream.finalMessage();
-    if (text.trim()) final = text.trim();
     if (msg.stop_reason === "refusal") throw new Error("the model declined this brief");
     if (msg.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: msg.content });
       continue;
     }
     const uses = msg.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    if (!uses.length || msg.stop_reason === "max_tokens") break;
+    // (only a turn that hires nobody is the write-up; text before a hire is just the plan)
+    if (!uses.length || msg.stop_reason === "max_tokens") {
+      final = text.trim();
+      break;
+    }
     messages.push({ role: "assistant", content: msg.content });
     p.status = "working";
     p.lead = `spun up ${uses.length} worker${uses.length === 1 ? "" : "s"} - waiting on their work`;
@@ -288,7 +319,7 @@ async function claudeWorker(w: TeamWorker): Promise<string> {
   for (let turn = 0; turn < MAX_WORKER_TURNS; turn++) {
     let text = "";
     let lastStep = 0;
-    const stream = (await claude()).messages.stream({ model: PROVIDERS.claude.worker(), max_tokens: 32000, system: workerPrompt(w), tools, messages });
+    const stream = (await claude()).messages.stream({ model: PROVIDERS.claude.worker(), max_tokens: 32000, system: workerPrompt(w), tools, messages }, { timeout: CALL_TIMEOUT_MS });
     stream.on("text", (d) => {
       text += d;
       if (Date.now() - lastStep > 900) {
@@ -360,6 +391,7 @@ async function chat(
         ...(provider === "openrouter" ? { "x-title": "Fl-AI Me to the Moon" } : {}),
       },
       body: JSON.stringify({ ...body, stream: true }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
     if (res.status === 429 && attempt < 6) {
       const detail = await res.text().catch(() => "");
@@ -428,9 +460,11 @@ async function chatLead(p: TeamProject): Promise<string> {
   ];
   let final = "";
   for (let turn = 0; turn < MAX_LEAD_TURNS; turn++) {
+    // (last turn: no more hiring, so whatever came back gets written up)
+    const last = turn === MAX_LEAD_TURNS - 1;
     const out = await chat(
       p.provider,
-      { model: p.model, messages, tools, parallel_tool_calls: true, ...(p.provider === "groq" ? { temperature: 0.4 } : {}) },
+      { model: p.model, messages, tools, ...(last ? { tool_choice: "none" } : { parallel_tool_calls: true }), ...(p.provider === "groq" ? { temperature: 0.4 } : {}) },
       throttled((text, reasoning) => {
         p.lead = text ? writing(text) : reasoning ? `thinking: ${reasoning.replace(/\s+/g, " ").slice(-70)}` : p.lead;
         announce();
@@ -440,9 +474,12 @@ async function chatLead(p: TeamProject): Promise<string> {
         announce();
       },
     );
-    if (out.text) final = out.text;
     const spawns = out.toolCalls.filter((c) => c.function.name === "spawn_worker");
-    if (!spawns.length) break;
+    // (only a turn that hires nobody is the write-up; text before a hire is just the plan)
+    if (!spawns.length) {
+      final = out.text;
+      break;
+    }
     messages.push({ role: "assistant", content: out.text, tool_calls: spawns });
     p.status = "working";
     p.lead = `spun up ${spawns.length} worker${spawns.length === 1 ? "" : "s"} - waiting on their work`;
@@ -496,7 +533,7 @@ let running = false;
 
 export function startProject(brief: string, provider: TeamProvider): string | null {
   if (running) return "The team is still on the current project.";
-  if (!PROVIDERS[provider]) return "Pick an AI for the team first.";
+  if (!isTeamProvider(provider)) return "Pick an AI for the team first.";
   if (!available(provider)) return `${PROVIDERS[provider].name} isn't connected. Use CONNECT AI on the project board.`;
   const text = brief.trim().slice(0, 4000);
   if (!text) return "Write a brief first.";
@@ -511,15 +548,17 @@ export function startProject(brief: string, provider: TeamProvider): string | nu
     startedAt: Date.now(),
   };
   team().project = p;
+  current = p;
   running = true;
   announce(true);
   void (async () => {
     try {
       const result = provider === "claude" ? await claudeLead(p) : await chatLead(p);
-      p.result = result || p.workers.map((w) => `## ${w.name} (${w.role})\n\n${w.result ?? ""}`).join("\n\n");
+      const full = result || p.workers.map((w) => `## ${w.name} (${w.role})\n\n${w.result ?? ""}`).join("\n\n");
       p.status = "done";
       p.lead = "project delivered";
-      saveReport(p);
+      saveReport(p, full);
+      p.result = cap(full, KEEP_PROJECT_RESULT);
     } catch (err) {
       console.error("[office] project failed:", err);
       p.status = "failed";
@@ -528,6 +567,9 @@ export function startProject(brief: string, provider: TeamProvider): string | nu
     } finally {
       p.doneAt = Date.now();
       running = false;
+      current = null;
+      // (a worker still marked working when the lead gave up isn't coming back)
+      for (const w of p.workers) if (w.status === "working") w.status = "failed";
       team().history.unshift({ id: p.id, brief: p.brief.slice(0, 200), provider: p.provider, doneAt: p.doneAt });
       team().history.splice(10);
       announce(true);
@@ -544,11 +586,18 @@ export function clearProject(): string | null {
   return null;
 }
 
-function saveReport(p: TeamProject) {
+function saveReport(p: TeamProject, result: string) {
   try {
     mkdirSync(REPORTS, { recursive: true });
-    const body = `# ${p.brief.split("\n")[0].slice(0, 80)}\n\n_Brief:_ ${p.brief}\n\n_Team (${PROVIDERS[p.provider].name}, ${p.model}):_ ${p.workers.map((w) => `${w.name} (${w.role})`).join(", ")}\n\n---\n\n${p.result ?? ""}\n`;
-    writeFileSync(join(REPORTS, `${p.id}.md`), body);
+    const body = `# ${p.brief.split("\n")[0].slice(0, 80)}\n\n_Brief:_ ${p.brief}\n\n_Team (${PROVIDERS[p.provider].name}, ${p.model}):_ ${p.workers.map((w) => `${w.name} (${w.role})`).join(", ")}\n\n---\n\n${result}\n`;
+    writeFileSync(join(REPORTS, `${p.id}.md`), body, { mode: 0o600 });
+    // (only the latest few stay on disk)
+    const old = readdirSync(REPORTS)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ f, at: statSync(join(REPORTS, f)).mtimeMs }))
+      .sort((a, b) => b.at - a.at)
+      .slice(KEEP_REPORTS);
+    for (const { f } of old) rmSync(join(REPORTS, f), { force: true });
   } catch (err) {
     console.error("[office] couldn't save report:", err);
   }
@@ -559,10 +608,15 @@ export function reportPath(id: string) {
 }
 
 /** Check in on a worker: they answer from what they're doing (no steering). */
+let asking = 0;
 export async function askWorker(workerId: string, question: string): Promise<string> {
   const p = team().project;
   const w = p?.workers.find((x) => x.id === workerId);
   if (!p || !w) return "They've gone home.";
+  if (!question.trim()) return "...";
+  // (each check-in is a model call on the player's key: a couple at a time)
+  if (asking >= 2) return `(${w.name} is mid-sentence with you already. Ask again in a moment.)`;
+  asking++;
   const context = `You are ${w.name}, a ${w.role} in the Moon colony's Office. Your project manager is checking in on you.
 Answer their question in first person, briefly (2-4 sentences), like a colleague giving a status
 update: what you're doing, how far along you are, anything tricky. Don't paste your work; don't invent progress.
@@ -581,5 +635,7 @@ ${w.result ? `\nYour finished work (excerpt):\n${w.result.slice(0, 3000)}` : ""}
     return out.text || "...";
   } catch (err) {
     return `(${w.name} can't answer right now: ${errorText(err)})`;
+  } finally {
+    asking--;
   }
 }

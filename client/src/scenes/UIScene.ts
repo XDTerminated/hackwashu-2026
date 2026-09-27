@@ -29,7 +29,7 @@ import { PATHS, type PathStyle } from "../../../shared/paths";
 import { drawPathSwatch } from "../pathart";
 import { flyTo, hostName, loadSocial, mp, onKicked, onPeers, onSession, onSocial, takeNote, visiting } from "../multiplayer";
 import { CHAT_MAX } from "../../../shared/visit";
-import { claimInput, input as typeInput, releaseInput } from "../textinput";
+import { claimInput, input as typeInput, releaseInput, type InputOwner } from "../textinput";
 
 // Screen-space UI, laid out in art pixels (this scene renders 1:1 with the
 // canvas, which the browser upscales by a whole number).
@@ -49,6 +49,8 @@ const STATUS: Record<VillagerStatus, number> = {
 const HUD_W = 176;
 /** At most this many "who's busy" lines in the HUD. */
 const BUSY_LINES = 3;
+/** Waiting friend requests were announced (once per page). */
+let requestsToasted = false;
 
 /** The action button's word for each verb (short enough to fit under its icon). */
 const ACTION_WORD: Record<string, string> = {
@@ -268,11 +270,20 @@ export class UIScene extends Phaser.Scene {
     this.unsubs.push(() => this.game.events.off("fly", fly));
     this.unsubs.push(onSocial((text) => (text && this.toast("Friends", text, C.green), this.friendsPanel.refresh(true))));
     this.unsubs.push(onSession(() => (this.refresh(), this.friendsPanel.refresh())));
-    this.unsubs.push(onPeers((c) => c.kind !== "chat" && this.friendsPanel.refresh()));
+    // (who's here: someone arriving or leaving, not every step they take, which would redraw the panel many times a second)
+    let here = new Set(mp.peers.keys());
+    this.unsubs.push(
+      onPeers((c) => {
+        if (c.kind === "chat" || (c.kind === "move" && here.has(c.peer.id))) return;
+        here = new Set(mp.peers.keys());
+        this.friendsPanel.refresh();
+      }),
+    );
     this.unsubs.push(onKicked((text) => this.toast("Sent home", text, C.coral)));
-    if (net.auth.state === "in" && !net.auth.guest && !visiting())
+    // (once a visit: a resize restarts this scene, and the requests needn't be announced again)
+    if (net.auth.state === "in" && !net.auth.guest && !visiting() && !requestsToasted && (requestsToasted = true))
       void loadSocial()
-        .then((st) => st.incoming.length && this.toast("Friends", `${st.incoming.length} friend request${st.incoming.length === 1 ? "" : "s"} waiting (the FRIENDS button).`, C.green))
+        .then((st) => st.incoming.length && this.sys.isActive() && this.toast("Friends", `${st.incoming.length} friend request${st.incoming.length === 1 ? "" : "s"} waiting (the FRIENDS button).`, C.green))
         .catch(() => null);
     const note = takeNote();
     if (note) this.time.delayedCall(800, () => this.toast("Back home", note, C.coral));
@@ -356,6 +367,9 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on("coin-fly", onCoinFly);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.townPanel.close();
+      // (a resize restarts this scene: let go of the keyboard, or the old boxes keep it)
+      this.closeChat();
+      this.friendsPanel.close();
       this.unsubs.forEach((u) => u());
       this.unsubs = [];
       this.game.events.off("toggle-shop", this.toggleShop, this);
@@ -1212,7 +1226,7 @@ export class UIScene extends Phaser.Scene {
   private guestBadge: Phaser.GameObjects.Container | null = null;
   private visitBadge: Phaser.GameObjects.Container | null = null;
   private friendsPanel!: FriendsPanel;
-  private chatBar: { root: Phaser.GameObjects.Container; text: Phaser.GameObjects.BitmapText; owner: { render(): void; submit(): void; active(): boolean } } | null = null;
+  private chatBar: { root: Phaser.GameObjects.Container; text: Phaser.GameObjects.BitmapText; owner: InputOwner } | null = null;
 
   /** On a friend's island: whose it is, and the way home. */
   private renderVisitBadge() {
@@ -1259,6 +1273,8 @@ export class UIScene extends Phaser.Scene {
         this.closeChat();
       },
       active: () => this.chatBar?.owner === owner,
+      // (the MoonPad or a dialog took the keyboard: put the chat line away, or you stay frozen)
+      lost: () => this.chatBar?.owner === owner && this.closeChat(),
     };
     this.chatBar = { root, text, owner };
     this.registry.set("chatTyping", true);

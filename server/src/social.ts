@@ -25,9 +25,20 @@ interface Ties {
 
 export class Social {
   private data: Record<string, Ties>;
+  /** Friend code → whose it is. */
+  private codes = new Map<string, string>();
 
   constructor(private file: string) {
-    this.data = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    try {
+      this.data = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    } catch (err) {
+      // (a damaged file doesn't keep the site down: it's set aside, and friends start over)
+      const aside = `${file}.corrupt-${Date.now()}`;
+      console.error(`[social] couldn't read ${file} (moved it to ${aside}):`, err);
+      renameSync(file, aside);
+      this.data = {};
+    }
+    for (const [id, t] of Object.entries(this.data)) this.codes.set(t.code, id);
   }
 
   private save() {
@@ -42,18 +53,18 @@ export class Social {
     if (!t) {
       t = { code: this.newCode(), friends: [], incoming: [], blocked: [], closed: false, perms: {} };
       this.data[id] = t;
+      this.codes.set(t.code, id);
       this.save();
     }
     return t;
   }
 
   private newCode(): string {
-    const taken = new Set(Object.values(this.data).map((t) => t.code));
     for (;;) {
       let s = "";
       for (let i = 0; i < 4; i++) s += CODE_CHARS[randomInt(CODE_CHARS.length)];
       const code = `MOON-${s}`;
-      if (!taken.has(code)) return code;
+      if (!this.codes.has(code)) return code;
     }
   }
 
@@ -61,8 +72,7 @@ export class Social {
   byCode(raw: string): string | null {
     const s = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^MOON/, "");
     if (s.length !== 4) return null;
-    const hit = Object.entries(this.data).find(([, t]) => t.code === `MOON-${s}`);
-    return hit ? hit[0] : null;
+    return this.codes.get(`MOON-${s}`) ?? null;
   }
 
   areFriends(a: string, b: string) {
@@ -178,6 +188,7 @@ export class Social {
 
   /** An account is deleted: it disappears from everyone's lists. */
   forget(id: string) {
+    if (Object.hasOwn(this.data, id)) this.codes.delete(this.data[id].code);
     delete this.data[id];
     for (const t of Object.values(this.data)) {
       t.friends = t.friends.filter((x) => x !== id);

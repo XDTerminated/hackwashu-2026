@@ -20,9 +20,12 @@ export class TitleScene extends Phaser.Scene {
 
   /** Where the words end (the rockets fly below it, or above the logo). */
   private bottom = 0;
+  /** Which showing of the title this is (a resize restarts it: an older friends list mustn't land on the new one). */
+  private shown = 0;
 
   create() {
     this.bottom = 0;
+    this.shown += 1;
     const W = this.scale.width;
     const H = this.scale.height;
     const cx = Math.round(W / 2);
@@ -260,8 +263,9 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private async friends(top: number, cx: number, H: number, leaving: () => boolean) {
+    const was = this.shown;
     const s = await loadSocial().catch(() => null);
-    if (!s || !this.sys.isActive() || leaving()) return;
+    if (!s || !this.sys.isActive() || leaving() || was !== this.shown) return;
     let y = top;
     const centered = (text: string, color: number, font: "px" | "pxb" | "sm", gap: number) => {
       const t = ptext(this, 0, y, text, color, font);

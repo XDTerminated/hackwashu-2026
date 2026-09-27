@@ -70,16 +70,20 @@ const httpServer = createServer(async (req, res) => {
   if (url.pathname === "/voice") return handleVoice(req, res);
 
   // The Office's AI team, "Connect your AI": one-click OpenRouter sign-in (comes back here with a code).
+  // (the AI team is the owner's: on your computer, only from this computer; online, the gateway only sends you to your own copy)
+  if ((url.pathname === "/connect/openrouter" || url.pathname === "/oauth/openrouter/callback" || url.pathname.startsWith("/team/report/")) && !HOSTED && !isLocal(req.socket.remoteAddress))
+    return page(res, 403, "Not here", "<p>Only the game on the colony's own computer can do that.</p>");
   if (url.pathname === "/connect/openrouter") {
     const base = PUBLIC_URL || `http://${req.headers.host}`;
-    res.writeHead(302, { location: openRouterAuthUrl(`${base}/oauth/openrouter/callback`) });
+    res.writeHead(302, { location: openRouterAuthUrl(`${base}/oauth/openrouter/callback`).url, "cache-control": "no-store" });
     return res.end();
   }
   if (url.pathname === "/oauth/openrouter/callback") {
     const code = url.searchParams.get("code");
     if (!code) return page(res, 400, "Sign-in cancelled", "<p>No code from OpenRouter. You can close this tab.</p>");
     try {
-      await finishOpenRouter(code);
+      // (only a sign-in this server started, and only once)
+      await finishOpenRouter(code, url.searchParams.get("state"));
       await providersChanged();
       return page(res, 200, "Your AI is connected! 🚀", "<p>The Office's team can use your OpenRouter account now. Close this tab, pick a model on the project board, and brief your team.</p>");
     } catch (err) {
@@ -308,7 +312,8 @@ function originAllowed(origin: string | undefined, host: string | undefined) {
 }
 
 // (online, only the gateway can say who's connecting: anyone else is turned away)
-const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ origin, req }: { origin: string; req: IncomingMessage }) => hostAllowed(req.headers.host) && originAllowed(origin, req.headers.host) && !!identify(req) });
+// (no message from the game comes near 256 KB: a bigger one is someone trying to fill up memory)
+const wss = new WebSocketServer({ server: httpServer, maxPayload: 256 * 1024, verifyClient: ({ origin, req }: { origin: string; req: IncomingMessage }) => hostAllowed(req.headers.host) && originAllowed(origin, req.headers.host) && !!identify(req) });
 
 process.on("unhandledRejection", (err) => console.error("[server] unhandled:", err));
 // Your coding agents' work (code, commands, output) only goes to a game
@@ -381,6 +386,8 @@ setInterval(() => {
 wss.on("connection", (ws, req) => {
   answered.set(ws, true);
   ws.on("pong", () => answered.set(ws, true));
+  // (a bad frame, e.g. one over maxPayload, errors this socket only: ws closes it; unhandled, it would take the island down)
+  ws.on("error", (err) => console.log(`[ws] dropped a connection: ${err.message}`));
   const who = identify(req)!;
   console.log(who.role === "visitor" ? `[ws] ${who.name} is visiting` : "[ws] game connected");
   bases.set(ws, `${String(req.headers["x-forwarded-proto"] ?? "http").split(",")[0]}://${req.headers.host}`);
@@ -844,7 +851,7 @@ async function handle(ws: WebSocket, msg: ClientMessage) {
           .then(async ({ token, base: signedInAt }) => {
             const who = await connectCanvas(token, signedInAt);
             services.announceConnections();
-            for (const c of wss.clients) send(c, { type: "notice", text: `Canvas connected as ${who}. Mabel can read your courses now.`, tone: "ok" });
+            for (const c of wss.clients) if (localClients.has(c)) send(c, { type: "notice", text: `Canvas connected as ${who}. Mabel can read your courses now.`, tone: "ok" });
           })
           .catch((err) => send(ws, { type: "notice", text: `Canvas sign-in didn't finish: ${err instanceof Error ? err.message : err}` }));
         break;
@@ -990,5 +997,6 @@ httpServer.listen(PORT, LISTEN, () => {
 // Texting: on your computer, through your own iMessage line; online, through the site's line (the gateway's).
 void startPhoton().catch((err) => console.error("[photon] failed to start:", err));
 onPhoneLinked((masked) => {
-  for (const c of wss.clients) send(c, { type: "phone_link", state: "linked", text: `Linked ${masked}! Your phone is now a line home.` });
+  // (the owner's phone: never shown to a friend visiting)
+  for (const c of wss.clients) if (localClients.has(c)) send(c, { type: "phone_link", state: "linked", text: `Linked ${masked}! Your phone is now a line home.` });
 });

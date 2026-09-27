@@ -178,14 +178,17 @@ export function onWorldChange(fn: () => void) {
 // Leaving the page (flying to another island, closing the tab): say goodbye properly,
 // so nobody's left standing there. (If the browser keeps the page and brings it
 // back, it reconnects.)
-addEventListener("pagehide", () => ws?.close(1000, "left"));
+let leaving = false;
+addEventListener("pagehide", () => ((leaving = true), ws?.close(1000, "left")));
 addEventListener("pageshow", (e) => {
+  leaving = false;
   if (e.persisted && (!ws || ws.readyState === WebSocket.CLOSED)) connect();
 });
 
 export function connect() {
+  let sock: WebSocket;
   try {
-    ws = new WebSocket(URL);
+    sock = ws = new WebSocket(URL);
   } catch {
     setTimeout(connect, 3000);
     return;
@@ -243,8 +246,12 @@ export function connect() {
     }
   };
   ws.onclose = (ev) => {
+    // (an old socket closing after a newer one took over: nothing to do)
+    if (ws !== sock) return;
     setConnected(false);
-    if (kicked) return;
+    // (whoever was here isn't, as far as we know: no one left standing while we reconnect)
+    gotPeers([]);
+    if (kicked || leaving) return;
     // A friend's island that won't have you (or never answers): back home.
     if (VISIT_ID && (ev.code !== 1000 || !ev.wasClean) && ++refused >= 3) return backHome("Couldn't land on that island: it's closed to visitors, or you're not friends any more.");
     // Online, a dropped connection might mean you were signed out (it expired, or you signed
@@ -252,7 +259,7 @@ export function connect() {
     if (HOSTED) void stillMe().then((ok) => ok && setTimeout(connect, 3000));
     else setTimeout(connect, 3000);
   };
-  ws.onerror = () => ws?.close();
+  ws.onerror = () => sock.close();
 }
 
 export function isConnected() {

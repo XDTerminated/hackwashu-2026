@@ -66,6 +66,9 @@ interface Here {
   peer: Peer;
   wallet?: { coins: number; materials: Materials };
   lastChat: number;
+  /** When they last gave a gift or talked to a neighbor (one at a time, not a flood). */
+  lastGift: number;
+  lastTalk: number;
 }
 
 const here = new Map<WebSocket, Here>();
@@ -109,7 +112,7 @@ function sendSession(ws: WebSocket) {
 /** Someone connected: tell them who they are and who else is here, and everyone else that they came. */
 export function arrive(ws: WebSocket, who: Who) {
   const peer: Peer = { id: `${who.id}~${++peerSeq}`, name: who.name, owner: who.role === "owner", x: LANDING.x + 34, y: LANDING.y + 26, facing: "down", flip: false, moving: false, tint: who.tint };
-  const h: Here = { who, peer, lastChat: 0 };
+  const h: Here = { who, peer, lastChat: 0, lastGift: 0, lastTalk: 0 };
   here.set(ws, h);
   if (who.role === "visitor") {
     // (a visit within the last half hour is the same visit)
@@ -199,7 +202,11 @@ export function visitorSnapshot(s: Snapshot): Snapshot {
 
 // ---------------------------------------------------------------- moving and chatting
 
-const clamp = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v))));
+/** A whole number in [lo, hi] (anything that isn't a number is lo: never NaN, which would stick to the coins forever). */
+const clamp = (v: unknown, lo: number, hi: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo;
+};
 
 export function moved(ws: WebSocket, msg: { x: unknown; y: unknown; facing: unknown; flip: unknown; moving: unknown }) {
   const h = here.get(ws);
@@ -216,7 +223,8 @@ export function moved(ws: WebSocket, msg: { x: unknown; y: unknown; facing: unkn
 export function chat(ws: WebSocket, raw: unknown) {
   const h = here.get(ws);
   if (!h || typeof raw !== "string") return;
-  const text = raw.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, CHAT_MAX);
+  // (no control characters, line breaks or right-to-left tricks)
+  const text = raw.replace(/[\p{Cc}\p{Bidi_Control}\p{Zl}\p{Zp}]/gu, " ").trim().slice(0, CHAT_MAX);
   if (!text || Date.now() - h.lastChat < 600) return;
   h.lastChat = Date.now();
   toAll({ type: "peer_chat", id: h.peer.id, name: h.who.name, text });
@@ -298,6 +306,8 @@ export async function gift(ws: WebSocket, msg: { coins?: unknown; materials?: un
     if (n > 0) materials[k] = n;
   }
   if (!coins && !Object.keys(materials).length) return "Pick something to give first.";
+  if (Date.now() - h.lastGift < 1500) return "One gift at a time!";
+  h.lastGift = Date.now();
   try {
     const r = await relay(h.who.id, "/internal/debit", { coins, materials });
     if (r.ok !== true) return typeof r.error === "string" ? r.error : "You don't have that much.";
@@ -310,7 +320,10 @@ export async function gift(ws: WebSocket, msg: { coins?: unknown; materials?: un
   for (const [k, n] of Object.entries(materials) as [keyof Materials, number][]) world.materials[k] += n;
   const what = [...(coins ? [`${coins}¢`] : []), ...Object.entries(materials).map(([k, n]) => `${n} ${MATERIAL_NAME[k as keyof Materials]}`)].join(", ");
   const e = entryFor(h);
-  if (e) e.gifts.unshift(what);
+  if (e) {
+    e.gifts.unshift(what);
+    e.gifts.length = Math.min(e.gifts.length, 20);
+  }
   savePersist();
   services.announceProgress(materials);
   toAll({ type: "notice", text: `${h.who.name} left ${ownerName()} a gift: ${what}!`, tone: "ok" });
@@ -332,7 +345,8 @@ const ASKS_PER_HOUR = 20;
  */
 export async function visitorTalk(ws: WebSocket, v: VillagerId, raw: string) {
   const h = here.get(ws);
-  if (!h) return;
+  if (!h || Date.now() - h.lastTalk < 1000) return;
+  h.lastTalk = Date.now();
   const text = raw.trim().slice(0, 1000);
   const say = (reply: string) => toAll({ type: "event", event: { type: "say", villager: v, text: reply, seq: world.seq, at: Date.now() } });
   if (!services.residents().includes(v)) return say(`${VILLAGER_NAMES[v]} doesn't live here.`);

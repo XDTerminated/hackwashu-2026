@@ -460,6 +460,9 @@ export class VillagerActor {
   }
 }
 
+/** At most this many prints behind any one walker (the oldest is picked up and put down again). */
+const PRINTS_MAX = 64;
+
 /**
  * Faint footprints in the moondust behind whoever's walking: one every few steps,
  * left and right in turn, fading away. Call each frame with where they are now.
@@ -470,6 +473,9 @@ export class Footprints {
   private walked = 0;
   private left = false;
   private stride = 0;
+  /** The prints themselves, reused oldest first (never more than PRINTS_MAX each, however long the walk). */
+  private pool: Phaser.GameObjects.Image[] = [];
+  private next = 0;
   /** `onStep`: every other print (a whole stride), for footstep sounds. */
   constructor(private scene: Phaser.Scene, private step = 9, private onStep?: (x: number, y: number) => void) {}
 
@@ -491,8 +497,13 @@ export class Footprints {
     const side = this.left ? -1 : 1;
     const px = Math.round(x + (-dy / d) * 2 * side);
     const py = Math.round(y - 1 + (dx / d) * 1 * side);
-    const print = this.scene.add.image(px, py, "footprint").setAlpha(0.3).setDepth(-8.6);
-    this.scene.tweens.add({ targets: print, alpha: 0, delay: 1800, duration: 2600, onComplete: () => print.destroy() });
+    let print = this.pool[this.next];
+    // (gone with a scene restart: make a fresh one)
+    if (!print?.active) print = this.pool[this.next] = this.scene.add.image(px, py, "footprint").setDepth(-8.6);
+    else this.scene.tweens.killTweensOf(print);
+    this.next = (this.next + 1) % PRINTS_MAX;
+    print.setPosition(px, py).setAlpha(0.3).setVisible(true);
+    this.scene.tweens.add({ targets: print, alpha: 0, delay: 1800, duration: 2600, onComplete: () => print.setVisible(false) });
   }
 
   /** Stop tracking (next time starts fresh, no stray print across the gap). */

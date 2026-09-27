@@ -74,6 +74,8 @@ export class OfficeScene extends Phaser.Scene {
   private workers = new Map<string, WorkerView>();
   /** The AI team's workers, at the desks from the back. */
   private team = new Map<string, WorkerView>();
+  /** Everyone at a desk: your agents, then the team. */
+  private readonly homes = [this.workers, this.team];
   private projectTexts: Phaser.GameObjects.BitmapText[] = [];
   private projectSig = "";
   private lead!: Phaser.GameObjects.Image;
@@ -498,7 +500,8 @@ export class OfficeScene extends Phaser.Scene {
 
   /** A window is up (dialog, MoonPad or shop), or you're typing to Ada: keys belong to it, not to walking. */
   private frozen(typing = true) {
-    return isPanelOpen() || isMoonPadOpen() || !!this.registry.get("shopOpen") || (typing && !!this.near?.typing);
+    // (the Friends panel and the T chat line open over the Office too)
+    return isPanelOpen() || isMoonPadOpen() || !!this.registry.get("shopOpen") || !!this.registry.get("friendsOpen") || !!this.registry.get("chatTyping") || (typing && !!this.near?.typing);
   }
 
   /** The first time in: one sentence on what this place is. */
@@ -533,7 +536,8 @@ export class OfficeScene extends Phaser.Scene {
     if (!frozen) this.move(dt);
     else this.player.anims.stop();
     this.player.setDepth(this.player.y);
-    for (const v of [...this.workers.values(), ...this.team.values()]) {
+    // (both maps in turn: no new array every frame)
+    for (const home of this.homes) for (const v of home.values()) {
       v.sprite.setDepth(v.sprite.y);
       v.shadow.setPosition(Math.round(v.sprite.x), Math.round(v.sprite.y) - 1);
       if (v.leaving || !v.seated) continue;
@@ -548,8 +552,9 @@ export class OfficeScene extends Phaser.Scene {
     // (while she's answering you, her status bubble steps aside)
     this.leadBubble.setAlpha(this.talkBubble ? 0 : 1);
     // While you type, keys go to your words (not to walking).
-    if (this.near.typing !== this.typingCapture) {
-      this.typingCapture = this.near.typing;
+    const typing = this.near.typing || !!this.registry.get("keysFree");
+    if (typing !== this.typingCapture) {
+      this.typingCapture = typing;
       if (this.typingCapture) this.input.keyboard!.disableGlobalCapture();
       else this.input.keyboard!.enableGlobalCapture();
     }

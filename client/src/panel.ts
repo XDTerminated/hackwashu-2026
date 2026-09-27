@@ -1592,7 +1592,7 @@ let teamView: { kind: "board"; status: string; keys: string } | { kind: "worker"
 let teamProvider: TeamProvider | null = null;
 let teamWired = false;
 
-const reportUrl = (id: string) => `${net.SERVER_HTTP}/team/report/${id}`;
+const reportUrl = (id: string) => `${net.SERVER_HTTP}/team/report/${encodeURIComponent(id)}`;
 /** A fingerprint of which AIs are connected (and OpenRouter's model), to know when to redraw. */
 const keysSig = () => team.state.providers.map((p) => `${p.id}:${p.available}:${p.masked}:${p.model}`).join("|");
 

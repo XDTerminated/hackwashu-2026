@@ -58,6 +58,9 @@ const shardUses = () => {
   return and([...built, ...(grand.length ? [`the grand ${and(grand)}`] : [])]);
 };
 
+/** A tile and the four beside it (a path tile's edges depend on its neighbors). */
+const NEIGHBORS5 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+
 const VILLAGERS: VillagerId[] = ["jade_rabbit", "postmaster", "timekeeper", "scholar", "stargazer", "dj", "mechanic"];
 const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
 
@@ -602,14 +605,15 @@ export class GameScene extends Phaser.Scene {
     const done = new Set<string>();
     for (const k of keys) {
       const { tx, ty } = fromKey(k);
-      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [dx, dy] of NEIGHBORS5) {
         const key = pathKey(tx + dx, ty + dy);
         if (done.has(key)) continue;
         done.add(key);
         redrawTile(ctx, store.paths, tx + dx, ty + dy);
       }
     }
-    this.tileTex.refresh();
+    // (the whole layer goes up to the GPU on a refresh: once a frame at most, in update, not per tile of a drag)
+    this.pathsDirty = true;
   }
 
   private tutorialStep: number | null | undefined;
@@ -817,6 +821,8 @@ export class GameScene extends Phaser.Scene {
   private pathTex!: Phaser.Textures.CanvasTexture;
   /** The paths you've laid (their own layer, redrawn a few tiles at a time). */
   private tileTex!: Phaser.Textures.CanvasTexture;
+  /** Path tiles redrawn since the layer last went to the GPU. */
+  private pathsDirty = false;
 
   private addLamp(x: number, y: number, grand = false) {
     // (the post is solid: you walk around it, not through it)
@@ -1678,7 +1684,8 @@ export class GameScene extends Phaser.Scene {
     kb.on("keydown-E", interact);
     kb.on("keydown-SPACE", interact);
     kb.on("keydown-B", () => {
-      if (!this.panelOpen && !this.near.typing && !visiting() && shopOpen(store.progress.town)) this.game.events.emit("toggle-shop");
+      // (not while typing a chat line or a friend code, or with the Friends panel up)
+      if (!this.panelOpen && !this.near.typing && !this.registry.get("keysFree") && !this.registry.get("friendsOpen") && !visiting() && shopOpen(store.progress.town)) this.game.events.emit("toggle-shop");
     });
 
     // Talking happens right where you stand: E next to a neighbor opens the chat,
@@ -2666,6 +2673,10 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     const dt = delta / 1000;
+    if (this.pathsDirty) {
+      this.pathsDirty = false;
+      this.tileTex.refresh();
+    }
     this.updatePlayer(dt);
     this.ambient(dt);
     // (meteors land on the server's clock)

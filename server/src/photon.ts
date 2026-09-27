@@ -3,7 +3,7 @@
 // - Text any villager by name ("Stargazer: when's the next full moon?");
 //   anything else goes to the Jade Rabbit. "help" lists who's around.
 // - A "!" in the village (an approval) also arrives as a text with a code; reply
-//   YES/NO (plus the code when more than one is waiting). Unanswered ones lapse.
+//   YES plus its code (a bare NO holds the only one waiting). Unanswered ones lapse.
 //
 // - Phones are linked from the in-game MoonPad (enter number → texted code),
 //   any number of them (co-op). Texts from any other number are ignored. News
@@ -333,6 +333,8 @@ async function inbound(space: Space, message: Inbound[1]) {
     const raw = content.type === "text" ? content.text : content.type === "markdown" ? content.markdown : undefined;
     if (!raw?.trim()) return;
     const text = raw.slice(0, MAX_TEXT);
+    // 1:1 chats only: in a group, the villagers' answers (inbox and all) would go to everyone in it.
+    if ((space as { type?: string }).type === "group") return;
 
     // Only linked phones talk to the colony. Texting in the MoonPad's code proves they
     // have that phone; on the shared pool it's also what lets the colony text them back.
@@ -340,7 +342,7 @@ async function inbound(space: Space, message: Inbound[1]) {
     // (Photon's local terminal chat is the person at this computer)
     const local = (message as { platform?: string }).platform === "terminal" || (space as { __platform?: string }).__platform === "terminal";
     let justLinked = false;
-    if (!local && !world.phones[sender]) {
+    if (!local && !Object.hasOwn(world.phones, sender)) {
       const p = pendingLinks.get(sender);
       if (sender === envPhone) {
         pendingLinks.delete(sender);

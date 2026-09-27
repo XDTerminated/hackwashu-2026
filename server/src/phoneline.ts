@@ -30,6 +30,28 @@ export interface Delivery {
 const MAX_TEXT = 2000;
 const MAX_LINK_TRIES = 5;
 const LINK_MS = 30 * 60_000;
+/** A code with less than this left is swapped for a fresh one (so a re-press isn't about to lapse). */
+const LINK_MIN_LEFT = 5 * 60_000;
+/** New numbers one account may start linking per hour (each takes a slot in Photon's shared pool). */
+const MAX_LINK_STARTS = 5;
+/** Texts one account's village may send in ten minutes (every text costs the site). */
+const MAX_SENDS = 30;
+const SEND_WINDOW_MS = 10 * 60_000;
+/**
+ * A text that links is the code and nothing else ("4821", "Moon code 4821"):
+ * a linked phone's everyday texts ("YES 4821", "Nova: what happened in 1969")
+ * must never move it to whoever else has a code waiting on that number.
+ */
+const LINK_TEXT = /^\s*(?:moon\s+(?:village\s+)?code\s*[:#-]?\s*)?#?(\d{4})\s*[.!]*\s*$/i;
+
+interface PendingLink {
+  phone: string;
+  code: string;
+  expires: number;
+  tries: number;
+  line?: string;
+  userId?: string;
+}
 
 export class PhoneLine {
   private app: SpectrumApp | null = null;
@@ -40,8 +62,16 @@ export class PhoneLine {
   private owners: Record<string, string>;
   /** The colony number Photon assigned each phone (saved alongside, for the MoonPad). */
   private lines: Record<string, string>;
-  /** Codes waiting to be texted in, by phone. */
-  private pending = new Map<string, { player: string; code: string; expires: number; tries: number; line?: string }>();
+  /**
+   * Codes waiting to be texted in, by account (one each: a new LINK replaces it).
+   * Keyed by who asked, not by phone, so nobody can knock out another player's
+   * code by asking to link the same number.
+   */
+  private pending = new Map<string, PendingLink>();
+  /** When each account last started linking a new number (for MAX_LINK_STARTS). */
+  private starts = new Map<string, number[]>();
+  /** Each account's texts sent in the current window (for MAX_SENDS). */
+  private sends = new Map<string, { since: number; n: number }>();
 
   constructor(
     private file: string,
@@ -81,6 +111,22 @@ export class PhoneLine {
     return Object.keys(this.owners).find((p) => this.owners[p] === player);
   }
 
+  /** The account a phone belongs to (only real entries: never "constructor" and friends). */
+  private ownerOf(phone: string): string | undefined {
+    return Object.hasOwn(this.owners, phone) ? this.owners[phone] : undefined;
+  }
+
+  /** Codes still waiting on this phone (dropping any that lapsed). */
+  private waitingOn(phone: string): [string, PendingLink][] {
+    const now = Date.now();
+    const out: [string, PendingLink][] = [];
+    for (const [player, p] of this.pending) {
+      if (now > p.expires) this.pending.delete(player);
+      else if (p.phone === phone) out.push([player, p]);
+    }
+    return out;
+  }
+
   /** The colony number that phone texts. */
   lineOf(phone: string): string | undefined {
     return this.lines[phone];
@@ -91,13 +137,24 @@ export class PhoneLine {
     if (!this.ready) return { ok: false, text: "Texting isn't set up on this site." };
     const phone = normalizePhone(input);
     if (!phone) return { ok: false, text: "That doesn't look like a phone number. Try +1 314 555 0123." };
-    if (this.owners[phone] === player) return { ok: false, text: `${mask(phone)} is already linked.` };
+    if (this.ownerOf(phone) === player) return { ok: false, text: `${mask(phone)} is already linked.` };
+    const now = Date.now();
+    const was = this.pending.get(player);
+    // (the same number pressed again: the same code, unless it's about to lapse)
+    const keep = was && was.phone === phone && was.expires - now > LINK_MIN_LEFT ? was : undefined;
+    if (!keep) {
+      const recent = (this.starts.get(player) ?? []).filter((t) => now - t < 60 * 60_000);
+      if (recent.length >= MAX_LINK_STARTS) return { ok: false, text: "That's a lot of numbers for one hour. Try again later." };
+      recent.push(now);
+      this.starts.set(player, recent);
+    }
     try {
-      const user = this.dryRun ? { id: "dry-run", assignedPhoneNumber: "+15550100000" } : await registerSharedUser(phone);
-      const was = this.pending.get(phone);
-      const keep = was && was.player === player && Date.now() < was.expires;
-      const code = keep ? was.code : String(randomInt(1000, 10000));
-      this.pending.set(phone, { player, code, expires: Date.now() + LINK_MS, tries: keep ? was.tries : 0, line: user.assignedPhoneNumber });
+      const user = keep?.userId && keep.line ? { id: keep.userId, assignedPhoneNumber: keep.line } : this.dryRun ? { id: "dry-run", assignedPhoneNumber: "+15550100000" } : await registerSharedUser(phone);
+      // (never the same code as another account's waiting on this number)
+      const taken = new Set(this.waitingOn(phone).map(([, p]) => p.code));
+      let code = keep?.code ?? "";
+      while (!code || (!keep && taken.has(code))) code = String(randomInt(1000, 10000));
+      this.pending.set(player, keep ?? { phone, code, expires: now + LINK_MS, tries: 0, line: user.assignedPhoneNumber, userId: user.id });
       console.log(`[phone] waiting for ${mask(phone)} to text their code`);
       return {
         ok: true,
@@ -115,7 +172,7 @@ export class PhoneLine {
   /** A village unlinked its phone (only its own). */
   unlink(player: string, input: string) {
     const phone = normalizePhone(input);
-    if (!phone || this.owners[phone] !== player) return;
+    if (!phone || this.ownerOf(phone) !== player) return;
     delete this.owners[phone];
     delete this.lines[phone];
     this.spaces.delete(phone);
@@ -126,40 +183,57 @@ export class PhoneLine {
   /** A village texting its own player. Anything else (a phone that isn't theirs) is refused. */
   async send(player: string, input: string, text: string): Promise<boolean> {
     const phone = normalizePhone(input);
-    if (!phone || this.owners[phone] !== player) return false;
+    if (!phone || this.ownerOf(phone) !== player || !text.trim()) return false;
+    // (a village stuck in a loop mustn't run up the site's bill or flood its player)
+    const now = Date.now();
+    let s = this.sends.get(player);
+    if (!s || now - s.since > SEND_WINDOW_MS) this.sends.set(player, (s = { since: now, n: 0 }));
+    if (++s.n > MAX_SENDS) {
+      if (s.n === MAX_SENDS + 1) console.error(`[phone] ${mask(phone)}'s village is texting too much; holding its texts for a few minutes`);
+      return false;
+    }
     return this.say(phone, text.slice(0, MAX_TEXT));
   }
 
   /** Accounts that are gone take their phone with them. */
   forget(player: string) {
     for (const [phone, owner] of Object.entries(this.owners)) if (owner === player) this.unlink(player, phone);
-    for (const [phone, p] of this.pending) if (p.player === player) this.pending.delete(phone);
+    this.pending.delete(player);
+    this.starts.delete(player);
+    this.sends.delete(player);
   }
 
   /** A text arriving on the line from `sender` (also the dry run's way in, for testing). */
   async receive(sender: string, raw: string): Promise<void> {
     const text = raw.slice(0, MAX_TEXT);
     if (!text.trim()) return;
-    const p = this.pending.get(sender);
-    if (p && Date.now() > p.expires) this.pending.delete(sender);
-    else if (p && new RegExp(`(^|\\D)${p.code}(\\D|$)`).test(text)) {
+    const waiting = this.waitingOn(sender);
+    const typed = LINK_TEXT.exec(text)?.[1];
+    const hit = typed ? waiting.find(([, p]) => p.code === typed) : undefined;
+    if (hit) {
       // The right code from this phone: it's theirs now (one phone per account, one account per phone).
-      this.pending.delete(sender);
-      const before = this.owners[sender];
-      if (before && before !== p.player) this.moved(before, sender);
-      const old = this.phoneOf(p.player);
-      if (old && old !== sender) this.unlink(p.player, old);
-      this.owners[sender] = p.player;
+      const [player, p] = hit;
+      this.pending.delete(player);
+      const before = this.ownerOf(sender);
+      if (before && before !== player) this.moved(before, sender);
+      const old = this.phoneOf(player);
+      if (old && old !== sender) this.unlink(player, old);
+      this.owners[sender] = player;
       if (p.line) this.lines[sender] = p.line;
+      else delete this.lines[sender];
       this.save();
       console.log(`[phone] ${mask(sender)} linked`);
-      return this.hand(p.player, { phone: sender, text, linked: { line: p.line } });
+      return this.hand(player, { phone: sender, text, linked: { line: p.line } });
     }
-    const owner = this.owners[sender];
+    const owner = this.ownerOf(sender);
     if (owner) return this.hand(owner, { phone: sender, text });
-    if (p && Date.now() <= p.expires) {
-      const out = ++p.tries >= MAX_LINK_TRIES;
-      if (out) this.pending.delete(sender);
+    if (waiting.length) {
+      let out = false;
+      for (const [player, p] of waiting) {
+        if (++p.tries < MAX_LINK_TRIES) continue;
+        this.pending.delete(player);
+        out = true;
+      }
       await this.say(sender, out ? "🌙 That code didn't match. Press LINK on the MoonPad again for a new one." : "🌙 That code didn't match. Text the code shown on the MoonPad.");
       return;
     }
@@ -171,6 +245,8 @@ export class PhoneLine {
       await this.deliver(player, d);
     } catch (err) {
       console.error(`[phone] couldn't reach ${mask(d.phone)}'s village:`, err instanceof Error ? err.message : err);
+      // (a village that took its time answering still got the text, and its answer comes on its own)
+      if (err instanceof Error && err.name === "TimeoutError") return;
       await this.say(d.phone, "🌙 The colony's having trouble waking up. Try again in a minute, or open the game.");
     }
   }
@@ -219,8 +295,12 @@ export class PhoneLine {
       const content = message.content as { type: string; text?: string; markdown?: string };
       const raw = content.type === "text" ? content.text : content.type === "markdown" ? content.markdown : undefined;
       if (!raw?.trim()) return;
-      const sender = message.sender?.id ?? space.id;
-      this.spaces.set(sender, space);
+      // 1:1 chats only: in a group, the villagers' answers (inbox and all) would go to everyone in it.
+      if ((space as { type?: string }).type === "group") return;
+      const sender = normalizePhone(String(message.sender?.id ?? space.id ?? ""));
+      if (!sender) return;
+      // (only phones we talk to keep a chat open: anyone can text the line)
+      if (this.ownerOf(sender) || this.waitingOn(sender).length) this.spaces.set(sender, space);
       await this.receive(sender, raw);
     } catch (err) {
       console.error("[phone] inbound error:", err);

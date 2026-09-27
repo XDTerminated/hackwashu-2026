@@ -6,9 +6,9 @@
 // player's own), and never sent back to the game (only a masked hint).
 
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { TeamProvider } from "../../shared/team.js";
+import { TEAM_PROVIDERS, type TeamProvider } from "../../shared/team.js";
 import { DATA_DIR, HOSTED } from "./env.js";
 
 const KEY_FILE = join(DATA_DIR, "ai-keys.json");
@@ -24,7 +24,16 @@ function load(): Stored {
   try {
     if (existsSync(KEY_FILE)) {
       const s = JSON.parse(readFileSync(KEY_FILE, "utf8")) as Partial<Stored>;
-      return { keys: s.keys ?? {}, models: s.models ?? {} };
+      // (known providers and plain strings only)
+      const pick = (o: unknown) => {
+        const out: Partial<Record<TeamProvider, string>> = {};
+        for (const p of TEAM_PROVIDERS) {
+          const v = o && typeof o === "object" && Object.hasOwn(o, p) ? (o as Record<string, unknown>)[p] : undefined;
+          if (typeof v === "string" && v) out[p] = v;
+        }
+        return out;
+      };
+      return { keys: pick(s.keys), models: pick(s.models) };
     }
   } catch (err) {
     console.error("[ai-keys] couldn't read saved keys:", err);
@@ -35,7 +44,16 @@ function load(): Stored {
 function save() {
   mkdirSync(dirname(KEY_FILE), { recursive: true });
   writeFileSync(KEY_FILE, JSON.stringify(stored), { mode: 0o600 });
+  // (`mode` only applies to a new file: keep an older one owner-only too)
+  try {
+    chmodSync(KEY_FILE, 0o600);
+  } catch {
+    /* (Windows) */
+  }
 }
+
+/** One of the team's providers (not "constructor" or anything else off a prototype). */
+export const isTeamProvider = (p: unknown): p is TeamProvider => typeof p === "string" && (TEAM_PROVIDERS as string[]).includes(p);
 
 /**
  * The server's own keys (.env), used when a player hasn't connected one: on your own
@@ -54,11 +72,13 @@ const ENV: Record<TeamProvider, () => string | undefined> = HOSTED
 
 /** The key to use: one a player connected in-game, else the server's .env. */
 export function keyFor(p: TeamProvider): string | undefined {
+  if (!isTeamProvider(p)) return undefined;
   return stored.keys[p] ?? ENV[p]();
 }
 
 /** Where a provider's key came from, for the board ("you" connected it, or the server has one). */
 export function keySource(p: TeamProvider): "you" | "server" | null {
+  if (!isTeamProvider(p)) return null;
   return stored.keys[p] ? "you" : ENV[p]() ? "server" : null;
 }
 
@@ -68,10 +88,11 @@ export function maskedKey(p: TeamProvider): string | null {
 }
 
 export function chosenModel(p: TeamProvider): string | undefined {
-  return stored.models[p];
+  return isTeamProvider(p) ? stored.models[p] : undefined;
 }
 
 export function chooseModel(p: TeamProvider, model: string) {
+  if (!isTeamProvider(p) || typeof model !== "string" || !model || model.length > 200) return;
   stored.models[p] = model;
   save();
 }
@@ -79,7 +100,7 @@ export function chooseModel(p: TeamProvider, model: string) {
 /** Check a key with the cheapest request each provider offers (listing models). */
 async function check(p: TeamProvider, key: string): Promise<void> {
   const get = async (url: string, headers: Record<string, string>) => {
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
     // Gemini answers a bad key with 400, the others with 401/403.
     if (!res.ok) throw new Error([400, 401, 403].includes(res.status) ? "that key was rejected" : `the check failed (HTTP ${res.status})`);
   };
@@ -99,8 +120,9 @@ async function check(p: TeamProvider, key: string): Promise<void> {
 }
 
 export async function connectKey(p: TeamProvider, raw: string): Promise<string> {
+  if (!isTeamProvider(p)) throw new Error("that's not one of the team's AIs");
   const key = raw.trim();
-  if (key.length < 12 || /\s/.test(key)) throw new Error("that doesn't look like an API key");
+  if (key.length < 12 || key.length > 400 || /[^\x21-\x7e]/.test(key)) throw new Error("that doesn't look like an API key");
   await check(p, key);
   stored.keys[p] = key;
   save();
@@ -108,36 +130,49 @@ export async function connectKey(p: TeamProvider, raw: string): Promise<string> 
 }
 
 export function disconnectKey(p: TeamProvider) {
+  if (!isTeamProvider(p)) return;
   delete stored.keys[p];
   save();
 }
 
 // ---------------------------------------------------------------- OpenRouter sign-in (OAuth PKCE)
 
-let pending: { verifier: string; expires: number } | null = null;
+// Each sign-in gets its own random state (in the callback URL: OpenRouter only adds
+// the code) and PKCE verifier, good for 10 minutes and used once.
+const pending = new Map<string, { verifier: string; expires: number }>();
+const SIGNIN_MS = 10 * 60_000;
+const MAX_PENDING = 20;
 
 const b64url = (b: Buffer) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-/** Where to send the player's browser to sign in to OpenRouter. */
-export function openRouterAuthUrl(callbackUrl: string): string {
+/** Where to send the player's browser to sign in to OpenRouter, and the state its callback must bring back. */
+export function openRouterAuthUrl(callbackUrl: string): { url: string; state: string } {
+  const now = Date.now();
+  for (const [s, p] of pending) if (p.expires < now) pending.delete(s);
+  // (the oldest go first if someone keeps reloading the link)
+  while (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value!);
+  const state = randomBytes(24).toString("hex");
   const verifier = b64url(randomBytes(48));
-  pending = { verifier, expires: Date.now() + 10 * 60_000 };
+  pending.set(state, { verifier, expires: now + SIGNIN_MS });
   const challenge = b64url(createHash("sha256").update(verifier).digest());
-  const q = new URLSearchParams({ callback_url: callbackUrl, code_challenge: challenge, code_challenge_method: "S256", key_label: "Fl-AI Me to the Moon (Office team)" });
-  return `https://openrouter.ai/auth?${q}`;
+  const callback = `${callbackUrl}${callbackUrl.includes("?") ? "&" : "?"}state=${state}`;
+  const q = new URLSearchParams({ callback_url: callback, code_challenge: challenge, code_challenge_method: "S256", key_label: "Fl-AI Me to the Moon (Office team)" });
+  return { url: `https://openrouter.ai/auth?${q}`, state };
 }
 
-/** OpenRouter sent them back with a code: trade it for their key. */
-export async function finishOpenRouter(code: string): Promise<void> {
-  if (!pending || pending.expires < Date.now()) throw new Error("the sign-in took too long; try again from the game");
+/** OpenRouter sent them back with a code (and our state): trade it for their key. */
+export async function finishOpenRouter(code: string, state: string | null): Promise<void> {
+  const p = state ? pending.get(state) : undefined;
+  if (state) pending.delete(state);
+  if (!p || p.expires < Date.now()) throw new Error("that sign-in link expired or was already used; try again from the game");
   const res = await fetch("https://openrouter.ai/api/v1/auth/keys", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ code, code_verifier: pending.verifier, code_challenge_method: "S256" }),
+    body: JSON.stringify({ code, code_verifier: p.verifier, code_challenge_method: "S256" }),
+    signal: AbortSignal.timeout(30_000),
   });
-  pending = null;
   const body = (await res.json().catch(() => ({}))) as { key?: string };
-  if (!res.ok || !body.key) throw new Error(`OpenRouter didn't hand over a key (HTTP ${res.status})`);
+  if (!res.ok || typeof body.key !== "string" || !body.key) throw new Error(`OpenRouter didn't hand over a key (HTTP ${res.status})`);
   stored.keys.openrouter = body.key;
   save();
 }
@@ -158,7 +193,8 @@ export function cachedOpenRouterModels(): string[] {
 export async function openRouterModels(): Promise<string[]> {
   if (modelCache && Date.now() - modelCache.at < 3_600_000) return modelCache.list;
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/models");
+    const res = await fetch("https://openrouter.ai/api/v1/models", { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = ((await res.json()) as { data?: { id: string; context_length?: number; supported_parameters?: string[] }[] }).data ?? [];
     const tools = data.filter((m) => m.supported_parameters?.includes("tools") && !m.id.endsWith(":batch") && !m.id.startsWith("stealth/"));
     // Free models from families that are good at tool use, biggest context first.

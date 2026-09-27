@@ -82,15 +82,17 @@ export function anyPending(): boolean {
 }
 
 /**
- * Which open question a text reply answers. With a code, that one; without,
- * only if exactly one is waiting. `problem` is what to text back instead.
+ * Which open question a text reply answers. With a code, that one. A bare NO
+ * holds the only one waiting; a bare YES never counts (by the time it arrives,
+ * the one waiting may not be the one they read). `problem` is what to text back instead.
  */
 export function phoneTarget(code: string | undefined, approving: boolean): { approval: Approval } | { problem: string } {
   const list = open();
-  const a = code ? list.find((x) => codes.get(x.id) === code) : list.length === 1 ? list[0] : undefined;
+  const a = code ? list.find((x) => codes.get(x.id) === code) : !approving && list.length === 1 ? list[0] : undefined;
   if (!a) {
     if (code) return { problem: `Nothing's waiting on code ${code}. Check the code in the request text.` };
-    return { problem: `${list.length} requests are waiting — reply YES or NO with the code from the one you mean (like "YES ${list.length ? approvalCode(list[0].id) : "1234"}").` };
+    // (never a real code in the example: a YES has to come from reading the request itself)
+    return { problem: `Reply YES or NO with the code from the request you mean (like "YES 1234").` };
   }
   // (a NO is always fine by text; a YES only for what the text showed in full)
   if (approving && gameOnly.has(a.id)) return { problem: "That one's too long to show in full by text — please look it over and answer in the colony." };
