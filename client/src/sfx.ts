@@ -205,6 +205,17 @@ export const sfx = {
   sweep() {
     beep(2400, 0.04, "sawtooth", 0.015, 1600);
   },
+  /** One footstep, barely there: a scuff in the moondust, a tap on stone or brick, a chime on glow tiles. */
+  step(on: "dust" | "dirt" | "stone" | "brick" | "glow") {
+    const j = 0.85 + Math.random() * 0.3;
+    if (on === "dust") noise(0.06, 0.01, 700 * j);
+    else if (on === "dirt") noise(0.06, 0.012, 450 * j);
+    else {
+      beep((on === "brick" ? 150 : 190) * j, 0.03, "triangle", 0.014, 110);
+      noise(0.03, 0.006, 2600 * j);
+      if (on === "glow") beep(1500 * j, 0.06, "sine", 0.005);
+    }
+  },
   blip() {
     beep(520, 0.03, "square", 0.04);
   },

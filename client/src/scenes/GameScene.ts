@@ -2891,7 +2891,7 @@ export class GameScene extends Phaser.Scene {
     const ny = this.player.y + dy * speed * dt;
     if (onGround(nx, this.player.y) && !this.blocked(nx, this.player.y)) this.player.x = nx;
     if (onGround(this.player.x, ny) && !this.blocked(this.player.x, ny)) this.player.y = ny;
-    (this.prints ??= new Footprints(this)).track(this.player.x, this.player.y);
+    (this.prints ??= new Footprints(this, 9, (x, y) => sfx.step(store.paths[pathKey(Math.floor(x / TILE), Math.floor((y - 1) / TILE))] ?? "dust"))).track(this.player.x, this.player.y);
 
     if (Math.abs(dx) > Math.abs(dy)) {
       this.facing = "side";

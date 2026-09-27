@@ -455,7 +455,9 @@ export class Footprints {
   private lastY = 0;
   private walked = 0;
   private left = false;
-  constructor(private scene: Phaser.Scene, private step = 9) {}
+  private stride = 0;
+  /** `onStep`: every other print (a whole stride), for footstep sounds. */
+  constructor(private scene: Phaser.Scene, private step = 9, private onStep?: (x: number, y: number) => void) {}
 
   track(x: number, y: number) {
     if (this.lastX === null) return void ((this.lastX = x), (this.lastY = y));
@@ -470,6 +472,7 @@ export class Footprints {
     if (this.walked < this.step || d === 0) return;
     this.walked = 0;
     this.left = !this.left;
+    if (this.onStep && ++this.stride % 2 === 0) this.onStep(x, y);
     // (feet side by side, across the way you're going)
     const side = this.left ? -1 : 1;
     const px = Math.round(x + (-dy / d) * 2 * side);
