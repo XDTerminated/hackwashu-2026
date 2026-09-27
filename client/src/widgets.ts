@@ -205,12 +205,22 @@ export class Label extends Phaser.GameObjects.Container {
 }
 
 /** A clickable pixel button. */
+/** A button drawn another way than wood: `edge` is a bottom band (like the logo's lavender underside); no `border`, no outline. */
+export interface ButtonLook {
+  fill: number;
+  text: number;
+  border?: number | null;
+  edge?: number;
+  hoverFill?: number;
+}
+
 export class Button extends Phaser.GameObjects.Container {
   private g: Phaser.GameObjects.Graphics;
   private t: Phaser.GameObjects.BitmapText;
   private bw: number;
   private bh: number;
   private hover = false;
+  private look: ButtonLook | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -248,6 +258,14 @@ export class Button extends Phaser.GameObjects.Container {
     return this.bw;
   }
 
+  /** Off the wood: the title screen's buttons match the logo. */
+  setLook(look: ButtonLook) {
+    this.look = look;
+    this.t.setTint(look.text);
+    this.draw();
+    return this;
+  }
+
   setLabel(label: string, fill?: number) {
     if (fill !== undefined) this.fill = fill;
     this.t.setText(sanitize(label));
@@ -258,6 +276,14 @@ export class Button extends Phaser.GameObjects.Container {
 
   private draw() {
     const g = this.g.clear();
+    const l = this.look;
+    if (l) {
+      const fill = this.hover && l.hoverFill !== undefined ? l.hoverFill : l.fill;
+      if (l.border != null) pixBox(g, 0, 0, this.bw, this.bh, fill, l.border);
+      else g.fillStyle(fill, 1).fillRect(1, 0, this.bw - 2, this.bh).fillRect(0, 1, this.bw, this.bh - 2);
+      if (l.edge !== undefined) g.fillStyle(l.edge, 1).fillRect(1, this.bh - 2, this.bw - 2, 2).fillRect(0, this.bh - 3, 1, 1).fillRect(this.bw - 1, this.bh - 3, 1, 1);
+      return;
+    }
     pixBox(g, 0, 0, this.bw, this.bh, this.fill, C.woodDark);
     g.fillStyle(0xffffff, this.hover ? 0.28 : 0.16).fillRect(1, 1, this.bw - 2, 1);
     g.fillStyle(0x000000, 0.18).fillRect(1, this.bh - 2, this.bw - 2, 1);

@@ -122,6 +122,8 @@ export class TitleScene extends Phaser.Scene {
       for (const s of specs) {
         const scale = s.main ? big : 1;
         const b = new Button(this, 0, y, s.label, s.main ? C.greenBtn : C.woodMid, s.act, Math.min(s.main ? 180 : 110, W - 24) / scale).setScale(scale);
+        // (like the logo: white with a lavender underside, gold under the pointer; the others quieter)
+        b.setLook(s.main ? { fill: 0xf4f1ff, edge: 0xc9cfee, text: 0x1a1830, hoverFill: 0xf5d77a } : { fill: 0x2a2748, edge: 0x1a1830, text: 0xc9cfee, hoverFill: 0x3a3660 });
         b.setX(cx - Math.round((b.width_ * scale) / 2));
         this.add.existing(b);
         y += 15 * scale + 5;
