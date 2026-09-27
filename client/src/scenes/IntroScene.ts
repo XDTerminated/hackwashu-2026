@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { fitLogo } from "../logoart";
 import * as net from "../net";
 import { puff } from "../actors";
 import { sfx } from "../sfx";
@@ -471,12 +472,11 @@ export class IntroScene extends Cutscene {
     const { W, H } = this;
     const dim = this.keep(this.add.rectangle(0, 0, W, H, 0x07060f, 0).setOrigin(0).setDepth(800));
     await this.tween({ targets: dim, fillAlpha: 0.7, duration: 500 });
-    const logo = this.keep(this.add.image(Math.round(W / 2) + 8, Math.round(H / 2 - 16), "logo").setAlpha(0).setDepth(801));
-    const spark = this.keep(this.add.image(Math.round(logo.x - logo.width / 2 - 20), Math.round(logo.y - logo.height / 2 + 18), "spark_logo").setAlpha(0).setDepth(801));
-    this.every(400, () => spark.setFlipX(!spark.flipX));
+    const logo = this.keep(this.add.image(Math.round(W / 2), Math.round(H / 2 - 16), "logo").setAlpha(0).setDepth(801));
+    fitLogo(logo, W);
     sfx.bell();
-    await this.tween({ targets: [logo, spark], alpha: 1, duration: 600 });
-    const ch = this.keep(ptext(this, 0, Math.round(logo.y + logo.height / 2) + 8, "CHAPTER 1:  A LINE HOME", 0xf5c542, "pxb").setDepth(801));
+    await this.tween({ targets: logo, alpha: 1, duration: 600 });
+    const ch = this.keep(ptext(this, 0, Math.round(logo.y + logo.displayHeight / 2) + 8, "CHAPTER 1:  A LINE HOME", 0xf5c542, "pxb").setDepth(801));
     ch.setX(Math.round(W / 2 - measure(ch).w / 2));
     await this.waitOrNext(1500);
   }

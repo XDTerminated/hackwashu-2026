@@ -5,6 +5,7 @@ import { Button, C, measure, ptext, woodFrame } from "../widgets";
 import { introSeen } from "./IntroScene";
 import { onStoreChange, store } from "../store";
 import { LANDING_HOME, VISIT_ID } from "../visitparam";
+import { fitLogo } from "../logoart";
 
 // One line: the intro cutscene tells the story; the title just sets the mood.
 const STORY = ["Every home you build brings back a line to Earth."];
@@ -38,13 +39,12 @@ export class TitleScene extends Phaser.Scene {
     const ship = this.add.image(Math.round(W * 0.1), Math.round(H * 0.72), "ship").setOrigin(0.5, 1);
     this.tweens.add({ targets: ship, y: ship.y - 4, duration: 2200, yoyo: true, repeat: -1, ease: "sine.inout" });
 
-    const logo = this.add.image(cx + 8, 0, "logo");
-    logo.setY(Math.max(Math.round(H * 0.16), Math.round(logo.height / 2) + 8));
-    // (the spark sits beside the first, bigger line)
-    const spark = this.add.image(Math.round(logo.x - logo.width / 2 - 20), Math.round(logo.y - logo.height / 2 + 18), "spark_logo");
-    this.time.addEvent({ delay: 400, loop: true, callback: () => spark.setFlipX(!spark.flipX) });
+    // (the logo has its own star, in MOON; on a narrow screen it drops to 1x)
+    const logo = this.add.image(cx, 0, "logo");
+    fitLogo(logo, W);
+    logo.setY(Math.max(Math.round(H * 0.18), Math.round(logo.displayHeight / 2) + 16));
 
-    const sub = ptext(this, 0, Math.round(logo.y + logo.height / 2) + 5, "an AI agent viewer you can live in", 0x8a8fa8);
+    const sub = ptext(this, 0, Math.round(logo.y + logo.displayHeight / 2) + 10, "an AI agent viewer you can live in", 0x8a8fa8);
     sub.setX(cx - Math.round(measure(sub).w / 2));
 
     const story = ptext(this, 0, 0, STORY.join("\n"), 0xe8e4d8).setCenterAlign();
