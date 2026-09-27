@@ -2,7 +2,7 @@
 // palette; "." is transparent. Every row in a frame must be the same width.
 //
 // The little Claude critters are NOT here — they're rasterized from polar math
-// in textures.ts so the stars stay crisp.
+// in textures.ts so the sunburst stays radially true.
 
 export interface PixelSprite {
   palette: Record<string, string>;
@@ -19,8 +19,8 @@ const SUIT = {
   V: "#1f3a4d", // visor glass
   L: "#4fa8b8", // visor reflection
   l: "#c8f4ff", // visor highlight
-  O: "#e0708a", // rose trim
-  o: "#b44f6c", // rose shade
+  O: "#d97757", // coral trim
+  o: "#b85c3e", // coral shade
   G: "#8a7f9c", // life-support pack
   B: "#6b4a3a", // leather boots
 };
@@ -265,7 +265,7 @@ export const postmaster: PixelSprite = {
     k: "#241a16",
     b: "#e08a3c",
     B: "#3f5aa0",
-    O: "#e0708a",
+    O: "#d97757",
   },
   frames: [
     [
@@ -426,7 +426,7 @@ export const stargazer: PixelSprite = {
     W: "#f6f6fa",
     k: "#241a16",
     p: "#f0a8bc",
-    O: "#e0708a",
+    O: "#d97757",
     Y: "#f5c542",
   },
   frames: [
@@ -447,126 +447,6 @@ export const stargazer: PixelSprite = {
   ],
 };
 
-/** Echo the DJ: a little retro robot in rose headphones, with a speaker for a chest. */
-const DJ_BODY = (cone: string) => [
-  "......KmmmmK......",
-  "...KKKKKKKKKKKK...",
-  "..KMMMMMMMMMMMMK..",
-  ".KKMMMKssssKMMMKK.",
-  `.KMMMKs${cone}${cone}${cone}${cone}sKMMMK.`,
-  `.KMMMKs${cone}${cone}${cone}${cone}sKMMMK.`,
-  ".KKMMMKssssKMMMKK.",
-  "..KMMMMMMMMMMMMK..",
-  "...KKKKKKKKKKKK...",
-  "....KmmK..KmmK....",
-  "...KkkkK..KkkkK...",
-];
-
-export const dj: PixelSprite = {
-  palette: {
-    K: "#3b2a3a",
-    Y: "#f5c542",
-    y: "#a8863a",
-    H: "#e0708a",
-    h: "#b44f6c",
-    M: "#c3cbe0",
-    m: "#8a93ab",
-    S: "#1f2a44",
-    E: "#7ff0e8",
-    s: "#2e2a3a",
-    c: "#6b6f86",
-    C: "#a3a7c0",
-    k: "#241a16",
-  },
-  frames: [
-    [
-      ".........Y........",
-      ".........K........",
-      "...hHHHHHHHHHHh...",
-      "..HhKKKKKKKKKKhH..",
-      ".HHKMMMMMMMMMMKHH.",
-      ".HHKMSSSSSSSSMKHH.",
-      ".HHKMSEESSEESMKHH.",
-      ".HHKMSEESSEESMKHH.",
-      ".HHKMSSSSSSSSMKHH.",
-      "...KMMMMMMMMMMK...",
-      "....KKKKKKKKKK....",
-      ...DJ_BODY("c"),
-    ],
-    [
-      ".........y........",
-      ".........K........",
-      "...hHHHHHHHHHHh...",
-      "..HhKKKKKKKKKKhH..",
-      ".HHKMMMMMMMMMMKHH.",
-      ".HHKMSSSSSSSSMKHH.",
-      ".HHKMSEESSEESMKHH.",
-      ".HHKMSSSSSSSSMKHH.",
-      ".HHKMSSSSSSSSMKHH.",
-      "...KMMMMMMMMMMK...",
-      "....KKKKKKKKKK....",
-      ...DJ_BODY("C"),
-    ],
-  ],
-};
-
-/** Tinker the Mechanic: a fox in blue overalls, brass goggles up on the forehead, a wrench in hand. */
-const TINKER_HEAD = (eyes: string) => [
-  "...K..........K...",
-  "..KFK........KFK..",
-  "..KFFK......KFFK..",
-  "..KFFFKKKKKKFFFK..",
-  ".KFFFFFFFFFFFFFFK.",
-  ".KFGgGFFFFFFGgGFK.",
-  ".KFGGGFFFFFFGGGFK.",
-  ".KFFFFFFFFFFFFFFK.",
-  eyes,
-  "..KFFFWWWWWWFFFK..",
-  "..KfFWWWNNWWWFfK..",
-  "...KfWWWWWWWWfK...",
-  "....KKKKKKKKKK....",
-  "...KBBBBBBBBBBK...",
-  "..KFBbBBBBBBbBFK..",
-];
-
-export const mechanic: PixelSprite = {
-  palette: {
-    K: "#3b2a3a",
-    F: "#e8894a",
-    f: "#b8612e",
-    W: "#fff6e6",
-    k: "#241a16",
-    N: "#3b2a3a",
-    G: "#d9a441",
-    g: "#8fd0f0",
-    B: "#3f6fb0",
-    b: "#2c4f86",
-    S: "#c9cbd6",
-  },
-  frames: [
-    [
-      ...TINKER_HEAD(".KFFkFFFFFFFFkFFK."),
-      "..KFBBBGGBBBBBFKS.",
-      "..KFBBBBBBBBBBFKSS",
-      "...KBBBBBBBBBBK.S.",
-      "...KBBBBBBBBBBK...",
-      "....KbbK..KbbK....",
-      "....KbbK..KbbK....",
-      "...KkkkK..KkkkK...",
-    ],
-    [
-      ...TINKER_HEAD(".KFFFFFFFFFFFFFFK."),
-      "..KFBBBGGBBBBBFK.S",
-      "..KFBBBBBBBBBBFKSS",
-      "...KBBBBBBBBBBK...",
-      "...KBBBBBBBBBBK...",
-      "....KbbK..KbbK....",
-      "....KbbK..KbbK....",
-      "...KkkkK..KkkkK...",
-    ],
-  ],
-};
-
 // ------------------------------------------------------------------ scenery
 
 export const rocket: PixelSprite = {
@@ -574,7 +454,7 @@ export const rocket: PixelSprite = {
     K: "#3b2a3a",
     W: "#e9e9f2",
     S: "#b9bcce",
-    O: "#e0708a",
+    O: "#d97757",
     V: "#1c2748",
     G: "#767888",
   },

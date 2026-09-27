@@ -12,23 +12,13 @@ export function waitForApproval(a: Approval): Promise<boolean> {
 
 /** Returns the resolved approval, or undefined if it wasn't pending. */
 export function resolveApproval(approvalId: string, approved: boolean): Approval | undefined {
-  const a = typeof approvalId === "string" && Object.hasOwn(world.approvals, approvalId) ? world.approvals[approvalId] : undefined;
+  const a = world.approvals[approvalId];
   const waiter = waiters.get(approvalId);
   if (!a || a.status !== "pending" || !waiter) return undefined;
   a.status = approved ? "approved" : "denied";
   waiters.delete(approvalId);
   waiter(approved);
   return a;
-}
-
-/** Answer "no" to every open question (the save is changing under them, e.g. dev mode). */
-export function denyAllPending() {
-  for (const [id, waiter] of waiters) {
-    const a = world.approvals[id];
-    if (a?.status === "pending") a.status = "denied";
-    waiter(false);
-  }
-  waiters.clear();
 }
 
 /** The phone channel has no ids — "yes" answers the oldest open question. */

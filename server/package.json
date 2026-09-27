@@ -5,9 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "esbuild src/bridge.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/bridge.cjs --log-level=warning",
-    "start:hosted": "tsx src/gateway.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -17,12 +15,12 @@
     "google-auth-library": "^11.1.0",
     "groq-sdk": "^1.6.0",
     "spectrum-ts": "^12.10.1",
-    "ws": "^8.21.3",
-    "tsx": "^4.23.15"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

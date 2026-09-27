@@ -6,15 +6,13 @@ import Groq from "groq-sdk";
 import type { Clod, VillagerId } from "../../shared/game.js";
 import { runDelegate, runLeafTool, toolsFor, missingBuildingsNote } from "./agents.js";
 import { memoryNote } from "./memory.js";
-import { audienceNote, personaFor, type Audience } from "./villagers.js";
+import { personaFor } from "./villagers.js";
 import { emit, newId, putClod, setVillager } from "./world.js";
 
 const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
 // Web searches pull in big pages; Groq rate-limits per model, so the Stargazer
 // gets her own model (and her own tokens-per-minute budget).
 const SEARCH_MODEL = process.env.GROQ_SEARCH_MODEL ?? "openai/gpt-oss-20b";
-/** Falls back to the main model for the rest of the day once the search model's quota is spent. */
-let searchModel = SEARCH_MODEL;
 const MAX_TURNS = 12;
 
 let client: Groq | null = null;
@@ -60,8 +58,6 @@ async function withPatience<T>(v: VillagerId, fn: () => Promise<T>): Promise<T> 
       return await fn();
     } catch (err) {
       if (!(err instanceof Groq.RateLimitError) || attempt >= 5) throw err;
-      // A spent daily allowance won't come back in a few retries.
-      if (/per day|\bTPD\b|\bRPD\b/i.test(err.message)) throw err;
       const header = Number(err.headers?.get?.("retry-after") ?? NaN);
       const hinted = /try again in ([\d.]+)(ms|s)/.exec(err.message);
       const hintMs = hinted ? Number(hinted[1]) * (hinted[2] === "ms" ? 1 : 1000) : NaN;
@@ -99,28 +95,22 @@ function surfaceSearches(v: VillagerId, taskId: string, executed: unknown) {
   }
 }
 
-export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string, audience: Audience): Promise<string> {
+export async function runVillagerGroq(v: VillagerId, taskText: string, taskId: string): Promise<string> {
   const tools = groqTools(v);
   const messages: Msg[] = [
-    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) + audienceNote(audience) },
+    { role: "system", content: personaFor(v) + missingBuildingsNote(v) + memoryNote(v, true) },
     { role: "user", content: taskText },
   ];
   let finalText = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     setVillager(v, { status: "thinking", activity: "thinking…" });
-    const ask = (model: string) =>
-      withPatience(v, () => groq().chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}), temperature: 0.3 }));
-    let res: Awaited<ReturnType<typeof ask>>;
-    try {
-      res = await ask(v === "stargazer" ? searchModel : MODEL);
-    } catch (err) {
-      // Nova's search model can run out of its daily allowance: fall back to the main model (it can search too).
-      if (!(v === "stargazer" && searchModel !== MODEL && err instanceof Groq.RateLimitError && /per day|\bTPD\b/i.test(err.message))) throw err;
-      console.log(`[groq] ${searchModel} is out of daily quota; Nova switches to ${MODEL}`);
-      searchModel = MODEL;
-      res = await ask(MODEL);
-    }
+    const res = await withPatience(v, () => groq().chat.completions.create({
+      model: v === "stargazer" ? SEARCH_MODEL : MODEL,
+      messages,
+      ...(tools.length ? { tools } : {}),
+      temperature: 0.3,
+    }));
     const choice = res.choices[0];
     const msg = choice.message as Groq.Chat.Completions.ChatCompletionMessage & { reasoning?: string; executed_tools?: unknown };
 

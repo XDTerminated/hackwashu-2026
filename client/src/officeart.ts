@@ -1,26 +1,28 @@
-// The Office, inside and out: the room, desks with live monitors (code while
-// an agent works, "..." while it thinks), and the workers (seen from behind at
-// their desks, from the front when they walk; the team lead wears a tie).
+// The Office, inside and out: the room, desks with live monitors, and the
+// workers (seen from behind at their desks, from the front when they walk).
 // Native size, like everything else.
 
 import { type Ctx, INK as O, disc, hash, rect } from "./pix";
 
 export const ROOM_W = 448;
-export const ROOM_H = 322;
-/**
- * Desk positions in the room (bottom-center of the desk sprite): four
- * across, three rows deep, with the aisle up the middle kept clear.
- */
-export const DESKS: { x: number; y: number }[] = [140, 204, 268].flatMap((y) => [72, 160, 288, 376].map((x) => ({ x, y })));
+export const ROOM_H = 288;
+/** Desk positions in the room (bottom-center of the desk sprite). */
+export const DESKS: { x: number; y: number }[] = [
+  { x: 112, y: 148 },
+  { x: 224, y: 148 },
+  { x: 336, y: 148 },
+  { x: 112, y: 222 },
+  { x: 224, y: 222 },
+  { x: 336, y: 222 },
+];
 export const BOARD = { x: 224, y: 60, w: 176, h: 50 };
-export const ELEVATOR = { x: 224, y: ROOM_H - 2 };
+export const ELEVATOR = { x: 224, y: 286 };
 export const WORKER_LOOKS = 6;
 
 const SKIN = ["#f2c9a0", "#d9a47a", "#a8704a", "#7a4a2c", "#e8b890", "#8a5a3a"];
 const HAIR = ["#3b2a2a", "#8a5a3b", "#e0c070", "#c4553f", "#2a2a3a", "#b8b0c4"];
-const SHIRT = ["#4f6fb0", "#5fa84e", "#e0708a", "#7e5fb8", "#e0a040", "#3f8a7a"];
-const SHIRT_DARK = ["#34508a", "#3f7a36", "#b44f6c", "#5f4596", "#b8862e", "#2c6a5c"];
-
+const SHIRT = ["#4f6fb0", "#5fa84e", "#d97757", "#7e5fb8", "#e0a040", "#3f8a7a"];
+const SHIRT_DARK = ["#34508a", "#3f7a36", "#b85c3e", "#5f4596", "#b8862e", "#2c6a5c"];
 
 // ---------------------------------------------------------------- the room
 
@@ -60,7 +62,7 @@ export function drawRoom(ctx: Ctx) {
   disc(ctx, "#fff8e6", 322, 22, 6);
   rect(ctx, O, 322, 17, 1, 5);
   rect(ctx, O, 322, 22, 4, 1);
-  // the board (who's working, drawn live over it)
+  // the project board (text is drawn live over it)
   const b = BOARD;
   const bx = b.x - b.w / 2;
   rect(ctx, O, bx - 2, 4, b.w + 4, b.h + 6);
@@ -85,14 +87,12 @@ export function drawRoom(ctx: Ctx) {
   rect(ctx, "#8a8298", ROOM_W - 6, 64, 6, ROOM_H - 64);
 }
 
-export type DeskScreen = "off" | "code0" | "code1" | "code2" | "think0" | "think1" | "think2" | "wait" | "done" | "failed";
-
 /** A desk seen from behind the worker: wooden top, monitor facing us, keyboard. 48 x 32. */
-export function drawDesk(ctx: Ctx, screen: DeskScreen) {
+export function drawDesk(ctx: Ctx, screen: "off" | "code0" | "code1" | "code2" | "done" | "failed") {
   // monitor
   rect(ctx, O, 12, 0, 24, 17);
   rect(ctx, "#3b3a4a", 13, 1, 22, 15);
-  const bg = screen === "off" ? "#1a1a24" : screen === "done" ? "#1f3a2a" : screen === "failed" ? "#3a1f24" : screen === "wait" ? "#3a3218" : "#15182a";
+  const bg = screen === "off" ? "#1a1a24" : screen === "done" ? "#1f3a2a" : screen === "failed" ? "#3a1f24" : "#15182a";
   rect(ctx, bg, 14, 2, 20, 13);
   if (screen.startsWith("code")) {
     const shift = Number(screen.slice(4));
@@ -100,19 +100,8 @@ export function drawDesk(ctx: Ctx, screen: DeskScreen) {
       const row = (i + shift) % 7;
       const w = 4 + Math.floor(hash(row, 3, 9) * 13);
       const indent = Math.floor(hash(row, 4, 9) * 3) * 2;
-      rect(ctx, ["#6fe3e1", "#f5c542", "#b7a4f0", "#9ae0a8", "#f2a3b8"][row % 5], 15 + indent, 3 + i * 2 + 1, Math.min(w, 18 - indent), 1);
+      rect(ctx, ["#6fe3e1", "#f5c542", "#b7a4f0", "#9ae0a8", "#eb9a7c"][row % 5], 15 + indent, 3 + i * 2 + 1, Math.min(w, 18 - indent), 1);
     }
-  } else if (screen.startsWith("think")) {
-    // "..." filling in: the agent is thinking
-    const n = Number(screen.slice(5)) + 1;
-    for (let i = 0; i < 3; i++) rect(ctx, i < n ? "#b7a4f0" : "#34305a", 19 + i * 4, 8, 2, 2);
-  } else if (screen === "wait") {
-    // "?": it's waiting on you
-    rect(ctx, "#f5c542", 22, 4, 4, 1);
-    rect(ctx, "#f5c542", 25, 5, 1, 2);
-    rect(ctx, "#f5c542", 23, 7, 2, 1);
-    rect(ctx, "#f5c542", 23, 8, 1, 2);
-    rect(ctx, "#f5c542", 23, 11, 1, 1);
   } else if (screen === "done") {
     rect(ctx, "#7cd08a", 20, 9, 2, 2);
     rect(ctx, "#7cd08a", 22, 10, 2, 2);
@@ -305,8 +294,8 @@ export function drawOfficeTower(ctx: Ctx) {
   rect(ctx, O, 29, 19, 2, 4);
   rect(ctx, O, 46, 8, 40, 15);
   rect(ctx, "#1f2a4d", 47, 9, 38, 13);
-  rect(ctx, "#e0708a", 50, 12, 2, 7);
-  rect(ctx, "#e0708a", 48, 15, 2, 1);
+  rect(ctx, "#d97757", 50, 12, 2, 7);
+  rect(ctx, "#d97757", 48, 15, 2, 1);
   rect(ctx, "#6fe3e1", 56, 12, 3, 1);
   rect(ctx, "#6fe3e1", 55, 14, 5, 1);
   rect(ctx, "#6fe3e1", 57, 16, 6, 1);

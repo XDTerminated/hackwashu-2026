@@ -13,9 +13,6 @@ const TEX: Record<VillagerId, string> = {
   timekeeper: "timekeeper_0",
   scholar: "scholar_0",
   stargazer: "stargazer_0",
-  manager: "office_lead",
-  dj: "dj_0",
-  mechanic: "mechanic_0",
 };
 
 type Alert = "none" | "bang" | "smoke";
@@ -29,12 +26,6 @@ export class VillagerActor {
   readonly sprite: Phaser.GameObjects.Sprite;
   private shadow: Phaser.GameObjects.Image;
   private nameTag: Label;
-  private nameWanted = 0;
-
-  /** Show the name tag (when the player is near, or talking to them). */
-  showName(on: boolean) {
-    this.nameWanted = on ? 1 : 0;
-  }
   private alertIcon: Phaser.GameObjects.Image;
   private thoughtIcon: Phaser.GameObjects.Image;
   private letter: Phaser.GameObjects.Image;
@@ -60,7 +51,7 @@ export class VillagerActor {
   ) {
     this.shadow = scene.add.image(x, y, shadowKey(scene, 14)).setDepth(-8);
     this.sprite = scene.add.sprite(x, y, TEX[id]).setOrigin(0.5, 1).play(`${id}-idle`);
-    this.nameTag = new Label(scene, x, y + 2, VILLAGER_NAMES[id], { bg: C.paper, border: C.paperDark, originY: 0, padX: 2 }).setAlpha(0);
+    this.nameTag = new Label(scene, x, y + 2, VILLAGER_NAMES[id], { bg: C.paper, border: C.paperDark, originY: 0, padX: 2 });
     this.alertIcon = scene.add.image(x, y, "bang").setOrigin(0.5, 1).setVisible(false);
     this.thoughtIcon = scene.add.image(x, y, "thought").setOrigin(0, 1).setVisible(false).setInteractive({ useHandCursor: true });
     this.thoughtIcon.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
@@ -132,44 +123,24 @@ export class VillagerActor {
   private strolling = false;
   private strollDone: (() => void) | null = null;
 
-  /**
-   * Finds a way around buildings, rocks and the rest (set by the island):
-   * the points to walk through to get there, or null if there's no way.
-   */
-  router: ((fx: number, fy: number, tx: number, ty: number) => { x: number; y: number }[] | null) | null = null;
-
-  private route(x: number, y: number) {
-    return this.router ? this.router(this.sprite.x, this.sprite.y, x, y) : [{ x, y }];
-  }
-
-  /** A leisurely idle walk (around things, never through them). Any real work (enqueue) cancels it on the spot. */
+  /** A leisurely idle walk. Any real work (enqueue) cancels it on the spot. */
   stroll(x: number, y: number): Promise<boolean> {
     x = Math.round(x);
     y = Math.round(y);
-    if (Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < 2) return Promise.resolve(true);
-    const legs = this.route(x, y);
-    if (!legs) return Promise.resolve(false);
-    this.strolling = true;
-    this.sprite.anims.timeScale = 2;
-    return (async () => {
-      let ok = true;
-      for (const p of legs) if (!(ok = this.strolling && (await this.strollLeg(p.x, p.y)))) break;
-      if (this.strolling) {
-        this.strolling = false;
-        this.sprite.anims.timeScale = 1;
-      }
-      this.strollDone = null;
-      return ok;
-    })();
-  }
-
-  /** One straight stretch of a stroll: true when it gets there, false if the stroll was called off. */
-  private strollLeg(x: number, y: number): Promise<boolean> {
     const d = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y);
-    if (d < 1) return Promise.resolve(true);
+    if (d < 2) return Promise.resolve(true);
+    this.strolling = true;
     this.sprite.setFlipX(x < this.sprite.x);
+    this.sprite.anims.timeScale = 2;
     return new Promise((resolve) => {
-      this.strollDone = () => resolve(false);
+      const finish = (ok: boolean) => {
+        if (!this.strolling) return;
+        this.strolling = false;
+        this.strollDone = null;
+        this.sprite.anims.timeScale = 1;
+        resolve(ok);
+      };
+      this.strollDone = () => finish(false);
       this.walkTween = this.scene.tweens.add({
         targets: this.sprite,
         x,
@@ -178,8 +149,7 @@ export class VillagerActor {
         ease: "linear",
         onComplete: () => {
           this.walkTween = null;
-          this.strollDone = null;
-          resolve(true);
+          finish(true);
         },
       });
     });
@@ -187,13 +157,9 @@ export class VillagerActor {
 
   private cancelStroll() {
     if (!this.strolling) return;
-    this.strolling = false;
     this.walkTween?.stop();
     this.walkTween = null;
-    this.sprite.anims.timeScale = 1;
-    const done = this.strollDone;
-    this.strollDone = null;
-    done?.();
+    this.strollDone?.();
   }
 
   face(x: number) {
@@ -238,21 +204,12 @@ export class VillagerActor {
     return new Promise((r) => this.scene.time.delayedCall(ms / this.speed, () => r()));
   }
 
-  /** Walk somewhere for work: around whatever's in the way (straight there if there's no way round). */
   async walkTo(x: number, y: number): Promise<void> {
     await this.released();
     x = Math.round(x);
     y = Math.round(y);
-    if (Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) < 2) return;
-    for (const p of this.route(x, y) ?? [{ x, y }]) {
-      await this.released();
-      await this.walkLeg(Math.round(p.x), Math.round(p.y));
-    }
-  }
-
-  private walkLeg(x: number, y: number): Promise<void> {
     const d = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y);
-    if (d < 1) return Promise.resolve();
+    if (d < 2) return Promise.resolve();
     this.sprite.setFlipX(x < this.sprite.x);
     this.sprite.anims.timeScale = 3;
     return new Promise((resolve) => {
@@ -273,12 +230,11 @@ export class VillagerActor {
     });
   }
 
-  /** A speech bubble; `originX` shifts it to one side (so it doesn't cover whoever they're talking to). */
-  say(text: string, ms = 3200, originX = 0.5) {
+  say(text: string, ms = 3200) {
     this.bubble?.destroy();
     this.bubbleTimer?.remove();
     const clipped = text.length > 120 ? text.slice(0, 117) + "..." : text;
-    this.bubble = new Label(this.scene, this.sprite.x, this.sprite.y - 30, clipped, { maxWidth: 130, tail: true, originX }).setDepth(99990);
+    this.bubble = new Label(this.scene, this.sprite.x, this.sprite.y - 30, clipped, { maxWidth: 130, tail: true }).setDepth(99990);
     this.bubbleTimer = this.scene.time.delayedCall(Math.max(ms, clipped.length * 45), () => {
       this.bubble?.destroy();
       this.bubble = null;
@@ -322,9 +278,6 @@ export class VillagerActor {
     s.setDepth(y);
     this.shadow.setPosition(x, y - 1);
     this.nameTag.place(x, y + 1).setDepth(y + 1);
-    // Name tags fade in when you're close (a street full of labels is noise).
-    const a = this.nameTag.alpha;
-    if (a !== this.nameWanted) this.nameTag.setAlpha(Phaser.Math.Clamp(a + (this.nameWanted > a ? 0.12 : -0.12), 0, 1));
     const top = y - s.height;
     const bob = Math.floor(time / 240) % 2;
     this.alertIcon.setPosition(x, top - 2 - bob).setDepth(99980);
@@ -350,7 +303,7 @@ export function puff(scene: Phaser.Scene, x: number, y: number) {
 }
 
 /**
- * A little star — one piece of an agent's work (one tool call). It runs off to
+ * A baby clod — one piece of an agent's work (one tool call). It runs off to
  * the building, works, then glows when the result is ready to collect.
  */
 export class ClodActor {

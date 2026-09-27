@@ -7,7 +7,6 @@
 // → put GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env. Then sign in from the
 // game (walk to the Post Office or Clock Tower and press E).
 
-import { DATA_DIR } from "../env.js";
 import { calendar as calendarApi } from "@googleapis/calendar";
 import { gmail as gmailApi } from "@googleapis/gmail";
 import { OAuth2Client, type Credentials } from "google-auth-library";
@@ -17,9 +16,9 @@ import { fileURLToPath } from "node:url";
 import type { CalEvent, Draft, Email, EmailSummary } from "../sandbox.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const TOKEN_FILE = join(DATA_DIR, "google.json");
+const TOKEN_FILE = join(here, "..", "..", "data", "google.json");
 const PORT = Number(process.env.PORT ?? 8787);
-export const GOOGLE_REDIRECT = process.env.GOOGLE_REDIRECT ?? `http://localhost:${PORT}/oauth/google/callback`;
+export const GOOGLE_REDIRECT = `http://localhost:${PORT}/oauth/google/callback`;
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -31,35 +30,8 @@ let client: OAuth2Client | null = null;
 let account: string | undefined;
 let connected = false;
 
-/**
- * The colony's Google sign-in app (an OAuth client): from .env, or saved by the
- * host on the /setup/google page. Set it up once and every player can sign in.
- */
-const CLIENT_FILE = join(DATA_DIR, "google-client.json");
-
-function clientCreds(): { id?: string; secret?: string } {
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) return { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET };
-  try {
-    return existsSync(CLIENT_FILE) ? (JSON.parse(readFileSync(CLIENT_FILE, "utf8")) as { id?: string; secret?: string }) : {};
-  } catch {
-    return {};
-  }
-}
-
 export function googleConfigured() {
-  const c = clientCreds();
-  return !!(c.id && c.secret);
-}
-
-/** Save the sign-in app's ID and secret (from the setup page). Throws with a friendly reason if they look wrong. */
-export function setGoogleClient(rawId: string, rawSecret: string) {
-  const id = rawId.trim();
-  const secret = rawSecret.trim();
-  if (!/^[\w-]+\.apps\.googleusercontent\.com$/.test(id)) throw new Error("That Client ID doesn't look right. It ends in .apps.googleusercontent.com.");
-  if (secret.length < 10 || /\s/.test(secret)) throw new Error("That Client secret doesn't look right. Copy it again from the client's page.");
-  mkdirSync(dirname(CLIENT_FILE), { recursive: true });
-  writeFileSync(CLIENT_FILE, JSON.stringify({ id, secret }), { mode: 0o600 });
-  client = null; // the next sign-in uses the new app
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
 export function googleStatus() {
@@ -68,8 +40,7 @@ export function googleStatus() {
 
 function oauth(): OAuth2Client {
   if (!client) {
-    const c = clientCreds();
-    client = new OAuth2Client(c.id, c.secret, GOOGLE_REDIRECT);
+    client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT);
     // Persist refreshed access tokens so the colony keeps working after restarts.
     client.on("tokens", (t) => save({ ...(readSaved()?.tokens ?? {}), ...t }, account));
   }
@@ -100,37 +71,8 @@ export async function initGoogle() {
   console.log(`[google] restored sign-in${account ? ` for ${account}` : ""}`);
 }
 
-/**
- * Ask Google whether it'll accept a sign-in with our app, without signing in:
- * a bad setup (redirect URI not registered, wrong client) comes back as an
- * error redirect we can explain in plain words.
- */
-export async function checkGoogleClient(): Promise<{ ok: true } | { ok: false; problem: string; fix: string }> {
-  try {
-    const res = await fetch(googleAuthUrl(), { redirect: "manual" });
-    const to = res.headers.get("location") ?? "";
-    const err = new URL(to, "https://accounts.google.com").searchParams.get("authError");
-    if (!err) return { ok: true };
-    const text = Buffer.from(err.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("latin1");
-    if (text.includes("redirect_uri_mismatch"))
-      return { ok: false, problem: "Google doesn't know this game's sign-in address yet.", fix: `Open your OAuth client in Google Cloud (Google Auth Platform → Clients → your client), and under <b>Authorized redirect URIs</b> add exactly:<br><code style="user-select:all;background:#0b0a1a;padding:2px 6px">${GOOGLE_REDIRECT}</code><br>Save, wait a minute, then try again. (The client has to be the <b>Web application</b> type.)` };
-    if (/invalid_client|deleted_client|not found/i.test(text)) return { ok: false, problem: "Google doesn't recognise that Client ID.", fix: `Check you copied the Client ID from the right client, then save it again on the <a style="color:#f5c542" href="/setup/google">setup page</a>.` };
-    return { ok: false, problem: "Google refused the sign-in setup.", fix: "Open the setup page and check each step." };
-  } catch {
-    return { ok: true }; // offline or Google unreachable: let the real sign-in show what's wrong
-  }
-}
-
-/** Which of the permissions we ask for Google actually granted (people can untick boxes on the consent screen). */
-export function missingScopes(): string[] {
-  const granted = String(readSaved()?.tokens?.scope ?? "").split(/\s+/);
-  return SCOPES.filter((s) => !granted.includes(s));
-}
-
 export function googleAuthUrl(): string {
-  // Hosted, suggest the account they signed in to the game with.
-  const hint = process.env.MOON_USER_EMAIL;
-  return oauth().generateAuthUrl({ access_type: "offline", prompt: "consent", scope: SCOPES, state: "moon-village", ...(hint ? { login_hint: hint } : {}) });
+  return oauth().generateAuthUrl({ access_type: "offline", prompt: "consent", scope: SCOPES, state: "moon-village" });
 }
 
 export async function finishGoogleAuth(code: string): Promise<string | undefined> {
@@ -142,48 +84,6 @@ export async function finishGoogleAuth(code: string): Promise<string | undefined
   connected = true;
   console.log(`[google] connected ${account}`);
   return account;
-}
-
-// ---------------------------------------------------------------- just signing in
-// The title's SIGN IN WITH GOOGLE asks only who you are (your name and email),
-// and Google shows no "hasn't verified this app" warning for that. Gmail and
-// Calendar are asked for separately, when you connect Hoot or Cog: those are
-// the permissions Google reviews before it drops its warning.
-
-const PROFILE_FILE = join(DATA_DIR, "profile.json");
-let me: { name: string; email: string } | null = (() => {
-  try {
-    return existsSync(PROFILE_FILE) ? (JSON.parse(readFileSync(PROFILE_FILE, "utf8")) as { name: string; email: string }) : null;
-  } catch {
-    return null;
-  }
-})();
-
-/** Who signed in on the title screen (name and email), if anyone. */
-export const signedInAs = () => me;
-
-export function googleSigninUrl(): string {
-  return oauth().generateAuthUrl({ scope: ["openid", "email", "profile"], state: "signin", prompt: "select_account" });
-}
-
-/** Finish a title-screen sign-in: who you are, and nothing more. */
-export async function finishGoogleSignin(code: string): Promise<{ name: string; email: string }> {
-  // (a client of its own, so this never touches the Gmail and Calendar sign-in)
-  const c = clientCreds();
-  const g = new OAuth2Client(c.id, c.secret, GOOGLE_REDIRECT);
-  const { tokens } = await g.getToken(code);
-  const ticket = await g.verifyIdToken({ idToken: tokens.id_token ?? "", audience: c.id });
-  const info = ticket.getPayload();
-  if (!info?.email) throw new Error("Google didn't say who you are.");
-  me = { name: info.name ?? info.email.split("@")[0], email: info.email };
-  mkdirSync(dirname(PROFILE_FILE), { recursive: true });
-  writeFileSync(PROFILE_FILE, JSON.stringify(me), { mode: 0o600 });
-  return me;
-}
-
-export function forgetSignin() {
-  me = null;
-  rmSync(PROFILE_FILE, { force: true });
 }
 
 export function disconnectGoogle() {
@@ -339,7 +239,7 @@ export async function calendarCreate(title: string, startLocal: string, endLocal
     calendarId: "primary",
     requestBody: {
       summary: title,
-      description: notes ? `${notes}\n\n— booked by Cog the Timekeeper, Fl-AI Me to the Moon` : "Booked by Cog the Timekeeper, Fl-AI Me to the Moon",
+      description: notes ? `${notes}\n\n— booked by Cog the Timekeeper, Moon Village` : "Booked by Cog the Timekeeper, Moon Village",
       start: { dateTime: withSeconds(startLocal), timeZone: TZ },
       end: { dateTime: withSeconds(endLocal), timeZone: TZ },
     },

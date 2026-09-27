@@ -2,12 +2,10 @@
 // the world scene animates the same events at a watchable pace on its own.
 
 import { applyLayout } from "../../shared/layout";
-import { freshTown } from "../../shared/town";
-import { VILLAGER_NAMES, noMaterials, type Approval, type AgentSession, type AgentsState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
+import { VILLAGER_NAMES, type Approval, type OfficeState, type Clod, type SeqEvent, type Snapshot, type VillagerId, type VillagerState } from "../../shared/game";
 
 export const store: Snapshot & { connected: boolean } = {
   coins: 0,
-  materials: noMaterials(),
   buildings: {},
   villagers: {} as Record<VillagerId, VillagerState>,
   clods: [],
@@ -16,45 +14,24 @@ export const store: Snapshot & { connected: boolean } = {
   decos: [],
   lastSeq: 0,
   phoneLinked: false,
-  connections: { google: { connected: false, configured: false }, spotify: { connected: false, configured: false }, github: { connected: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
-  progress: { town: freshTown(), revealed: [], sandbox: {}, movedIn: [], plots: {} },
+  connections: { google: { connected: false, configured: false }, canvas: { connected: false }, photon: { connected: false, phoneLinked: false, phones: [] }, web: { connected: false } },
+  progress: { quest: 0, count: 0, revealed: [], sandbox: {} },
   residents: ["jade_rabbit"],
   rabbitTeamwork: false,
   chores: [],
   choreOptIn: {},
   friendship: {},
   layout: {},
+<<<<<<< Updated upstream
+=======
   devMode: false,
   clearedRocks: [],
   shards: [],
   requests: [],
-  introSeen: false,
-  guest: false,
+  office: { providers: [], project: null, history: [] },
+>>>>>>> Stashed changes
   connected: false,
 };
-
-/** Your coding agents, for the Office (their own updates: see net.onAgents). */
-export const agents: { state: AgentsState; focus: string | null } = { state: { watching: null, link: null, sessions: [] }, focus: null };
-
-export function setAgents(state: AgentsState) {
-  agents.state = state;
-}
-
-const busy = (s: AgentSession) => s.workers.some((w) => w.status !== "done" && w.status !== "failed");
-
-/** The session the Office is showing: the one you picked, else one with agents at work, else the latest. */
-export function focusedSession(): AgentSession | null {
-  const list = agents.state.sessions;
-  return list.find((s) => s.id === agents.focus) ?? list.find((s) => s.source === "replay") ?? list.find(busy) ?? list.find((s) => s.workers.length) ?? list[0] ?? null;
-}
-
-/** Show the next live session (the Office board's SWITCH). */
-export function focusNextSession() {
-  const list = agents.state.sessions;
-  if (list.length < 2) return;
-  const i = list.findIndex((s) => s.id === focusedSession()?.id);
-  agents.focus = list[(i + 1) % list.length].id;
-}
 
 type Fn = () => void;
 const changed = new Set<Fn>();
@@ -71,6 +48,11 @@ function notify() {
 export function applySnapshot(s: Snapshot) {
   Object.assign(store, s);
   applyLayout(store.layout ?? {});
+  notify();
+}
+
+export function setOffice(state: OfficeState) {
+  store.office = state;
   notify();
 }
 
@@ -158,9 +140,8 @@ export function applyEvent(e: SeqEvent) {
       store.decos.push(e.deco);
       store.coins = e.coins;
       break;
-    case "rock_grown":
-      store.clearedRocks = store.clearedRocks.filter((k) => k !== `${e.x},${e.y}`);
-      break;
+<<<<<<< Updated upstream
+=======
     case "rock_cleared":
       store.clearedRocks.push(`${e.x},${e.y}`);
       store.coins = e.coins;
@@ -183,6 +164,7 @@ export function applyEvent(e: SeqEvent) {
       if (d) d.off = e.off;
       break;
     }
+>>>>>>> Stashed changes
     case "deco_moved": {
       const d = store.decos.find((d) => d.id === e.id);
       if (d) Object.assign(d, { x: e.x, y: e.y });
@@ -199,15 +181,11 @@ export function applyEvent(e: SeqEvent) {
     case "phone":
       store.phoneLinked = true;
       break;
-    case "sandbox":
-      store.progress.sandbox = e.sandbox;
-      break;
     case "connections":
       store.connections = e.connections;
       break;
-    case "progress":
+    case "quest":
       store.progress = e.progress;
-      store.materials = e.materials;
       store.coins = e.coins;
       break;
     case "villager_arrived":
@@ -233,9 +211,6 @@ export function applyEvent(e: SeqEvent) {
     case "plot_revealed":
       if (!store.progress.revealed.includes(e.building)) store.progress.revealed.push(e.building);
       break;
-    case "plot":
-      store.progress.plots[e.building] = e.plot;
-      break;
   }
   notify();
 }
@@ -243,6 +218,3 @@ export function applyEvent(e: SeqEvent) {
 export function pendingApprovalFor(v: VillagerId): Approval | undefined {
   return store.approvals.find((a) => a.villager === v);
 }
-
-/** Still in Yutu's tutorial (nobody's moved in yet)? Everything but the tutorial waits till it's done. */
-export const inTutorial = () => store.connected && !store.progress.movedIn.length;
