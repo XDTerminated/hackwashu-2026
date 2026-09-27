@@ -401,8 +401,30 @@ export class VillagerActor {
     this.letter.setVisible(on);
   }
 
+  private prints?: Footprints;
+  private lastT = 0;
+  private lastX = 0;
+  private lastY = 0;
+  private dustT = 0;
+
   update(time: number) {
     const s = this.sprite;
+    // Footprints behind them, and moondust kicked up when they hurry (off to a job, like you running).
+    (this.prints ??= new Footprints(this.scene)).track(s.x, s.y);
+    const dt = this.lastT ? Math.min(0.1, (time - this.lastT) / 1000) : 0;
+    if (dt > 0) {
+      const vx = (s.x - this.lastX) / dt;
+      const vy = (s.y - this.lastY) / dt;
+      const v = Math.hypot(vx, vy);
+      this.dustT -= dt;
+      if (v > 100 && v < 600 && this.dustT <= 0) {
+        this.dustT = 0.16;
+        puff(this.scene, s.x - (vx / v) * 6, s.y - 1);
+      }
+    }
+    this.lastT = time;
+    this.lastX = s.x;
+    this.lastY = s.y;
     // (a hop lifts the picture, not the villager: the shadow stays on the ground)
     const lift = Math.round(this.lift);
     if (s.originY !== 1 + lift / s.height) s.setOrigin(0.5, 1 + lift / s.height);
@@ -421,6 +443,44 @@ export class VillagerActor {
     this.thoughtIcon.setPosition(x + 5, top - 2).setDepth(99981);
     this.letter.setPosition(x + 8, y - 8).setDepth(y + 2);
     this.bubble?.place(x, top - (this.alert === "bang" ? 17 : 3));
+  }
+}
+
+/**
+ * Faint footprints in the moondust behind whoever's walking: one every few steps,
+ * left and right in turn, fading away. Call each frame with where they are now.
+ */
+export class Footprints {
+  private lastX: number | null = null;
+  private lastY = 0;
+  private walked = 0;
+  private left = false;
+  constructor(private scene: Phaser.Scene, private step = 9) {}
+
+  track(x: number, y: number) {
+    if (this.lastX === null) return void ((this.lastX = x), (this.lastY = y));
+    const dx = x - this.lastX;
+    const dy = y - this.lastY;
+    const d = Math.hypot(dx, dy);
+    // (a jump, like flying home or being carried: start over there)
+    if (d > 40) return void ((this.lastX = x), (this.lastY = y), (this.walked = 0));
+    this.lastX = x;
+    this.lastY = y;
+    this.walked += d;
+    if (this.walked < this.step || d === 0) return;
+    this.walked = 0;
+    this.left = !this.left;
+    // (feet side by side, across the way you're going)
+    const side = this.left ? -1 : 1;
+    const px = Math.round(x + (-dy / d) * 2 * side);
+    const py = Math.round(y - 1 + (dx / d) * 1 * side);
+    const print = this.scene.add.image(px, py, "footprint").setAlpha(0.3).setDepth(-8.6);
+    this.scene.tweens.add({ targets: print, alpha: 0, delay: 1800, duration: 2600, onComplete: () => print.destroy() });
+  }
+
+  /** Stop tracking (next time starts fresh, no stray print across the gap). */
+  reset() {
+    this.lastX = null;
   }
 }
 

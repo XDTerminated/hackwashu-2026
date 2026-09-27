@@ -665,6 +665,8 @@ export function buildTextures(scene: Phaser.Scene) {
   });
 
   canvasTex(scene, "smoke", 8, 8, (ctx) => disc(ctx, "#9a93a8", 4, 4, 3.8));
+  // One boot print in the moondust (drawn very faint).
+  canvasTex(scene, "footprint", 2, 3, (ctx) => rect(ctx, "#2a2540", 0, 0, 2, 3));
 
   canvasTex(scene, "letter", 12, 9, (ctx) => {
     box(ctx, "#fff6ee", 0, 0, 12, 9);

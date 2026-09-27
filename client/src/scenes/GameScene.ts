@@ -24,7 +24,7 @@ import {
   IN_OFFICE,
 } from "../../../shared/game";
 import { lovedCount, materialUses, needsText, nextBuild, nextStep, type MoveInState } from "../../../shared/movein";
-import { ClodActor, VillagerActor, puff } from "../actors";
+import { ClodActor, Footprints, VillagerActor, puff } from "../actors";
 import { conversation, mutter } from "../chatter";
 import { ChoreView } from "../choreviews";
 import { DECOR, LOVED_POINTS, decorFootprint, happinessFor, sellPrice, yardOf } from "../../../shared/decor";
@@ -2566,6 +2566,9 @@ export class GameScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(this.player.x, this.player.y - 8, x, y);
   }
 
+  /** Your footprints in the moondust. */
+  private prints?: Footprints;
+
   private floatText(x: number, y: number, str: string, color: number, ms = 900) {
     const t = new Label(this, x, y, str, { bg: C.outline, border: null, color, font: "pxb", originY: 0.5, padX: 2 }).setDepth(99999);
     this.tweens.add({ targets: t, y: y - 22, alpha: 0, duration: ms, ease: "sine.out", onComplete: () => t.destroy() });
@@ -2887,6 +2890,7 @@ export class GameScene extends Phaser.Scene {
     const ny = this.player.y + dy * speed * dt;
     if (onGround(nx, this.player.y) && !this.blocked(nx, this.player.y)) this.player.x = nx;
     if (onGround(this.player.x, ny) && !this.blocked(this.player.x, ny)) this.player.y = ny;
+    (this.prints ??= new Footprints(this)).track(this.player.x, this.player.y);
 
     if (Math.abs(dx) > Math.abs(dy)) {
       this.facing = "side";
