@@ -199,12 +199,14 @@ interface Copy {
 }
 
 const copies = new Map<string, Copy>();
-let nextPort = 9100;
+/** Where the islands' ports start (MOON_ISLAND_PORT: so a second gateway on one computer doesn't collide). */
+const BASE_PORT = Number(process.env.MOON_ISLAND_PORT) || 9100;
+let nextPort = BASE_PORT;
 
 function freePort() {
   const used = new Set([...copies.values()].map((c) => c.port));
   for (let i = 0; i < 2000; i++) {
-    const p = 9100 + ((nextPort - 9100 + i) % 2000);
+    const p = BASE_PORT + ((nextPort - BASE_PORT + i) % 2000);
     if (!used.has(p)) {
       nextPort = p + 1;
       return p;

@@ -6,6 +6,7 @@ import { introSeen } from "./IntroScene";
 import { onStoreChange, store } from "../store";
 import { LANDING_HOME, VISIT_ID } from "../visitparam";
 import { fitLogo } from "../logoart";
+import { flyTo, loadSocial } from "../multiplayer";
 
 /**
  * The front door. Sign in with Google for a village that's kept (online, your
@@ -17,7 +18,11 @@ export class TitleScene extends Phaser.Scene {
     super("Title");
   }
 
+  /** Where the words end (the rockets fly below it, or above the logo). */
+  private bottom = 0;
+
   create() {
+    this.bottom = 0;
     const W = this.scale.width;
     const H = this.scale.height;
     const cx = Math.round(W / 2);
@@ -53,7 +58,7 @@ export class TitleScene extends Phaser.Scene {
       const half = 16 * scale;
       const zones = [
         [half + 4, Math.round(logo.y - logo.displayHeight / 2) - half - 4],
-        [y + 24 + half, H - half - 4],
+        [Math.max(y, this.bottom) + 24 + half, H - half - 4],
       ].filter(([a, b]) => b >= a);
       if (!zones.length) return void this.time.delayedCall(5000, flyBy);
       const [lo, hi] = Phaser.Utils.Array.GetRandom(zones);
@@ -125,6 +130,7 @@ export class TitleScene extends Phaser.Scene {
     const below = (text: string, color = 0x8a8fa8) => {
       const t = ptext(this, 0, y + 6, text, color).setMaxWidth(W - 24).setCenterAlign();
       t.setX(cx - Math.round(measure(t).w / 2));
+      y += 6 + measure(t).h;
     };
 
     if (auth.state === "checking") {
@@ -247,5 +253,45 @@ export class TitleScene extends Phaser.Scene {
     const go = auth.state === "local" ? () => enter(!store.connections.me) : play;
     below(auth.note || (auth.state === "local" && !store.connections.me ? "SPACE or ENTER to play as a guest" : "SPACE or ENTER to play"), auth.note ? 0xf2a3b8 : 0x8a8fa8);
     for (const key of ["keydown-SPACE", "keydown-ENTER"]) this.input.keyboard!.once(key, go);
+    // Your friends (online, signed in): who's around, and a click flies you to their island.
+    if (auth.state === "in" && !auth.guest) this.friends(y + 16, cx, H, () => landing);
+  }
+
+  private async friends(top: number, cx: number, H: number, leaving: () => boolean) {
+    const s = await loadSocial().catch(() => null);
+    if (!s || !this.sys.isActive() || leaving()) return;
+    let y = top;
+    const centered = (text: string, color: number, font: "px" | "pxb" | "sm", gap: number) => {
+      const t = ptext(this, 0, y, text, color, font);
+      t.setX(cx - Math.round(measure(t).w / 2));
+      y += measure(t).h + gap;
+      return t;
+    };
+    centered("FRIENDS", 0x8a8fa8, "pxb", 5);
+    if (!s.friends.length) {
+      centered("No friends yet", 0x6a7090, "px", 3);
+      centered(`Your friend code: ${s.code} (add friends from FRIENDS in the game)`, 0x555c78, "sm", 0);
+    }
+    // (who's on first; as many as fit above the corner links)
+    const list = [...s.friends].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+    const room = Math.max(1, Math.floor((H - 16 - y) / 11) - (s.incoming.length ? 1 : 0));
+    const shown = list.length > room ? list.slice(0, room - 1) : list;
+    for (const f of shown) {
+      const t = ptext(this, 0, y, f.name.split(" ")[0], f.online ? 0xf4ecd8 : 0x8a8fa8).setInteractive({ useHandCursor: true });
+      const tag = ptext(this, 0, y, f.online ? "on the Moon" : "away", f.online ? 0x7fd08a : 0x555c78, "sm");
+      // (a dot, the name, and where they are, centered as one)
+      const w = 6 + measure(t).w + 6 + measure(tag).w;
+      const x = cx - Math.round(w / 2);
+      this.add.rectangle(x, y + 2, 3, 3, f.online ? 0x5fd06a : 0x555c78).setOrigin(0);
+      t.setX(x + 6);
+      tag.setPosition(x + 6 + measure(t).w + 6, y + 1);
+      t.on("pointerover", () => (t.setTint(0xf5c542), tag.setText("fly over?").setTint(0xf5c542)));
+      t.on("pointerout", () => (t.setTint(f.online ? 0xf4ecd8 : 0x8a8fa8), tag.setText(f.online ? "on the Moon" : "away").setTint(f.online ? 0x7fd08a : 0x555c78)));
+      t.on("pointerdown", () => flyTo(f.id));
+      y += 11;
+    }
+    if (shown.length < list.length) centered(`+${list.length - shown.length} more (FRIENDS in the game)`, 0x555c78, "sm", 3);
+    if (s.incoming.length) centered(`${s.incoming.length} friend request${s.incoming.length === 1 ? "" : "s"} waiting`, 0xf5c542, "sm", 0);
+    this.bottom = y;
   }
 }
