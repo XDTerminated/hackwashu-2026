@@ -35,6 +35,20 @@ const DEV_LOGIN = process.env.MOON_DEV_LOGIN === "1";
 
 mkdirSync(join(ROOT, "players"), { recursive: true });
 
+// Google sign-in: from .env, or else the Google app already set up for the single-player
+// game (server/data/google-client.json, from /setup/google). Each island gets it too.
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  try {
+    const saved = JSON.parse(readFileSync(join(SERVER_DIR, "data", "google-client.json"), "utf8")) as { id?: string; secret?: string };
+    if (saved.id && saved.secret) {
+      process.env.GOOGLE_CLIENT_ID = saved.id;
+      process.env.GOOGLE_CLIENT_SECRET = saved.secret;
+    }
+  } catch {
+    /* not set up: nobody can sign in with Google (the gateway says so when it starts) */
+  }
+}
+
 /** Friends: who may visit whom, and what they may do there (see social.ts). */
 const social = new Social(join(ROOT, "social.json"));
 
