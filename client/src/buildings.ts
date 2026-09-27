@@ -207,41 +207,55 @@ export function drawFoundation(ctx: Ctx, w: number, h: number) {
 }
 
 /**
- * A heap of rubble blocking a lot (24 x 18): broken brick, splintered planks
- * and stone, warm-coloured so it never reads as one of the grey moon rocks.
+ * A heap of rubble blocking a lot (24 x 18): what's left of the old colony,
+ * broken concrete slabs, a bent steel girder and a cracked solar panel. All
+ * square edges and bolts, so it never reads as one of the round moon rocks.
  */
 export function drawRubble(ctx: Ctx, v: number) {
-  const BRICK = { base: "#c9744a", light: "#e0935f", dark: "#9a4f2e" };
+  const CONCRETE = { base: "#b3aec0", light: "#d2cedc", dark: "#817c92" };
+  const STEEL = { base: "#7d8ba2", light: "#aebbcf", dark: "#4f5a6e" };
+  const PANEL = { base: "#34507a", light: "#7aa6d6", dark: "#22344f" };
   // dust under the heap
-  disc(ctx, "#8c8698", 12, 15, 11.5, 3);
-  disc(ctx, "#a39cb2", 12, 14, 9, 2);
+  disc(ctx, "#847d95", 12, 15, 11.5, 3);
+  disc(ctx, "#9a93ad", 12, 14, 9, 2);
   const block = (x: number, y: number, w: number, h: number, c: { base: string; light: string; dark: string }) => {
     rect(ctx, O, x - 1, y - 1, w + 2, h + 2);
     rect(ctx, c.base, x, y, w, h);
     rect(ctx, c.light, x, y, w, 1);
     rect(ctx, c.dark, x, y + h - 1, w, 1);
   };
-  const plank = { base: "#c98f5a", light: "#e2ad76", dark: "#8a5a3b" };
+  // a cracked solar panel: blue cells in a grid, one shard of sky caught in it
+  const panel = (x: number, y: number, w: number, h: number) => {
+    block(x, y, w, h, PANEL);
+    for (let gx = x + 2; gx < x + w - 1; gx += 3) rect(ctx, PANEL.dark, gx, y + 1, 1, h - 2);
+    rect(ctx, PANEL.light, x + 1, y + 1, 1, 1);
+    rect(ctx, "#cfe3f5", x + w - 3, y + 2, 1, 1);
+  };
+  // a steel girder, painted in hazard stripes (easy to spot, and plainly construction junk)
+  const girder = (x: number, y: number, w: number, h: number) => {
+    block(x, y, w, h, STEEL);
+    for (let i = 0; i < Math.max(w, h); i++)
+      if (Math.floor(i / 2) % 2 === 0) {
+        if (w > h) rect(ctx, "#e6b53e", x + i, y, 1, h - 1);
+        else rect(ctx, "#e6b53e", x, y + i, w - 1, 1);
+      }
+  };
   if (v === 0) {
-    block(3, 11, 7, 4, BRICK);
-    block(10, 10, 8, 5, STONE);
-    block(6, 6, 7, 4, BRICK);
-    block(13, 5, 6, 4, BRICK);
-    // a splintered plank across the top
-    rect(ctx, O, 2, 3, 13, 3);
-    rect(ctx, plank.base, 3, 4, 11, 1);
-    rect(ctx, O, 14, 2, 2, 2);
-    block(18, 11, 4, 3, STONE);
+    block(3, 11, 8, 4, CONCRETE);
+    block(11, 10, 7, 5, STONE);
+    panel(13, 5, 8, 5);
+    girder(2, 5, 12, 3);
+    // the girder's snapped end
+    rect(ctx, O, 14, 4, 2, 2);
+    block(19, 12, 3, 3, CONCRETE);
   } else {
     block(2, 10, 8, 5, STONE);
-    block(10, 11, 7, 4, BRICK);
-    block(7, 5, 7, 5, BRICK);
-    block(15, 7, 6, 4, STONE);
-    rect(ctx, O, 9, 1, 3, 12);
-    rect(ctx, plank.base, 10, 2, 1, 10);
-    rect(ctx, plank.light, 10, 2, 1, 2);
-    block(18, 12, 4, 3, BRICK);
+    block(10, 11, 8, 4, CONCRETE);
+    panel(3, 5, 9, 5);
+    girder(15, 2, 3, 11);
+    block(19, 12, 3, 3, CONCRETE);
   }
-  // a few loose chips
-  for (const [x, y] of [[1, 15], [21, 16], [6, 16]]) rect(ctx, BRICK.dark, x, y, 1, 1);
+  // a few loose chips, and one rusty bolt
+  for (const [x, y] of [[1, 15], [21, 16], [6, 16]]) rect(ctx, CONCRETE.dark, x, y, 1, 1);
+  rect(ctx, "#b0664a", 17, 16, 1, 1);
 }

@@ -262,7 +262,7 @@ export function drawManor(ctx: Ctx) {
   hedge(ctx, 73, 104, 36, 2);
 }
 
-/** The Jade Rabbit's Hollow: a great mossy hill under a blossoming tree. 112 x 96. */
+/** The Jade Rabbit's Hollow: a great hill of jade moon-moss under a blossoming tree. 112 x 96. */
 export function drawHollow(ctx: Ctx) {
   // the tree grows up behind the hill
   rect(ctx, O, 73, 16, 9, 42);
@@ -281,9 +281,9 @@ export function drawHollow(ctx: Ctx) {
     [92, 8, 9, 6],
   ];
   for (const [x, y, rx, ry] of lobes) disc(ctx, O, x, y, rx + 1, ry + 1);
-  for (const [x, y, rx, ry] of lobes) disc(ctx, "#3f7a36", x, y, rx, ry);
-  for (const [x, y, rx, ry] of lobes) disc(ctx, "#5a9a44", x - 1, y - 1, rx - 2, ry - 2);
-  for (const [x, y, rx, ry] of lobes) disc(ctx, "#7cbf55", x - 3, y - 3, rx * 0.4, ry * 0.35);
+  for (const [x, y, rx, ry] of lobes) disc(ctx, "#2f6f63", x, y, rx, ry);
+  for (const [x, y, rx, ry] of lobes) disc(ctx, "#4a9480", x - 1, y - 1, rx - 2, ry - 2);
+  for (const [x, y, rx, ry] of lobes) disc(ctx, "#72bfa2", x - 3, y - 3, rx * 0.4, ry * 0.35);
   for (let i = 0; i < 110; i++) {
     const x = 44 + Math.floor(hash(i, 1, 13) * 68);
     const y = Math.floor(hash(i, 2, 13) * 34);
@@ -291,13 +291,13 @@ export function drawHollow(ctx: Ctx) {
   }
   // the hill
   disc(ctx, O, 56, 97, 55, 60, 94);
-  disc(ctx, "#4f9e54", 56, 97, 54, 59, 93);
-  disc(ctx, "#6fbf6a", 52, 95, 48, 54, 91);
-  disc(ctx, "#94d886", 40, 58, 15, 9);
+  disc(ctx, "#3f8f7c", 56, 97, 54, 59, 93);
+  disc(ctx, "#5fae94", 52, 95, 48, 54, 91);
+  disc(ctx, "#8fd4b8", 40, 58, 15, 9);
   for (let i = 0; i < 180; i++) {
     const x = 4 + Math.floor(hash(i, 4, 13) * 104);
     const y = 40 + Math.floor(hash(i, 5, 13) * 54);
-    if (((x - 56) / 52) ** 2 + ((y - 97) / 57) ** 2 < 1) rect(ctx, hash(i, 6, 13) > 0.5 ? "#3f8a4a" : "#a8e89a", x, y, 1, 2);
+    if (((x - 56) / 52) ** 2 + ((y - 97) / 57) ** 2 < 1) rect(ctx, hash(i, 6, 13) > 0.5 ? "#357d6c" : "#a6e3cb", x, y, 1, 2);
     if (hash(i, 7, 13) > 0.93 && ((x - 56) / 50) ** 2 + ((y - 97) / 55) ** 2 < 1) rect(ctx, ["#f07a9a", GOLD, "#cfe7ff"][i % 3], x, y, 1, 1);
   }
   // stone chimney pipe
@@ -337,8 +337,8 @@ export function drawHollow(ctx: Ctx) {
   rect(ctx, O, 2, 88, 18, 7);
   rect(ctx, "#6b4a3a", 3, 89, 16, 5);
   for (let x = 4; x < 19; x += 3) {
-    rect(ctx, "#6fbf6a", x, 86, 1, 4);
-    rect(ctx, "#4f9e54", x + 1, 87, 1, 3);
+    rect(ctx, "#5fae94", x, 86, 1, 4);
+    rect(ctx, "#3f8f7c", x + 1, 87, 1, 3);
   }
   disc(ctx, O, 30, 91, 5.5, 3.5);
   disc(ctx, "#8fdcb0", 30, 91, 4.5, 2.5);
@@ -348,8 +348,8 @@ export function drawHollow(ctx: Ctx) {
   rect(ctx, O, 90, 88, 20, 7);
   rect(ctx, "#6b4a3a", 91, 89, 18, 5);
   for (const x of [92, 96, 100, 104]) {
-    rect(ctx, "#6fbf6a", x, 85, 1, 4);
-    rect(ctx, "#4f9e54", x + 1, 86, 1, 3);
+    rect(ctx, "#5fae94", x, 85, 1, 4);
+    rect(ctx, "#3f8f7c", x + 1, 86, 1, 3);
     rect(ctx, "#f08a3a", x, 90, 2, 3);
   }
   for (const [x, y] of [[10, 80], [102, 78], [72, 90]] as const) {

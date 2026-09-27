@@ -257,8 +257,8 @@ function drawGrounds(ctx: Ctx, w: number, h: number, b: BuildingId) {
       break;
     }
     case "rabbit_burrow": {
-      // a lawn with stepping stones to the door, and a carrot patch
-      pave((x, y) => (hash(x >> 1, y >> 1, 12) > 0.8 ? "#6fbf6a" : hash(x, y, 13) > 0.5 ? "#4f9e54" : "#57a65a"));
+      // a lawn of jade moon-moss with stepping stones to the door, and a carrot patch
+      pave((x, y) => (hash(x >> 1, y >> 1, 12) > 0.8 ? "#62b096" : hash(x, y, 13) > 0.5 ? "#3f8f7c" : "#4d9c86"));
       const mx = Math.round(w / 2);
       for (const [dx, y] of [[-3, 5], [4, 14], [-2, 24], [5, 33]]) {
         disc(ctx, INK, mx + dx, y, 5, 3.5);
@@ -769,28 +769,36 @@ export function buildTextures(scene: Phaser.Scene) {
     rect(ctx, "#2f4f6f", 1, 1, 5, 1);
   });
 
-  // Moondust drifts: silvery piles in three shapes, outlined so they stand out
-  // from the ground, with glints that twinkle (two frames) so you spot them.
+  // Moondust drifts: low, wind-rippled mounds of pale dust in three shapes, a
+  // shade lighter than the ground with a shadow along the bottom (so they read
+  // as dust, not snow), and gold glints of stardust that twinkle (two frames)
+  // so you spot them.
   for (let v = 0; v < 3; v++)
     for (const f of [0, 1])
       canvasTex(scene, `dust_${v}_${f}`, 28, 13, (ctx) => {
         const blobs = [
-          [[8, 8, 7.5, 3.8], [17, 7, 6.5, 4.4], [13, 9, 10, 2.8]],
-          [[7, 8, 6, 3.4], [14, 7, 8.5, 4.6], [21, 9, 4.5, 2.4]],
-          [[11, 8, 9, 3.8], [20, 8, 5, 3], [5, 9, 4, 2.2]],
+          [[8, 8, 7.5, 3], [17, 7.5, 6.5, 3.4], [13, 9, 10, 2.4]],
+          [[7, 8, 6, 2.8], [14, 7.5, 8.5, 3.6], [21, 9, 4.5, 2]],
+          [[11, 8, 9, 3], [20, 8.5, 5, 2.4], [5, 9, 4, 1.8]],
         ][v];
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#5e5872", x, y + 0.8, rx + 1.2, ry + 1.2);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#8f88a6", x, y + 0.6, rx + 0.2, ry + 0.3);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#e6e0f2", x, y - 0.4, rx - 0.4, ry - 0.5);
-        for (const [x, y, rx, ry] of blobs) disc(ctx, "#faf8ff", x - 1.5, y - 1.5, rx * 0.45, ry * 0.4);
-        for (let i = 0; i < 5; i++) rect(ctx, "#a39bb8", 5 + ((i * 7 + v * 3) % 18), 7 + (i % 3), 1, 1);
-        // glints: a cross on one frame, dots on the other, never in the same place
-        const glints = [[[9, 5], [19, 4]], [[13, 5], [7, 6]], [[16, 4], [22, 7]]][v];
+        const inside = (x: number, y: number, pad = 0) => blobs.some(([cx, cy, rx, ry]) => ((x + 0.5 - cx) / (rx - pad)) ** 2 + ((y + 0.5 - cy) / (ry - pad * 0.6)) ** 2 <= 1);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#857e9a", x + 0.5, y + 1, rx + 0.4, ry + 0.4);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#c5bed4", x, y, rx, ry);
+        for (const [x, y, rx, ry] of blobs) disc(ctx, "#d8d2e3", x - 1, y - 0.8, rx * 0.7, ry * 0.55);
+        // ripples the wind left across it
+        for (const row of [6, 8, 10])
+          for (let x = 1; x < 27; x++) {
+            const y = row + Math.round(Math.sin(x / 2.6 + row + v) * 0.7);
+            if ((x + row) % 7 < 4 && inside(x, y, 1.2)) rect(ctx, "#a8a1bb", x, y, 1, 1);
+          }
+        // stardust: gold glints, a cross on one frame and a dot on the other, never in the same place
+        const glints = [[[9, 5], [19, 5], [14, 9]], [[13, 5], [7, 7], [20, 8]], [[16, 5], [22, 8], [8, 8]]][v];
         glints.forEach(([gx, gy], i) => {
           if ((i + f) % 2 === 0) {
-            rect(ctx, "#ffffff", gx - 1, gy, 3, 1);
-            rect(ctx, "#ffffff", gx, gy - 1, 1, 3);
-          } else rect(ctx, "#ffffff", gx, gy, 1, 1);
+            rect(ctx, "#f5d27a", gx - 1, gy, 3, 1);
+            rect(ctx, "#f5d27a", gx, gy - 1, 1, 3);
+            rect(ctx, "#fffbe8", gx, gy, 1, 1);
+          } else rect(ctx, "#ffe9a8", gx, gy, 1, 1);
         });
       });
   // Doorbell on a little post; frame 1 is mid-swing.

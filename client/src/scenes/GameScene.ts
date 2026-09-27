@@ -31,7 +31,7 @@ import type { Deco } from "../../../shared/game";
 import { itemById, type ShopItem } from "../items";
 import { shadowKey } from "../textures";
 import { Button, C, Label } from "../widgets";
-import { LANDING, SPOTS, STREET, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
+import { LANDING, PLAZA_R, SPOTS, STREET, TILE, isAnnex, WORLD_H, WORLD_W, RESERVED, ROCK_NAME, ROCK_STONE, ROCK_TILES, rockKey, shardKey, shardSpots, overlaps, besideDoor, buildingRects, buildingTiles, canOccupy, plazaRing, rockRect, rockSpots, type Rock, footprint, inIsland, inIslandXY, lanternAt, snapToTiles, type Rect } from "../layout";
 import * as net from "../net";
 import { toggleMusic } from "../music";
 import { closePanel, isPanelOpen, onPanelToggle, openConnect, openGuide, openInfo, openLetter } from "../panel";
@@ -805,10 +805,10 @@ export class GameScene extends Phaser.Scene {
         objs.push(this.add.image(s.x, s.y, lot.repaired ? `foundation_${b}` : `ruins_${b}`).setOrigin(0.5, 1).setDepth(s.y - 21));
         for (const r of this.rubbleSpots(move)) {
           if (lot.cleared.includes(r.i)) continue;
-          // A warm glow that breathes in and out, so the heaps are easy to spot.
-          const glow = this.add.image(r.x, r.y - 6, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa860).setAlpha(0.15).setDepth(r.y - 1);
-          const spark = this.add.image(r.x, r.y - 8, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xffd27a).setAlpha(0.2).setDepth(r.y + 1);
-          this.tweens.add({ targets: [glow, spark], alpha: { from: 0.12, to: 0.6 }, duration: 900, yoyo: true, repeat: -1, ease: "sine.inout", delay: r.i * 300 });
+          // A soft, cool shimmer that breathes in and out, so the heaps are easy to spot (not a campfire).
+          const glow = this.add.image(r.x, r.y - 6, "glow_l").setBlendMode(Phaser.BlendModes.ADD).setTint(0xb8ccff).setAlpha(0.1).setDepth(r.y - 1);
+          const spark = this.add.image(r.x, r.y - 8, "glow_s").setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setAlpha(0.15).setDepth(r.y + 1);
+          this.tweens.add({ targets: [glow, spark], alpha: { from: 0.08, to: 0.42 }, duration: 1100, yoyo: true, repeat: -1, ease: "sine.inout", delay: r.i * 300 });
           objs.push(glow, this.add.image(r.x, r.y, `rubble_${r.i % 2}`).setOrigin(0.5, 1).setDepth(r.y), spark);
         }
       }
@@ -2260,7 +2260,7 @@ export class GameScene extends Phaser.Scene {
       if (roll < 0.3 && partners.length) void this.visit(a, Phaser.Utils.Array.GetRandom(partners));
       else if (roll < 0.45) {
         const t = Math.random() * Math.PI * 2;
-        const r = Phaser.Math.Between(72, 108);
+        const r = Phaser.Math.Between(72, PLAZA_R - 12);
         void this.strollTo(a, PLAZA.x + Math.cos(t) * r, PLAZA.y + 10 + Math.sin(t) * r * 0.8);
       } else if (roll < 0.72) void this.strollTo(a, Phaser.Math.Between(STREET.x0 + 60, STREET.x1 - 60), STREET.y + Phaser.Math.Between(-10, 12));
       else if (roll < 0.92) {

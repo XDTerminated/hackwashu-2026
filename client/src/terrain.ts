@@ -5,20 +5,21 @@
 // the grey plains beyond it, and the Moon itself curving away into space.
 
 import Phaser from "phaser";
-import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, STREET, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";
-export { PLAZA, lampSpots } from "./layout";
+import { ISLAND_CX, ISLAND_CY, LANDING, MAP_H, MAP_W, PLAZA, PLAZA_R, SPOTS, STREET, TILE, WORLD_H, WORLD_W, inIsland, pathPoints } from "./layout";export { PLAZA, lampSpots } from "./layout";
 import type { BuildingId } from "../../shared/game";
 import { type Ctx, hash, rect } from "./pix";
 
-const REGOLITH = ["#b3abc2", "#b3abc2", "#b2aac1"];
-const REG_DARK = "#9d95b0";
-const REG_LIGHT = "#c9c2d8";
+// The floor sits a step darker than anything built on it, so the buildings,
+// lamps and paving stand out against it.
+const REGOLITH = ["#a9a1b9", "#a9a1b9", "#a8a0b8"];
+const REG_DARK = "#938ba7";
+const REG_LIGHT = "#bfb8cf";
 // Maria: old lava plains, darker and bluer than the dusty highlands, sitting a
-// step lower (a shadowed lip along the top, a lit one along the bottom).
-const MARE = "#8b85a3";
-const MARE_DARK = "#6f6a88";
-const MARE_LIGHT = "#a29db8";
-const MARE_SHADOW = "#77728f";
+// step lower (a shadowed shore along the top, a lit one along the bottom).
+const MARE = "#86809d";
+const MARE_DARK = "#6a6583";
+const MARE_LIGHT = "#9c97b2";
+const MARE_SHADOW = "#726d8a";
 
 export const MINIMAP_W = 76;
 export const MINIMAP_H = 58;
@@ -37,22 +38,66 @@ function noise(x: number, y: number): number {
   return a + (b - a) * s(xf) + (c - a) * s(yf) + (a - b - c + d) * s(xf) * s(yf);
 }
 
-/** Maria gather around the colony (the plaza and the homes), in smooth, rounded basins. */
-function mareAt(px: number, py: number): boolean {
-  if (!inIsland(Math.floor(px / TILE) + 0.5, Math.floor(py / TILE) + 0.5)) return false;
-  let d = Math.hypot(px - PLAZA.x, py - PLAZA.y) * 0.8;
-  for (const s of Object.values(SPOTS)) d = Math.min(d, Math.hypot(px - s.x, py - (s.y - 10)));
-  const n = noise(px / (TILE * 5), py / (TILE * 5)) * 0.65 + noise(px / (TILE * 2.2), py / (TILE * 2.2)) * 0.35;
-  return n > 0.36 + d / 240;
+/** How far a point is from the town: the plaza, Main Street, and every building's lot (0 inside). */
+function townDist(px: number, py: number): number {
+  let d = Math.hypot(px - PLAZA.x, py - PLAZA.y) - PLAZA_R;
+  if (px > STREET.x0 - 16 && px < STREET.x1 + 16) d = Math.min(d, Math.abs(py - STREET.y) - 16);
+  for (const s of Object.values(SPOTS)) {
+    const dx = Math.max(0, Math.abs(px - s.x) - s.fw);
+    const dy = Math.max(0, s.y - s.tall - py, py - s.y - 16);
+    d = Math.min(d, Math.hypot(dx, dy));
+  }
+  return Math.max(0, d);
 }
 
-const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+/**
+ * Maria lie out in the open ground, never up against the town (where they'd
+ * read as shadows under the buildings), in broad basins with ragged shores.
+ */
+function mareAt(px: number, py: number): boolean {
+  if (!inIsland(Math.floor(px / TILE) + 0.5, Math.floor(py / TILE) + 0.5)) return false;
+  const d = townDist(px, py);
+  const n = noise(px / (TILE * 8), py / (TILE * 8)) * 0.65 + noise(px / (TILE * 3), py / (TILE * 3)) * 0.29 + noise(px / TILE, py / TILE) * 0.06;
+  // (rarer and rarer toward town, so the shores curve away from it rather than stopping at a line)
+  return n > 0.61 + Math.max(0, 1 - (d - 16) / 110) * 0.4;
+}
+
+/** A 4 x 4 ordered-dither threshold in [0, 1): blends two tones without banding. */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+const bayer = (x: number, y: number) => BAYER[(y & 3) * 4 + (x & 3)];
+
+/** Scale a pixel's color (a little bluer as it darkens, like the maria). */
+function tint(p: Uint8ClampedArray, i: number, k: number, blue = 1) {
+  p[i] *= k;
+  p[i + 1] *= k * 0.99;
+  p[i + 2] = Math.min(255, p[i + 2] * k * blue);
+}
 
 /**
- * Darken the ground into maria, pixel by pixel (so the edges curve instead of
- * following tiles). The grit shows through, just darker and bluer. Each basin
- * sits a step lower: shadowed along its top and left lips, lit along the
- * bottom and right. Returns the mask (1 = mare) for the craters and minimap.
+ * The highlands aren't one flat grey: broad, soft swells of lighter and darker
+ * dust, dithered together so there are no hard edges.
+ */
+function mottle(ctx: Ctx) {
+  const img = ctx.getImageData(0, 0, WORLD_W, WORLD_H);
+  const p = img.data;
+  const TONES = [0.955, 1, 1.035];
+  for (let y = 0; y < WORLD_H; y++)
+    for (let x = 0; x < WORLD_W; x++) {
+      const i = (y * WORLD_W + x) * 4;
+      if (!p[i + 3]) continue;
+      const n = noise((x + 900) / 90, (y + 300) / 90) * 0.7 + noise((x + 50) / 34, (y + 700) / 34) * 0.3;
+      const k = TONES[Math.max(0, Math.min(2, Math.floor((n - 0.5) * 6 + 1 + bayer(x, y))))];
+      if (k !== 1) tint(p, i, k);
+    }
+  ctx.putImageData(img, 0, 0);
+}
+
+/**
+ * Darken the ground into maria, pixel by pixel (so the shores curve instead of
+ * following tiles). The grit shows through, just darker and bluer, mottled
+ * deeper in places and flecked. Each basin sits a step lower: its shore is
+ * dithered into the highlands, shadowed along the top and left and lit along
+ * the bottom and right. Returns the mask (1 = mare) for the craters and minimap.
  */
 function maria(ctx: Ctx, rnd: Phaser.Math.RandomDataGenerator): Uint8Array {
   const W = WORLD_W;
@@ -63,14 +108,27 @@ function maria(ctx: Ctx, rnd: Phaser.Math.RandomDataGenerator): Uint8Array {
   const at = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] === 1;
   const img = ctx.getImageData(0, 0, W, H);
   const p = img.data;
-  const [dark, shadow, light] = [rgb(MARE_DARK), rgb(MARE_SHADOW), rgb(MARE_LIGHT)];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!m[y * W + x]) continue;
       const i = (y * W + x) * 4;
-      const lip = !at(x, y - 1) || !at(x - 1, y) ? dark : !at(x, y - 2) ? shadow : !at(x, y + 1) || !at(x + 1, y) ? light : null;
-      if (lip) [p[i], p[i + 1], p[i + 2]] = lip;
-      else [p[i], p[i + 1], p[i + 2]] = [p[i] * 0.78, p[i + 1] * 0.78, p[i + 2] * 0.84];
+      const upper = !at(x, y - 1) || !at(x - 1, y) || !at(x, y - 2) || !at(x - 2, y);
+      const lower = !at(x, y + 1) || !at(x + 1, y) || !at(x, y + 2) || !at(x + 2, y);
+      const shore = !at(x - 1, y) || !at(x + 1, y) || !at(x, y - 1) || !at(x, y + 1);
+      let k: number;
+      if (shore) {
+        // the very edge: half its pixels still highland, half a step down
+        if ((x + y) & 1) continue;
+        k = upper ? 0.88 : 0.95;
+      } else if (upper) k = 0.8;
+      else if (lower) k = 0.93;
+      else {
+        // the basin floor, deeper in patches, with the odd pale or dark fleck
+        const deep = noise((x + 2000) / 38, (y + 1000) / 38) + (bayer(x, y) - 0.5) * 0.08 > 0.58;
+        const f = hash(x, y, 41);
+        k = f > 0.994 ? 0.94 : f < 0.004 ? 0.72 : deep ? 0.81 : 0.86;
+      }
+      tint(p, i, k, 1.07);
     }
   ctx.putImageData(img, 0, 0);
   // craterlets, well inside the basins
@@ -93,12 +151,12 @@ function regolithTile(ctx: Ctx, tx: number, ty: number) {
     rect(ctx, REG_DARK, x, y, 2, 1);
     rect(ctx, REG_LIGHT, x, y - 1, 1, 1);
   }
-  if (hash(tx, ty, 5) > 0.86) {
+  if (hash(tx, ty, 5) > 0.84) {
     // pebble
     const x = x0 + 3 + Math.floor(hash(tx, ty, 6) * 9);
     const y = y0 + 3 + Math.floor(hash(tx, ty, 7) * 9);
-    rect(ctx, "#8a8199", x, y + 1, 3, 2);
-    rect(ctx, "#d2cbe0", x, y, 2, 1);
+    rect(ctx, "#7f7690", x, y + 1, 3, 2);
+    rect(ctx, "#cdc6db", x, y, 2, 1);
   }
 }
 
@@ -150,7 +208,7 @@ function flagstonePath(ctx: Ctx, ax: number, ay: number, bx: number, by: number,
       const g = hash(gx, gy, seed % 97);
       // (a broken road is just a packed-dirt track: tidy, a shade darker than the ground)
       const c = broken
-        ? Math.abs(w) === half ? "#a098b0" : g < 0.04 ? "#9d95b0" : "#aaa2bb"
+        ? Math.abs(w) === half ? "#968ea8" : g < 0.04 ? "#938ba5" : "#a098b0"
         : Math.abs(w) === half ? "#978c93" : g > 0.93 ? "#b3a9ae" : g < 0.06 ? "#8e848a" : "#a4999f";
       rect(ctx, c, gx, gy, 1, 1);
     }
@@ -215,24 +273,24 @@ function plaza(ctx: Ctx) {
       const slab = Math.floor(((a + Math.PI) / (Math.PI * 2)) * slabs + (course % 2) * 0.5);
       const seamR = d % 9 < 1;
       const seamA = Math.abs((((a + Math.PI) / (Math.PI * 2)) * slabs + (course % 2) * 0.5) % 1) < 0.06 * (9 / Math.max(9, d)) * 3;
-      let c = hash(course, slab, 5) > 0.5 ? "#d8d2e0" : "#cfc8d9";
-      if (hash(course, slab, 6) > 0.85) c = "#e2dce8";
-      if (seamR || seamA) c = "#a49cb3";
-      else if (d % 9 < 2) c = "#e8e3ee";
-      // inlays
+      // (a soft marble, a step lighter than the ground, not glaring white)
+      let c = hash(course, slab, 5) > 0.5 ? "#cec7d8" : "#c6bfd1";
+      if (hash(course, slab, 6) > 0.85) c = "#d7d1e0";
+      if (seamR || seamA) c = "#9a92ab";
+      else if (d % 9 < 2) c = "#dcd7e5";
+      // inlays: one gold band round the rim, one round the fountain court
       const ray = Math.abs(Math.cos((8 * a) / 2));
       const ray2 = Math.abs(Math.cos((8 * (a + Math.PI / 8)) / 2));
-      if (d > R - 3) c = "#6f6880";
+      if (d > R - 3) c = "#6a637b";
       else if (d > R - 8 && d <= R - 6.5) c = "#c99a3e";
-      else if (d > R - 6.5 && d <= R - 3) c = "#8a8298";
-      else if (d > 66 && d < R - 12 && ray > 0.994) c = "#c4bccf";
-      else if (d > 74 && d < R - 14 && ray2 > 0.997) c = "#c9c2d4";
-      else if (d > 62 && d <= 64) c = "#c99a3e";
-      else if (d <= 62 && d > 60) c = "#8a8298";
+      else if (d > R - 6.5 && d <= R - 3) c = "#857d93";
+      else if (d > 66 && d < R - 12 && ray > 0.994) c = "#bcb4c8";
+      else if (d > 74 && d < R - 14 && ray2 > 0.997) c = "#c0b9cc";
+      else if (d <= 63 && d > 60) c = "#857d93";
       if (d <= 60) {
-        // the fountain court: a star of coral and cream
+        // the fountain court: a star of cream on grey
         const star = Math.abs(Math.cos((16 * a) / 2));
-        c = d > 58 ? "#c99a3e" : star > 0.93 && d > 34 ? "#ddd6e4" : hash(Math.floor(x / 5), Math.floor(y / 5), 7) > 0.5 ? "#c2bbcd" : "#c9c2d4";
+        c = d > 58 ? "#c99a3e" : star > 0.93 && d > 34 ? "#d3cddd" : hash(Math.floor(x / 5), Math.floor(y / 5), 7) > 0.5 ? "#bbb4c8" : "#c2bbce";
       }
       rect(ctx, c, PLAZA.x + x, PLAZA.y + y, 1, 1);
     }
@@ -252,10 +310,100 @@ function craters(ctx: Ctx, rnd: Phaser.Math.RandomDataGenerator, mare: Uint8Arra
         if (d > 1) continue;
         const rim = d > 0.72;
         const upper = y < 0;
-        rect(ctx, rim ? (upper ? "#8a8199" : "#d2cbe0") : upper ? "#9d95b0" : "#a8a0b8", cx + x, cy + y, 1, 1);
+        rect(ctx, rim ? (upper ? "#7f7690" : "#c6bfd4") : upper ? "#908aa6" : "#9c95b0", cx + x, cy + y, 1, 1);
       }
     }
   }
+}
+
+/**
+ * Signs of life out on the open ground: old rover tracks looping across the
+ * crater (half buried by dust in places), trails of boot prints, and pebbles
+ * kicked into little clusters. All pressed into the ground, never in town.
+ */
+function wear(ctx: Ctx, rnd: Phaser.Math.RandomDataGenerator) {
+  const W = WORLD_W;
+  const H = WORLD_H;
+  const img = ctx.getImageData(0, 0, W, H);
+  const p = img.data;
+  // (each pixel is pressed only once, so crossings don't pile up darker)
+  const done = new Uint8Array(W * H);
+  const open = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && p[(y * W + x) * 4 + 3] > 0 && townDist(x, y) > 10;
+  const shade = (fx: number, fy: number, k: number) => {
+    const x = Math.round(fx);
+    const y = Math.round(fy);
+    if (!open(x, y) || done[y * W + x]) return;
+    done[y * W + x] = 1;
+    tint(p, (y * W + x) * 4, k);
+  };
+
+  // Rover tracks: two ruts on a lazy curve, with tread marks, fading at the ends.
+  for (let n = 0, made = 0; n < 60 && made < 4; n++) {
+    const a = { x: rnd.between(80, W - 80), y: rnd.between(80, H - 80) };
+    const ang = rnd.frac() * Math.PI * 2;
+    const len = rnd.between(280, 560);
+    const b = { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len * 0.8 };
+    if (!open(a.x, a.y) || !open(Math.round(b.x), Math.round(b.y))) continue;
+    made++;
+    const bend = (rnd.frac() - 0.5) * len * 0.9;
+    const c = { x: (a.x + b.x) / 2 - Math.sin(ang) * bend, y: (a.y + b.y) / 2 + Math.cos(ang) * bend };
+    const steps = Math.ceil(len * 1.3);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      // faded where dust has blown over, and toward the ends
+      if (noise(s / 45 + n * 7, n) < 0.3 || hash(s, n, 9) > Math.min(1, t * 8, (1 - t) * 8)) continue;
+      const x = (1 - t) ** 2 * a.x + 2 * (1 - t) * t * c.x + t * t * b.x;
+      const y = (1 - t) ** 2 * a.y + 2 * (1 - t) * t * c.y + t * t * b.y;
+      const dx = 2 * (1 - t) * (c.x - a.x) + 2 * t * (b.x - c.x);
+      const dy = 2 * (1 - t) * (c.y - a.y) + 2 * t * (b.y - c.y);
+      const l = Math.hypot(dx, dy) || 1;
+      const [px, py] = [-dy / l, dx / l];
+      for (const side of [-4, 3]) {
+        shade(x + px * side, y + py * side, 0.9);
+        shade(x + px * (side + 1), y + py * (side + 1), s % 3 === 0 ? 0.82 : 0.93);
+      }
+    }
+  }
+
+  // Boot prints: a wandering trail of little dents, shadowed at the top and lit below.
+  for (let n = 0, made = 0; n < 60 && made < 6; n++) {
+    let x = rnd.between(80, W - 80);
+    let y = rnd.between(80, H - 80);
+    if (!open(x, y) || townDist(x, y) < 30) continue;
+    made++;
+    let ang = rnd.frac() * Math.PI * 2;
+    for (let s = 0; s < 28; s++) {
+      ang += (rnd.frac() - 0.5) * 0.35;
+      x += Math.cos(ang) * 6;
+      y += Math.sin(ang) * 5;
+      const side = s % 2 ? 2 : -2;
+      const fx = x - Math.sin(ang) * side;
+      const fy = y + Math.cos(ang) * side;
+      for (const ox of [0, 1]) {
+        shade(fx + ox, fy, 0.8);
+        shade(fx + ox, fy + 1, 0.87);
+        shade(fx + ox, fy + 2, 1.07);
+      }
+    }
+  }
+
+  // Pebble clusters: lit on top, each with a little shadow.
+  for (let n = 0; n < 160; n++) {
+    const cx = rnd.between(40, W - 40);
+    const cy = rnd.between(40, H - 40);
+    if (!open(cx, cy)) continue;
+    for (let k = rnd.between(2, 5); k > 0; k--) {
+      const x = cx + rnd.between(-8, 8);
+      const y = cy + rnd.between(-5, 5);
+      const w = rnd.between(1, 3);
+      for (let i = 0; i < w; i++) {
+        shade(x + i, y, 1.18);
+        shade(x + i, y + 1, 0.96);
+        shade(x + i + 1, y + 2, 0.74);
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 export function bakeTerrain(scene: Phaser.Scene) {
@@ -272,8 +420,10 @@ export function bakeTerrain(scene: Phaser.Scene) {
       if (touches) regolithTile(ctx, tx, ty);
     }
   }
+  mottle(ctx);
   const mare = maria(ctx, rnd);
   craters(ctx, rnd, mare);
+  wear(ctx, rnd);
   // Trim to the crater floor's true (curved) edge, pixel by pixel.
   const img = ctx.getImageData(0, 0, WORLD_W, WORLD_H);
   for (let y = 0; y < WORLD_H; y++) for (let x = 0; x < WORLD_W; x++) if (!inIsland((x + 0.5) / TILE, (y + 0.5) / TILE)) img.data[(y * WORLD_W + x) * 4 + 3] = 0;
@@ -314,8 +464,9 @@ export function drawBuildingPath(ctx: Ctx, b: BuildingId, broken = false) {
 /** How far past the world's edge the view can go (the crater wall, the plains, the curve). */
 export const OUTER = 320;
 
-// The Moon's surface outside the crater, darkest to lightest (the middle one matches the floor).
-const RAMP = ["#4f4a63", "#665f7d", "#817a98", "#9c95b2", "#b3abc2", "#c9c3d8", "#ddd8e8"].map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+// The Moon's surface outside the crater, darkest to lightest (FLAT matches the floor).
+const RAMP_HEX = ["#4b465e", "#605a76", "#7a7390", "#938da8", "#a9a1b9", "#beb8cc", "#d1ccdb"];
+const RAMP = RAMP_HEX.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
 const FLAT = 4;
 const SPACE = [11, 10, 26];
 
@@ -422,7 +573,7 @@ export function bakeOuter(scene: Phaser.Scene) {
         const q = (xx / r) ** 2 + (yy / (r * 0.7)) ** 2;
         if (q > 1) continue;
         const rim = q > 0.7;
-        const col = rim ? (yy < 0 ? "#665f7d" : "#c9c3d8") : yy < 0 ? "#817a98" : "#9c95b2";
+        const col = rim ? (yy < 0 ? RAMP_HEX[1] : RAMP_HEX[5]) : yy < 0 ? RAMP_HEX[2] : RAMP_HEX[3];
         rect(ctx, col, x + xx, y + yy, 1, 1);
       }
   }
@@ -432,9 +583,9 @@ export function bakeOuter(scene: Phaser.Scene) {
     const { d } = outside(x - OUTER, y - OUTER);
     if (d < 14 || d > 60 || Math.hypot((x - cx) / LX, (y - cy) / LY) > 0.95) continue;
     const w = rnd.between(2, 4);
-    rect(ctx, "#4f4a63", x, y + 1, w + 1, 2);
-    rect(ctx, "#9c95b2", x, y, w, 2);
-    rect(ctx, "#ddd8e8", x, y, Math.max(1, w - 1), 1);
+    rect(ctx, RAMP_HEX[0], x, y + 1, w + 1, 2);
+    rect(ctx, RAMP_HEX[3], x, y, w, 2);
+    rect(ctx, RAMP_HEX[6], x, y, Math.max(1, w - 1), 1);
   }
   tex.refresh();
 }

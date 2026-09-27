@@ -88,7 +88,7 @@ export const STREET = { y: 600, x0: 176, x1: 1424 };
 export const PLAZA = { x: Math.round(CX / TILE) * TILE, y: 736 };
 
 /** The plaza's radius (its paving; the grand fountain stands in the middle). */
-export const PLAZA_R = 120;
+export const PLAZA_R = 100;
 
 /** The north row's base line: their doors open onto the street. */
 const ROW_Y = 560;
@@ -135,8 +135,8 @@ for (const b of Object.keys(SPOTS) as BuildingId[]) Object.assign(SPOTS[b], snap
 Object.assign(SPOTS.mailbox, { x: SPOTS.post_office.x - (buildingTiles("post_office").w / 2 + 1.5) * TILE, y: SPOTS.post_office.y });
 Object.assign(SPOTS.rocket_pad, mailRocketAt(SPOTS.post_office));
 
-/** The ship you arrived in: parked at the west end of Main Street. */
-export const LANDING = snapToTiles(STREET.x0 + 24, STREET.y + 56, 2);
+/** The ship you arrived in: parked near the west end of Main Street (far enough in that the crater wall doesn't fill your first view). */
+export const LANDING = snapToTiles(STREET.x0 + 104, STREET.y + 56, 2);
 
 /** Lanterns from finished tasks are planted on a ring of tiles around the plaza. */
 export function lanternSpot(i: number): { x: number; y: number } {
@@ -169,7 +169,7 @@ export function streetLamps(): Pt[] {
   const out: Pt[] = [];
   const doors = (Object.keys(SPOTS) as BuildingId[]).filter((b) => !isAnnex(b)).map((b) => SPOTS[b].x + SPOTS[b].door.dx);
   for (let x = STREET.x0 + 96; x < STREET.x1 - 40; x += 128) {
-    if (Math.abs(x - PLAZA.x) < PLAZA_R + 40 || doors.some((d) => Math.abs(d - x) < 36)) continue;
+    if (Math.abs(x - PLAZA.x) < PLAZA_R + 40 || Math.abs(x - LANDING.x) < 48 || doors.some((d) => Math.abs(d - x) < 36)) continue;
     out.push(snapToTiles(x, STREET.y + 32, 1));
   }
   return out;
@@ -248,10 +248,10 @@ export function plazaRing(): { lamps: Pt[]; obelisks: Pt[] } {
     const next = i + 1 < angles.length ? angles[i + 1] : angles[0] + Math.PI * 2;
     const gap = next - a;
     const mid = a + gap / 2;
-    // (nothing on the rim where the square meets Main Street)
+    // (nothing on the rim where the square meets Main Street, and no crowding in the narrow gaps)
     const lamp = at(mid, PLAZA_R - 6);
     const obelisk = at(mid, PLAZA_R + 18);
-    if (lamp.y > STREET.y + 40) lamps.push(lamp);
+    if (lamp.y > PLAZA.y - PLAZA_R * 0.75 && gap > 0.4) lamps.push(lamp);
     if (gap > 0.5 && obelisk.y > STREET.y + 48) obelisks.push(obelisk);
   });
   return { lamps, obelisks };
